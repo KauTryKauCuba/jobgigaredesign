@@ -7,29 +7,5 @@
       "Bash(npx eslint *)",
       "Bash(docker compose ps *)"
     ]
-  },
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/vexp-hint.sh\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/vexp-restore.sh\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
   }
 }
