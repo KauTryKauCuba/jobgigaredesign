@@ -239,6 +239,8 @@ export async function POST(request: Request) {
       // Update the shared row in place. `values.userId` must NOT be written
       // here — it's the company's original owner, and a team member saving
       // an edit should never reassign that just by submitting this form.
+      // Destructured only to exclude it from updateValues, per the comment above.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { userId: _ownerUserId, ...updateValues } = values;
       const [updated] = await tx
         .update(employerProfiles)

@@ -62,10 +62,15 @@ export default function Dropdown<T extends string>({
   }, [open, searchable]);
 
   // Clears the filter every time the popover closes so it doesn't carry a
-  // stale query into the next open.
-  useEffect(() => {
+  // stale query into the next open. Adjusted during render (React's
+  // "storing information from previous renders" pattern) instead of an
+  // effect, since it only needs to react to `open` flipping, not run after
+  // every commit.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (!open) setQuery("");
-  }, [open]);
+  }
 
   return (
     <div ref={ref} className="relative">

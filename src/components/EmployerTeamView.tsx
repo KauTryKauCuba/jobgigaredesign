@@ -107,8 +107,11 @@ export default function EmployerTeamView({
     // Owner rows self-heal on the server the first time this is fetched —
     // running it once on mount keeps the client in sync even if the server
     // component's initial fetch raced that self-heal.
+    // refresh() is async and only calls setState after its `await fetch(...)`
+    // resolves, not synchronously within this effect body, so there's no
+    // cascading render on mount; the rule can't see through the function call.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleInvite(e: React.FormEvent) {

@@ -387,6 +387,10 @@ export default function EmployerDashboardOverview({
   useEffect(() => {
     try {
       const raw = localStorage.getItem(OVERVIEW_HIDDEN_TILES_KEY);
+      // One-time client-only read on mount (localStorage isn't available
+      // during SSR), not a reaction to a dependency change — no cascading
+      // render risk despite the rule's generic warning.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setHiddenTileIds(JSON.parse(raw));
     } catch {
       // Storage unavailable/corrupt — just show every tile.
@@ -412,6 +416,8 @@ export default function EmployerDashboardOverview({
   useEffect(() => {
     try {
       const raw = localStorage.getItem(OVERVIEW_ORDER_KEY);
+      // Same one-time client-only read on mount as hiddenTileIds above.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setTileOrder(JSON.parse(raw));
     } catch {
       // Storage unavailable/corrupt — fall back to declared order.
@@ -695,6 +701,12 @@ export default function EmployerDashboardOverview({
             <EmptyRow>Every tile is hidden — tap Arrange above to bring some back.</EmptyRow>
           ) : (
             <>
+              {/* eslint-disable react-hooks/refs -- useDragScroll returns its
+                  ref bundled with plain event-handler functions and a
+                  progress value; the handlers only read ref.current when an
+                  actual pointer/scroll event fires them, never during this
+                  render, so the rule's static "ref access during render"
+                  check is a false positive here. */}
               <div
                 ref={overviewDrag.ref}
                 onPointerDown={overviewDrag.onPointerDown}
@@ -714,6 +726,7 @@ export default function EmployerDashboardOverview({
                 </div>
               </div>
               <ScrollDots progress={overviewDrag.progress} />
+              {/* eslint-enable react-hooks/refs */}
             </>
           )}
         </div>
