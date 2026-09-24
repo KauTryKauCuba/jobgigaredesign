@@ -1,0 +1,1 @@
+ALTER TABLE "employer_profiles" ALTER COLUMN "smart_match_criteria" SET DEFAULT '{"skills":true,"softSkills":true,"niceToHaveSkills":true,"experience":true,"industry":true,"workArrangement":true,"employmentType":true,"workAuthorization":true,"drivingLicense":true}'::jsonb;

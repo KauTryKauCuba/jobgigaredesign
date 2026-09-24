@@ -1,0 +1,2 @@
+CREATE TYPE "public"."interview_response_status" AS ENUM('pending', 'accepted', 'declined', 'reschedule_requested', 'no_show');--> statement-breakpoint
+ALTER TABLE "job_applications" ADD COLUMN "interview_response_status" "interview_response_status";

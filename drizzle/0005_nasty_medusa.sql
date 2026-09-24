@@ -1,0 +1,1 @@
+ALTER TABLE "jobseeker_education" ADD COLUMN "cgpa" text;

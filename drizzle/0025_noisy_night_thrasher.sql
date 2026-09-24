@@ -1,0 +1,2 @@
+ALTER TABLE "employer_profiles" ADD COLUMN "contact_phone_verified_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "jobseeker_profiles" ADD COLUMN "phone_verified_at" timestamp with time zone;

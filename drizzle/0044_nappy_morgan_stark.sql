@@ -1,0 +1,1 @@
+ALTER TABLE "jobseeker_profiles" ALTER COLUMN "preferred_industry" SET NOT NULL;

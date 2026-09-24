@@ -1,26 +1,629 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Helvetica, Arial, sans-serif;
+
+  /* Pulled from jg-logo.svg so the page always matches the mark exactly. */
+  --color-brand-teal: #07bcca;
+  --color-brand-teal-dark: #008990;
+  --color-brand-gold-dark: #a67c00;
+  --color-brand-ink: #141b2e;
+
+  /* The entire app's type scale — every text-* utility used anywhere in the
+     codebase resolves to one of these five sizes. No arbitrary text-[Npx]
+     values or inline fontSize should exist outside this list. Font-size
+     only, no companion line-height, so it never fights the leading-[Npx]
+     classes components already set explicitly. */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Light mode only — no dark/system variant exists, so form controls,
+     scrollbars, etc. shouldn't switch even if the OS is set to dark. */
+  color-scheme: light;
+  background: #ffffff;
+  color: var(--color-brand-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+.shell {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 13.28%;
+}
+
+/* For a horizontally scrollable row that has its own visible scroll
+   affordance (drag-to-pan, dot pagination, etc.) — hides the native
+   scrollbar without disabling scrolling itself. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 1440px) {
+  .shell {
+    padding-inline: 9%;
+  }
+}
+
+@media (max-width: 1024px) {
+  .shell {
+    padding-inline: 5%;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding-inline: 20px;
+  }
+}
+
+/*
+ * SiriOrb — a circular icon (see SiriOrb.tsx). A single rotating
+ * conic-gradient reads as a rigid pinwheel, not Siri — the real thing is
+ * several soft colour blobs drifting independently and blending inside a
+ * circular clip, which is what these three layers do. No glow: the circle
+ * is hard-clipped (`overflow: hidden` + full radius) in the component, so
+ * nothing bleeds past its edge.
+ */
+@keyframes siri-orb-blob-a {
+  0%,
+  100% {
+    transform: translate(-8%, -6%) scale(1);
+  }
+  33% {
+    transform: translate(10%, 4%) scale(1.2);
+  }
+  66% {
+    transform: translate(2%, 10%) scale(0.9);
+  }
+}
+
+@keyframes siri-orb-blob-b {
+  0%,
+  100% {
+    transform: translate(8%, 6%) scale(1.1);
+  }
+  33% {
+    transform: translate(-10%, -4%) scale(0.95);
+  }
+  66% {
+    transform: translate(-4%, 8%) scale(1.15);
+  }
+}
+
+@keyframes siri-orb-blob-c {
+  0%,
+  100% {
+    transform: translate(0%, 9%) scale(1);
+  }
+  33% {
+    transform: translate(-8%, -8%) scale(1.1);
+  }
+  66% {
+    transform: translate(9%, -2%) scale(0.92);
+  }
+}
+
+.siri-orb-base {
+  background: linear-gradient(135deg, #cff4f6, #fff8de);
+}
+
+.siri-orb-blob {
+  position: absolute;
+  inset: -22%;
+  border-radius: 9999px;
+  filter: blur(3px);
+}
+
+.siri-orb-blob-a {
+  background: radial-gradient(circle at 30% 30%, #07bcca 0%, transparent 65%);
+  animation: siri-orb-blob-a 4.6s ease-in-out infinite;
+}
+
+.siri-orb-blob-b {
+  background: radial-gradient(circle at 72% 38%, #5cd8e0 0%, transparent 65%);
+  animation: siri-orb-blob-b 5.3s ease-in-out infinite;
+}
+
+.siri-orb-blob-c {
+  background: radial-gradient(circle at 50% 75%, #ffe9a6 0%, transparent 65%);
+  animation: siri-orb-blob-c 6.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siri-orb-blob-a,
+  .siri-orb-blob-b,
+  .siri-orb-blob-c {
+    animation: none;
+  }
+}
+
+/* Active state (e.g. while the user is typing) — blobs speed up and the
+   whole orb gets a subtle breathing pulse, so it visibly reacts. */
+@keyframes siri-orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.siri-orb-active {
+  animation: siri-orb-pulse 1.1s ease-in-out infinite;
+}
+
+.siri-orb-active .siri-orb-blob-a {
+  animation-duration: 1.8s;
+}
+
+.siri-orb-active .siri-orb-blob-b {
+  animation-duration: 2.1s;
+}
+
+.siri-orb-active .siri-orb-blob-c {
+  animation-duration: 2.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siri-orb-active {
+    animation: none;
+  }
+}
+
+/* Voice-input waveform — bars pulse at staggered heights while listening. */
+@keyframes voice-wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.voice-wave-bar {
+  animation: voice-wave 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-wave-bar {
+    animation: none;
+    transform: scaleY(0.7);
+  }
+}
+
+/* Hero employer-type badges — gentle vertical drift, staggered per badge via
+   inline animation-delay/duration so none of the six bob in lockstep. */
+@keyframes float-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.float-bob {
+  animation: float-bob 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-bob {
+    animation: none;
+  }
+}
+
+/* Gold hairline border sweep (chat widget) — a gold highlight rotates
+   around the border. */
+@keyframes gold-sweep-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gold-sweep {
+  animation: gold-sweep-spin 7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gold-sweep {
+    animation: none;
+  }
+}
+
+/* AiFillMockup — the "Looking up…" pill breathes with a soft ring pulse,
+   and the skeleton bars below sweep a lighter band through them, standing
+   in for AI actively populating those fields. */
+@keyframes ai-fill-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 137, 144, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 137, 144, 0);
+  }
+}
+
+.ai-fill-pulse {
+  animation: ai-fill-pulse 1.8s ease-in-out infinite;
+}
+
+/* Cycles the `color` custom property a stroke="currentColor" icon reads,
+   so the icon's lines shift through a gradient of colors over time instead
+   of a fixed single color. The third stop reads --icon-accent so each card
+   can cycle through to its own accent color instead of a fixed one — set
+   it inline per instance, e.g. style={{ "--icon-accent": "#B9BEF5" }}. */
+@keyframes icon-gradient-color {
+  0%,
+  100% {
+    color: #ffffff;
+  }
+  33% {
+    color: #a8adb5;
+  }
+  66% {
+    color: var(--icon-accent, #6fe0d0);
+  }
+}
+
+.icon-gradient-color {
+  animation: icon-gradient-color 3.9s ease-in-out infinite;
+}
+
+/* Same white -> silver -> --icon-accent cycle as icon-gradient-color, but
+   painted as a 1px hairline ring (via box-shadow, so it doesn't affect
+   layout) instead of an icon's stroke color — for a card's "this one's
+   selected" state. Set --icon-accent inline on the same element, matching
+   whatever accent color that card already uses. */
+@keyframes ring-gradient-color {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px #ffffff;
+  }
+  33% {
+    box-shadow: 0 0 0 1px #a8adb5;
+  }
+  66% {
+    box-shadow: 0 0 0 1px var(--icon-accent, #6fe0d0);
+  }
+}
+
+.ring-gradient-color {
+  animation: ring-gradient-color 3.9s ease-in-out infinite;
+}
+
+/* Subtle film-grain texture over a gradient card — an SVG feTurbulence
+   noise pattern layered on top via ::after at 15% opacity, so it reads as
+   texture rather than visible speckling. Requires the element to already
+   be `position: relative` and `overflow: hidden` (every gradient card that
+   uses this already is, for the watermark icon clipping). */
+.gradient-noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+@keyframes ai-fill-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+
+.ai-fill-shimmer {
+  background: linear-gradient(90deg, #eef1f5 25%, #f8fafb 37%, #eef1f5 63%);
+  background-size: 400px 100%;
+  animation: ai-fill-shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-fill-pulse,
+  .ai-fill-shimmer {
+    animation: none;
+  }
+}
+
+/* InterviewMockup.tsx — cycles through List/Kanban/Calendar, crossfading
+   the three absolutely-stacked panels and highlighting the matching tab in
+   the decorative toggle above them, all on one shared 12s timeline so the
+   panel and its tab always switch in lockstep (no JS — same "no hydration
+   risk" reasoning as the other .ai-fill-* mockup animations, just three
+   phases instead of one). */
+@keyframes mockup-view-list {
+  0%,
+  4% {
+    opacity: 0;
+  }
+  8%,
+  29% {
+    opacity: 1;
+  }
+  33%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes mockup-view-kanban {
+  0%,
+  33% {
+    opacity: 0;
+  }
+  37%,
+  62% {
+    opacity: 1;
+  }
+  66%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes mockup-view-calendar {
+  0%,
+  66% {
+    opacity: 0;
+  }
+  70%,
+  95% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.mockup-view-list {
+  animation: mockup-view-list 12s ease-in-out infinite;
+}
+.mockup-view-kanban {
+  animation: mockup-view-kanban 12s ease-in-out infinite;
+}
+.mockup-view-calendar {
+  animation: mockup-view-calendar 12s ease-in-out infinite;
+}
+
+@keyframes mockup-tab-list {
+  0%,
+  4% {
+    background-color: transparent;
+    color: #4b5468;
+  }
+  8%,
+  29% {
+    background-color: var(--color-brand-teal-dark);
+    color: #ffffff;
+  }
+  33%,
+  100% {
+    background-color: transparent;
+    color: #4b5468;
+  }
+}
+@keyframes mockup-tab-kanban {
+  0%,
+  33% {
+    background-color: transparent;
+    color: #4b5468;
+  }
+  37%,
+  62% {
+    background-color: var(--color-brand-teal-dark);
+    color: #ffffff;
+  }
+  66%,
+  100% {
+    background-color: transparent;
+    color: #4b5468;
+  }
+}
+@keyframes mockup-tab-calendar {
+  0%,
+  66% {
+    background-color: transparent;
+    color: #4b5468;
+  }
+  70%,
+  95% {
+    background-color: var(--color-brand-teal-dark);
+    color: #ffffff;
+  }
+  100% {
+    background-color: transparent;
+    color: #4b5468;
+  }
+}
+.mockup-tab-list {
+  animation: mockup-tab-list 12s ease-in-out infinite;
+}
+.mockup-tab-kanban {
+  animation: mockup-tab-kanban 12s ease-in-out infinite;
+}
+.mockup-tab-calendar {
+  animation: mockup-tab-calendar 12s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mockup-view-list,
+  .mockup-view-kanban,
+  .mockup-view-calendar,
+  .mockup-tab-list,
+  .mockup-tab-kanban,
+  .mockup-tab-calendar {
+    animation: none;
+  }
+  .mockup-view-list {
+    opacity: 1;
+  }
+  .mockup-view-kanban,
+  .mockup-view-calendar {
+    opacity: 0;
+  }
+  .mockup-tab-list {
+    background-color: var(--color-brand-teal-dark);
+    color: #ffffff;
+  }
+  .mockup-tab-kanban,
+  .mockup-tab-calendar {
+    background-color: transparent;
+    color: #4b5468;
+  }
+}
+
+/* The "..." speech-bubble dots in the "Start with your job title"
+   illustration (public/illustrations/job-title-telecommuting.svg) — a
+   classic staggered typing-indicator bounce. */
+@keyframes job-typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.job-typing-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: job-typing-dot 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-typing-dot {
+    animation: none;
+  }
+}
+
+/* Same illustration — the character's hands tap the keyboard, alternating
+   left/right like an actual typing motion. */
+@keyframes job-hand-type {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+.job-hand-left,
+.job-hand-right {
+  animation: job-hand-type 0.28s ease-in-out infinite;
+}
+
+.job-hand-right {
+  animation-delay: 0.175s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-hand-left,
+  .job-hand-right {
+    animation: none;
+  }
+}
+
+/* Same illustration's desk lamp — off (its usual muted teal) until the Job
+   title field has something in it, when it switches on to a warm glow.
+   `--job-lamp-color`/`--job-lit-glow` are set on the illustration's wrapper
+   (see JobTitleIllustration) and inherited down into the injected SVG. */
+.job-lamp-shade {
+  transition: fill 0.4s ease;
+}
+
+.job-lamp-glow {
+  opacity: var(--job-lit-glow, 0);
+  transition: opacity 0.4s ease;
+}
+
+/* company-name-web-search.svg (Company name card) — the character's arm
+   pokes the search icon, which pulses right after, like a click landing. */
+@keyframes job-point-tap {
+  0%,
+  60%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  30% {
+    transform: translate(7px, -7px) rotate(-6deg);
+  }
+}
+
+.job-point-tap {
+  transform-box: fill-box;
+  transform-origin: bottom right;
+  animation: job-point-tap 0.9s ease-in-out infinite;
+}
+
+@keyframes job-search-icon {
+  0%,
+  55%,
+  100% {
+    transform: scale(1);
+  }
+  70% {
+    transform: scale(1.9);
+  }
+}
+
+.job-search-icon {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: job-search-icon 0.9s ease-in-out infinite;
+}
+
+/* The big magnifying glass floating over the page sweeps back and forth
+   like it's scanning the content. */
+@keyframes job-magnify-scan {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(-6px, 4px) rotate(-8deg);
+  }
+  75% {
+    transform: translate(6px, -4px) rotate(8deg);
+  }
+}
+
+.job-magnify-scan {
+  transform-box: fill-box;
+  transform-origin: bottom left;
+  animation: job-magnify-scan 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-point-tap,
+  .job-search-icon,
+  .job-magnify-scan {
+    animation: none;
+  }
+}
+

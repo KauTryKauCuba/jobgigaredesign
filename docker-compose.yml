@@ -1,0 +1,34 @@
+# Same file for dev and the VPS — both run Postgres on port 6532.
+#
+# Usage: docker compose up -d
+#
+# Credentials come from a `.env` file next to this one (docker compose reads
+# `.env` automatically; that's a different file from Next.js's `.env.local`).
+# The defaults below are fine for local dev. On the VPS, create a real `.env`
+# there with a strong POSTGRES_PASSWORD before first `up` — the compose file
+# itself is safe to commit since it holds no secrets, only fallbacks.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jobgiga-db
+    restart: unless-stopped
+    ports:
+      # Bound to 127.0.0.1 only: reachable from this machine (or, on the VPS,
+      # from the app running on the same host) but never from the public
+      # internet — "6532:5432" instead would expose Postgres to anyone who
+      # can reach the VPS's IP on that port.
+      - "127.0.0.1:6532:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobgiga}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobgiga}
+      POSTGRES_DB: ${POSTGRES_DB:-jobgiga}
+    volumes:
+      - jobgiga-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobgiga} -d ${POSTGRES_DB:-jobgiga}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  jobgiga-db-data:

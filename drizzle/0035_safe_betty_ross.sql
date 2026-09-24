@@ -1,0 +1,1 @@
+ALTER TYPE "public"."interview_response_status" ADD VALUE 'attended' BEFORE 'no_show';

@@ -1,0 +1,1 @@
+ALTER TABLE "employer_profiles" ALTER COLUMN "industry_category" SET NOT NULL;

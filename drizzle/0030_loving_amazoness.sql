@@ -1,0 +1,2 @@
+ALTER TABLE "employer_profiles" ADD COLUMN "smart_match_enabled" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "employer_profiles" ADD COLUMN "smart_match_criteria" jsonb DEFAULT '{"skills":true,"experience":true,"workAuthorization":true,"drivingLicense":true}'::jsonb NOT NULL;

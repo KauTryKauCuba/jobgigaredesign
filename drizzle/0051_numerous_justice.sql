@@ -1,0 +1,1 @@
+ALTER TABLE "employer_profiles" DROP COLUMN "location";

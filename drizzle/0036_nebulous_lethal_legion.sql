@@ -1,0 +1,1 @@
+ALTER TABLE "job_applications" ADD COLUMN "jobseeker_confirmed_attendance" boolean DEFAULT false NOT NULL;

@@ -1,0 +1,20 @@
+// Shared between the employer company-address form and its AI lookup fill,
+// so both ever offer/accept the same 16 states/federal territories.
+export const MALAYSIA_STATES = [
+  "Johor",
+  "Kedah",
+  "Kelantan",
+  "Melaka",
+  "Negeri Sembilan",
+  "Pahang",
+  "Penang",
+  "Perak",
+  "Perlis",
+  "Sabah",
+  "Sarawak",
+  "Selangor",
+  "Terengganu",
+  "Kuala Lumpur",
+  "Labuan",
+  "Putrajaya",
+] as const;

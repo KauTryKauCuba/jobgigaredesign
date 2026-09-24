@@ -1,0 +1,1 @@
+ALTER TABLE "employer_profiles" ADD COLUMN "applicants_last_checked_at" timestamp with time zone;
