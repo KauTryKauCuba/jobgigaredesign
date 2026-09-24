@@ -1,12 +1,24 @@
-# Same file for dev and the VPS — both run Postgres on port 6532.
+# Same file for dev and the VPS.
 #
-# Usage: docker compose up -d
+# Local dev: only run the db (the app runs on the host via `npm run dev`,
+# hot-reloading — a container rebuild on every save would be unusable):
+#   docker compose up -d db
+#
+# VPS: run both, so the app matches the other containerized projects on this
+# host (see PORTS in `docker ps` for jg-ai-cal-app, jejaku-project-jejaku):
+#   docker compose up -d
 #
 # Credentials come from a `.env` file next to this one (docker compose reads
 # `.env` automatically; that's a different file from Next.js's `.env.local`).
 # The defaults below are fine for local dev. On the VPS, create a real `.env`
 # there with a strong POSTGRES_PASSWORD before first `up` — the compose file
 # itself is safe to commit since it holds no secrets, only fallbacks.
+#
+# The app container reads its own env from `.env.local` (see .env.example) —
+# note DATABASE_URL must use host "db" (the compose service name, reachable
+# over the internal Docker network) instead of "localhost" once the app runs
+# inside this compose stack, e.g.:
+#   DATABASE_URL="postgresql://jobgiga:<password>@db:5432/jobgiga"
 services:
   db:
     image: postgres:16-alpine
@@ -29,6 +41,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobgiga-app
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Bound to 127.0.0.1 like the other containerized apps on this VPS
+      # (jg-ai-cal-app, jejaku-project-jejaku) — the public-facing nginx
+      # reverse proxy is what actually terminates TLS and forwards here.
+      - "127.0.0.1:4100:4100"
 
 volumes:
   jobgiga-db-data:
