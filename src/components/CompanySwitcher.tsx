@@ -70,7 +70,7 @@ export default function CompanySwitcher() {
   const [currentId, setCurrentId] = useState<string | null>(cachedCurrentId);
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
