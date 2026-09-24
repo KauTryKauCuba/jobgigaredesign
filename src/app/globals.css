@@ -493,6 +493,60 @@ body {
   }
 }
 
+/* PosterGeneratorTeaser.tsx — two absolutely-stacked mini cards (a job
+   posting summary, a 9:16 poster) crossfading on one shared timeline, same
+   "no JS/no hydration risk" approach as the .mockup-view-* panels above:
+   pure CSS keyframes rather than a JS interval, so there's nothing to
+   hydrate or get out of sync between server and client render. */
+@keyframes poster-teaser-posting {
+  0%,
+  38% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  48%,
+  100% {
+    opacity: 0;
+    transform: scale(0.94) translateY(-8px);
+  }
+}
+@keyframes poster-teaser-poster {
+  0%,
+  38% {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+  48%,
+  88% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  98%,
+  100% {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+}
+.poster-teaser-posting {
+  animation: poster-teaser-posting 5s ease-in-out infinite;
+}
+.poster-teaser-poster {
+  animation: poster-teaser-poster 5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .poster-teaser-posting,
+  .poster-teaser-poster {
+    animation: none;
+    transform: none;
+  }
+  .poster-teaser-posting {
+    opacity: 1;
+  }
+  .poster-teaser-poster {
+    opacity: 0;
+  }
+}
+
 /* The "..." speech-bubble dots in the "Start with your job title"
    illustration (public/illustrations/job-title-telecommuting.svg) — a
    classic staggered typing-indicator bounce. */

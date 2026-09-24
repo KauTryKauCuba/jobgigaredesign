@@ -6,6 +6,7 @@ import AnimatedRibbon from "./AnimatedRibbon";
 import CompanySwitcher from "./CompanySwitcher";
 import FloatingDemoWidget from "./FloatingDemoWidget";
 import Navbar from "./Navbar";
+import PosterGeneratorTeaser from "./PosterGeneratorTeaser";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { BriefcaseIcon, BuildingIcon, CalendarIcon, HomeIcon, UserIcon, UsersIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
@@ -87,6 +88,7 @@ export default function EmployerDashboardShell({
                 company — invisible for the common single-company case. */}
             <CompanySwitcher />
             <Sidebar active={active} />
+            <PosterGeneratorTeaser />
           </div>
 
           <div className="min-w-0 flex-1">
