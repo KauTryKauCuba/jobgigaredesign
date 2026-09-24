@@ -245,7 +245,7 @@ export async function getEmployersWithPostings(limit: number) {
   return db
     .select({
       companyName: employerProfiles.companyName,
-      industry: employerProfiles.industry,
+      industry: employerProfiles.industryCategory,
       // Oldest saved address (their original onboarding one) as the
       // headline "City, State" — good enough for this teaser card, not
       // meant to represent every branch.
