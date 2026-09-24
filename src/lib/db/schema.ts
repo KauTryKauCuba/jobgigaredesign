@@ -447,6 +447,16 @@ export const jobPostings = pgTable("job_postings", {
   // Separate from `status` so an employer can stop taking new applications
   // while keeping the existing pipeline (interviews, offers) alive.
   acceptsNewApplications: boolean("accepts_new_applications").notNull().default(true),
+  // Social-media poster (Poster Generator page) — same "stored as a data URL"
+  // convention as avatarUrl/logoUrl/resumeUrl above. `posterGeneratingSince`
+  // is the wall-clock anchor for the fake generation delay: whether the
+  // browser tab stayed open the whole time or was reopened later, "is it
+  // done yet" is always `now - posterGeneratingSince >= POSTER_TARGET_MS`,
+  // never a live timer that can't survive navigation. Null once posterUrl is
+  // set. Only one posting per employer may have this set at a time — enforced
+  // in the API route, not the schema.
+  posterUrl: text("poster_url"),
+  posterGeneratingSince: timestamp("poster_generating_since", { withTimezone: true }),
   // When the posting auto-closes — either a deadline or when hiresConfirmed
   // reaches openingsTotal.
   expiryDate: timestamp("expiry_date", { withTimezone: true }),

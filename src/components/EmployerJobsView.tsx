@@ -1603,7 +1603,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
   },
 );
 
-type PostingWithId = PreviewPosting & { id: string; slug: string; posterGenerated?: boolean };
+type PostingWithId = PreviewPosting & { id: string; slug: string };
 
 // Shape returned by /api/employer/job-postings — a real DB row, JSON-
 // serialized (timestamps as ISO strings, enum values lowercase/snake_case).
@@ -1959,272 +1959,6 @@ function PostingDetailsModal({
   );
 }
 
-const POSTER_WIDTH = 720;
-const POSTER_HEIGHT = 1280;
-
-const POSTER_GENERATING_MESSAGES = [
-  { at: 0, label: "Reading the posting…" },
-  { at: 0.25, label: "Laying out the poster…" },
-  { at: 0.55, label: "Adding your branding…" },
-  { at: 0.8, label: "Polishing the final details…" },
-  { at: 0.95, label: "Almost ready…" },
-];
-
-function wrapCanvasText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-) {
-  const words = text.split(" ");
-  let line = "";
-  let cursorY = y;
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (ctx.measureText(candidate).width > maxWidth && line) {
-      ctx.fillText(line, x, cursorY);
-      line = word;
-      cursorY += lineHeight;
-    } else {
-      line = candidate;
-    }
-  }
-  if (line) ctx.fillText(line, x, cursorY);
-  return cursorY;
-}
-
-function renderPosterCanvas(posting: PostingWithId): string | null {
-  const canvas = document.createElement("canvas");
-  canvas.width = POSTER_WIDTH;
-  canvas.height = POSTER_HEIGHT;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
-  bg.addColorStop(0, "#008990");
-  bg.addColorStop(1, "#07BCCA");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#FFE9A6";
-  ctx.font = "700 34px system-ui, sans-serif";
-  ctx.fillText("WE'RE HIRING", POSTER_WIDTH / 2, 130);
-
-  const cardX = 48;
-  const cardY = 200;
-  const cardW = POSTER_WIDTH - cardX * 2;
-  const cardH = POSTER_HEIGHT - cardY - 64;
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  if (typeof ctx.roundRect === "function") {
-    ctx.roundRect(cardX, cardY, cardW, cardH, 28);
-  } else {
-    ctx.rect(cardX, cardY, cardW, cardH);
-  }
-  ctx.fill();
-
-  ctx.fillStyle = "#141B2E";
-  ctx.font = "700 52px system-ui, sans-serif";
-  const titleBottomY = wrapCanvasText(ctx, posting.title, POSTER_WIDTH / 2, cardY + 100, cardW - 80, 60);
-
-  ctx.strokeStyle = "#E6F9FA";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(cardX + 60, titleBottomY + 50);
-  ctx.lineTo(cardX + cardW - 60, titleBottomY + 50);
-  ctx.stroke();
-
-  ctx.font = "600 30px system-ui, sans-serif";
-  ctx.fillStyle = "#008990";
-  const detailLines = [
-    posting.location,
-    `${posting.employmentType} · ${posting.workArrangement}`,
-    `RM${posting.salaryMin.toLocaleString()} – RM${posting.salaryMax.toLocaleString()} / month`,
-    posting.minYearsExperience === 0 ? "No experience required" : `${posting.minYearsExperience}+ years experience`,
-  ];
-  let lineY = titleBottomY + 120;
-  for (const line of detailLines) {
-    ctx.fillText(line, POSTER_WIDTH / 2, lineY);
-    lineY += 52;
-  }
-
-  ctx.fillStyle = "#9AA3B2";
-  ctx.font = "500 26px system-ui, sans-serif";
-  ctx.fillText(`${posting.openings} opening${posting.openings === 1 ? "" : "s"} available`, POSTER_WIDTH / 2, lineY + 20);
-
-  ctx.font = "700 30px system-ui, sans-serif";
-  ctx.fillStyle = "#008990";
-  ctx.fillText("Apply now on JobGiga", POSTER_WIDTH / 2, cardY + cardH - 40);
-
-  return canvas.toDataURL("image/png");
-}
-
-function JobPosterCard({
-  postings,
-  onGenerated,
-}: {
-  postings: PostingWithId[];
-  onGenerated: (id: string) => void;
-}) {
-  const activePostings = postings.filter((p) => p.status === "Active");
-  const [selectedId, setSelectedId] = useState("");
-  const [phase, setPhase] = useState<"idle" | "generating" | "done">("idle");
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [posterUrl, setPosterUrl] = useState<string | null>(null);
-  const [targetMs, setTargetMs] = useState(90000);
-  const [renderingPosting, setRenderingPosting] = useState<PostingWithId | null>(null);
-
-  const selected = activePostings.find((p) => p.id === selectedId) ?? activePostings[0] ?? null;
-
-  function generate() {
-    if (!selected) return;
-    setRenderingPosting(selected);
-    setTargetMs(60000 + Math.random() * 60000);
-    setElapsedMs(0);
-    setPosterUrl(null);
-    setPhase("generating");
-  }
-
-  useEffect(() => {
-    if (phase !== "generating" || !renderingPosting) return;
-    const startedAt = Date.now();
-    const interval = setInterval(() => setElapsedMs(Date.now() - startedAt), 250);
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      const dataUrl = renderPosterCanvas(renderingPosting);
-      setPosterUrl(dataUrl);
-      setPhase("done");
-      onGenerated(renderingPosting.id);
-    }, targetMs);
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, renderingPosting, targetMs]);
-
-  function download() {
-    if (!posterUrl || !selected) return;
-    const link = document.createElement("a");
-    link.href = posterUrl;
-    link.download = `${selected.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-poster.png`;
-    link.click();
-  }
-
-  const progress = Math.min(elapsedMs / targetMs, 0.99);
-  const message =
-    [...POSTER_GENERATING_MESSAGES].reverse().find((m) => progress >= m.at)?.label ??
-    POSTER_GENERATING_MESSAGES[0].label;
-
-  return (
-    <div className={gradientFrameClass("teal")}>
-      <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
-        <div>
-          <p className="text-sm text-[#141B2E]">Social media poster</p>
-          <p className="mt-[2px] text-xs text-[#9AA3B2]">
-            Turn an active posting into a ready-to-share 9:16 poster for Instagram Stories, WhatsApp
-            Status, and more.
-          </p>
-        </div>
-
-        {activePostings.length === 0 ? (
-          <p className="rounded-[12px] bg-[#F8FAFB] p-[14px] text-xs text-[#9AA3B2]">
-            You don&rsquo;t have any active job postings yet. Once one goes live, you can generate a
-            poster for it here.
-          </p>
-        ) : phase === "idle" ? (
-          <>
-            <div>
-              <p className="mb-[6px] text-xs text-[#141B2E]">Job posting</p>
-              <div role="radiogroup" aria-label="Job posting" className="flex flex-col gap-[6px]">
-                {activePostings.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected?.id === p.id}
-                    onClick={() => setSelectedId(p.id)}
-                    className={`flex items-start justify-between gap-[8px] rounded-[12px] border px-[14px] py-[10px] text-left transition-colors ${
-                      selected?.id === p.id
-                        ? "border-brand-teal-dark bg-[#E6F9FA]"
-                        : "border-black/[0.1] hover:bg-black/[0.03]"
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={`truncate text-xs ${
-                          selected?.id === p.id ? "text-brand-teal-dark" : "text-[#141B2E]"
-                        }`}
-                      >
-                        {p.title}
-                      </p>
-                      <p className="mt-[2px] truncate text-xs text-[#9AA3B2]">{p.location}</p>
-                      <p className="truncate text-xs text-[#9AA3B2]">
-                        RM{p.salaryMin.toLocaleString()}–{p.salaryMax.toLocaleString()}
-                      </p>
-                    </div>
-                    {selected?.id === p.id && (
-                      <CheckIcon className="mt-[3px] h-[11px] w-[11px] shrink-0 text-brand-teal-dark" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={generate}
-              className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
-            >
-              Generate poster
-            </button>
-            <p className="text-xs text-[#9AA3B2]">Usually takes 1–2 minutes.</p>
-          </>
-        ) : phase === "generating" ? (
-          <div className="flex flex-col items-center gap-[10px] rounded-[14px] bg-[#F8FAFB] p-[18px] text-center">
-            <SiriOrb className="h-[22px] w-[22px]" active />
-            <p className="text-xs text-[#141B2E]">{message}</p>
-            <div className="h-[6px] w-full overflow-hidden rounded-full bg-black/[0.06]">
-              <div
-                className="h-full rounded-full bg-brand-teal-dark transition-[width]"
-                style={{ width: `${Math.round(progress * 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-[#9AA3B2]">{Math.round(elapsedMs / 1000)}s elapsed</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-hidden rounded-[14px] border border-[#EAEDF2]">
-              {posterUrl && (
-                // next/image can't render a generated data: URI without extra config — a plain
-                // <img> is the right tool for a client-only canvas export like this one.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={posterUrl} alt={`Poster for ${selected?.title}`} className="aspect-[9/16] w-full object-cover" />
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={download}
-              className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
-            >
-              Download PNG
-            </button>
-            <button
-              type="button"
-              onClick={() => setPhase("idle")}
-              className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] text-sm text-[#141B2E] hover:bg-black/[0.03]"
-            >
-              Generate another
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[] }) {
   const router = useRouter();
   const [postings, setPostings] = useState<PostingWithId[]>(() => initialPostings.map(normalizeJobPosting));
@@ -2364,10 +2098,6 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
     } catch (err) {
       throw err;
     }
-  }
-
-  function markPosterGenerated(id: string) {
-    setPostings((prev) => prev.map((p) => (p.id === id ? { ...p, posterGenerated: true } : p)));
   }
 
   return (
@@ -2537,12 +2267,6 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-[8px]">
                             <p className="truncate text-sm text-[#141B2E]">{posting.title}</p>
-                            {posting.posterGenerated && (
-                              <span className="flex shrink-0 items-center gap-[4px] rounded-full bg-[#E6F9FA] px-[8px] py-[2px] text-xs text-brand-teal-dark">
-                                <CheckCircleIcon className="h-[10px] w-[10px]" />
-                                Poster ready
-                              </span>
-                            )}
                           </div>
                           <div className="mt-[4px] flex flex-wrap items-center gap-x-[8px] gap-y-[2px] text-xs text-[#4B5468]">
                             <span>{posting.location}</span>
@@ -2615,7 +2339,24 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
     </div>
 
     <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
-      <JobPosterCard postings={postings} onGenerated={markPosterGenerated} />
+      <div className={gradientFrameClass("teal")}>
+        <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[22px]">
+          <div>
+            <p className="text-sm text-[#141B2E]">Poster generator</p>
+            <p className="mt-[2px] text-xs text-[#9AA3B2]">
+              Turn an active posting into a ready-to-share 9:16 poster for Instagram Stories, WhatsApp
+              Status, and more.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/employer/jobs/poster-generator")}
+            className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
+          >
+            Open poster generator
+          </button>
+        </div>
+      </div>
     </div>
     </div>
   );
