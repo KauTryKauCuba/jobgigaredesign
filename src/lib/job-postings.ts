@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, inArray, like, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   employerProfiles,
@@ -225,9 +225,12 @@ export async function getJobPostingById(id: string) {
 // than trusting the caller to check it (same intent as
 // getJobPostingForEmployer scoping to the employer's own postings).
 export async function getActiveJobPostingBySlug(slug: string) {
+  // `posting` omits `posterUrl` (base64, can run MB-scale) — this page
+  // never renders a poster image, same bug/fix as jobPostingListColumns.
+  const { posterUrl: _posterUrl, ...postingColumns } = getTableColumns(jobPostings);
   const [row] = await db
     .select({
-      posting: jobPostings,
+      posting: postingColumns,
       companyName: employerProfiles.companyName,
       companyLogoUrl: employerProfiles.logoUrl,
     })
