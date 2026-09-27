@@ -57,11 +57,96 @@ export async function generateUniqueJobPostingSlug(companyName: string, title: s
   return `${base}-${n}`;
 }
 
+// Every column except `posterUrl` — it's a base64 data URL (can run
+// several hundred KB to a few MB per posting) that the Manage Jobs list view
+// never renders, but including it here embedded the raw base64 into the
+// page's RSC payload for every posting, ballooning the initial HTML
+// document to multiple megabytes. Poster viewing/generation reads it
+// separately via getJobPostingForEmployer (single posting) instead.
+const jobPostingListColumns = {
+  id: jobPostings.id,
+  employerProfileId: jobPostings.employerProfileId,
+  postingName: jobPostings.postingName,
+  slug: jobPostings.slug,
+  title: jobPostings.title,
+  description: jobPostings.description,
+  responsibilities: jobPostings.responsibilities,
+  industry: jobPostings.industry,
+  employmentType: jobPostings.employmentType,
+  workArrangement: jobPostings.workArrangement,
+  location: jobPostings.location,
+  addressLine1: jobPostings.addressLine1,
+  addressLine2: jobPostings.addressLine2,
+  city: jobPostings.city,
+  state: jobPostings.state,
+  postcode: jobPostings.postcode,
+  salaryMin: jobPostings.salaryMin,
+  salaryMax: jobPostings.salaryMax,
+  openings: jobPostings.openings,
+  skills: jobPostings.skills,
+  softSkills: jobPostings.softSkills,
+  niceToHaveSkills: jobPostings.niceToHaveSkills,
+  minYearsExperience: jobPostings.minYearsExperience,
+  minQualificationTier: jobPostings.minQualificationTier,
+  languages: jobPostings.languages,
+  workAuthorizations: jobPostings.workAuthorizations,
+  drivingLicense: jobPostings.drivingLicense,
+  screeningEnabled: jobPostings.screeningEnabled,
+  askMinYearsExperience: jobPostings.askMinYearsExperience,
+  askMinQualificationTier: jobPostings.askMinQualificationTier,
+  askDrivingLicense: jobPostings.askDrivingLicense,
+  askLanguages: jobPostings.askLanguages,
+  askWorkAuthorizations: jobPostings.askWorkAuthorizations,
+  customScreeningQuestions: jobPostings.customScreeningQuestions,
+  skillSuggestions: jobPostings.skillSuggestions,
+  benefits: jobPostings.benefits,
+  status: jobPostings.status,
+  rejectionReason: jobPostings.rejectionReason,
+  flagReason: jobPostings.flagReason,
+  flaggedAt: jobPostings.flaggedAt,
+  openingsTotal: jobPostings.openingsTotal,
+  offersOutstanding: jobPostings.offersOutstanding,
+  hiresConfirmed: jobPostings.hiresConfirmed,
+  overOfferMultiplier: jobPostings.overOfferMultiplier,
+  mascoCode: jobPostings.mascoCode,
+  acceptsNewApplications: jobPostings.acceptsNewApplications,
+  posterGeneratingSince: jobPostings.posterGeneratingSince,
+  posterTaskId: jobPostings.posterTaskId,
+  posterPendingStyle: jobPostings.posterPendingStyle,
+  expiryDate: jobPostings.expiryDate,
+  createdAt: jobPostings.createdAt,
+  updatedAt: jobPostings.updatedAt,
+};
+
 export async function getJobPostingsForEmployer(employerProfileId: string) {
   return db
-    .select()
+    .select(jobPostingListColumns)
     .from(jobPostings)
     .where(eq(jobPostings.employerProfileId, employerProfileId))
+    .orderBy(desc(jobPostings.createdAt));
+}
+
+// For the Poster Generator page's posting picker — unlike the list above,
+// this one genuinely needs `posterUrl` (it renders the poster thumbnail),
+// so it stays a separate, narrowly-scoped query instead of adding the
+// base64 column back to the general-purpose list.
+export async function getActivePostingsWithPosterForEmployer(employerProfileId: string) {
+  return db
+    .select({
+      id: jobPostings.id,
+      title: jobPostings.title,
+      location: jobPostings.location,
+      employmentType: jobPostings.employmentType,
+      workArrangement: jobPostings.workArrangement,
+      salaryMin: jobPostings.salaryMin,
+      salaryMax: jobPostings.salaryMax,
+      minYearsExperience: jobPostings.minYearsExperience,
+      openings: jobPostings.openings,
+      posterUrl: jobPostings.posterUrl,
+      posterGeneratingSince: jobPostings.posterGeneratingSince,
+    })
+    .from(jobPostings)
+    .where(and(eq(jobPostings.employerProfileId, employerProfileId), eq(jobPostings.status, "active")))
     .orderBy(desc(jobPostings.createdAt));
 }
 

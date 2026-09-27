@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import PosterGeneratorView, { type PosterPosting } from "@/components/PosterGeneratorView";
 import { getAuthUser } from "@/lib/auth-user";
 import { getEmployerProfileForUser } from "@/lib/employer-profile";
-import { getJobPostingsForEmployer } from "@/lib/job-postings";
+import { getActivePostingsWithPosterForEmployer } from "@/lib/job-postings";
 import { getOnboardingRedirect } from "@/lib/onboarding";
 import { getSession } from "@/lib/session";
 
@@ -29,10 +29,9 @@ export default async function PosterGeneratorPage() {
   if (!authUser) redirect("/employer");
 
   const profile = await getEmployerProfileForUser(session.userId);
-  const postings = profile ? await getJobPostingsForEmployer(profile.id) : [];
+  const postings = profile ? await getActivePostingsWithPosterForEmployer(profile.id) : [];
 
   const activePostings: PosterPosting[] = postings
-    .filter((p) => p.status === "active")
     .map((p) => ({
       id: p.id,
       title: p.title,
