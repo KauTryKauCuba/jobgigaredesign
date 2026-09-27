@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, doublePrecision, index } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["employer", "jobseeker"]);
 
@@ -101,19 +101,23 @@ export const employerProfiles = pgTable("employer_profiles", {
 // location instead of retyping an address. `label` (e.g. "Headquarters",
 // "Penang branch") is free text so employers can tell rows apart at a
 // glance, since street addresses alone often look interchangeable.
-export const employerAddresses = pgTable("employer_addresses", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  employerProfileId: uuid("employer_profile_id")
-    .notNull()
-    .references(() => employerProfiles.id, { onDelete: "cascade" }),
-  label: text("label").notNull(),
-  addressLine1: text("address_line1").notNull(),
-  addressLine2: text("address_line2"),
-  city: text("city").notNull(),
-  state: text("state").notNull(),
-  postcode: text("postcode").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const employerAddresses = pgTable(
+  "employer_addresses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    employerProfileId: uuid("employer_profile_id")
+      .notNull()
+      .references(() => employerProfiles.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    addressLine1: text("address_line1").notNull(),
+    addressLine2: text("address_line2"),
+    city: text("city").notNull(),
+    state: text("state").notNull(),
+    postcode: text("postcode").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("employer_addresses_employer_profile_id_idx").on(table.employerProfileId)],
+);
 
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin"]);
 export const teamMemberStatusEnum = pgEnum("team_member_status", ["active", "pending"]);
@@ -141,7 +145,10 @@ export const employerTeamMembers = pgTable(
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
     joinedAt: timestamp("joined_at", { withTimezone: true }),
   },
-  (table) => [unique().on(table.employerProfileId, table.email)],
+  (table) => [
+    unique().on(table.employerProfileId, table.email),
+    index("employer_team_members_user_id_idx").on(table.userId),
+  ],
 );
 
 export const teamActivityActionEnum = pgEnum("team_activity_action", [
@@ -158,19 +165,23 @@ export const teamActivityActionEnum = pgEnum("team_activity_action", [
 // still reads correctly even if the actor is gone or later renames
 // themselves. `targetEmail` is likewise a snapshot, since the affected
 // member row can itself be deleted (on removal) or change email.
-export const employerTeamActivity = pgTable("employer_team_activity", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  employerProfileId: uuid("employer_profile_id")
-    .notNull()
-    .references(() => employerProfiles.id, { onDelete: "cascade" }),
-  actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
-  actorLabel: text("actor_label").notNull(),
-  action: teamActivityActionEnum("action").notNull(),
-  targetEmail: text("target_email").notNull(),
-  fromRole: teamMemberRoleEnum("from_role"),
-  toRole: teamMemberRoleEnum("to_role"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const employerTeamActivity = pgTable(
+  "employer_team_activity",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    employerProfileId: uuid("employer_profile_id")
+      .notNull()
+      .references(() => employerProfiles.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorLabel: text("actor_label").notNull(),
+    action: teamActivityActionEnum("action").notNull(),
+    targetEmail: text("target_email").notNull(),
+    fromRole: teamMemberRoleEnum("from_role"),
+    toRole: teamMemberRoleEnum("to_role"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("employer_team_activity_employer_profile_id_idx").on(table.employerProfileId)],
+);
 
 export const employerOnboardingDrafts = pgTable("employer_onboarding_drafts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -396,7 +407,9 @@ export const employmentTypeEnum = pgEnum("employment_type", [
   "internship",
 ]);
 
-export const jobPostings = pgTable("job_postings", {
+export const jobPostings = pgTable(
+  "job_postings",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   employerProfileId: uuid("employer_profile_id")
     .notNull()
@@ -520,7 +533,9 @@ export const jobPostings = pgTable("job_postings", {
   expiryDate: timestamp("expiry_date", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [index("job_postings_employer_profile_id_idx").on(table.employerProfileId)],
+);
 
 // job_posting_posters — one row per successfully generated poster image, so
 // employers can browse/download previous posters instead of only ever
@@ -666,7 +681,10 @@ export const jobApplications = pgTable(
     // time-to-hire reporting has a real, stable timestamp to compute from.
     hiredAt: timestamp("hired_at", { withTimezone: true }),
   },
-  (table) => [unique("job_applications_posting_jobseeker_unique").on(table.jobPostingId, table.jobseekerProfileId)],
+  (table) => [
+    unique("job_applications_posting_jobseeker_unique").on(table.jobPostingId, table.jobseekerProfileId),
+    index("job_applications_jobseeker_profile_id_idx").on(table.jobseekerProfileId),
+  ],
 );
 
 export const interviewRecommendationEnum = pgEnum("interview_recommendation", [

@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "./db";
 import {
   employerAddresses,
@@ -46,7 +47,11 @@ export type EmployerMembership = { profile: EmployerProfile; role: EmployerRole;
  * own) — this is the full list the company switcher renders, and what
  * `getEmployerAccess` picks a "current" one from.
  */
-export async function getEmployerMemberships(userId: string): Promise<EmployerMembership[]> {
+// Wrapped in cache() — getEmployerAccess and getEmployerProfileForUser both
+// call this, and a page can end up calling more than one of those per
+// render, so without memoizing it re-ran this join (and getEmployerProfile
+// inside it) several times over per request.
+export const getEmployerMemberships = cache(async (userId: string): Promise<EmployerMembership[]> => {
   const owned = await getEmployerProfile(userId);
 
   const rows = await db
@@ -65,7 +70,7 @@ export async function getEmployerMemberships(userId: string): Promise<EmployerMe
     memberships.push({ profile: row.profile, role: row.role, joinedAt: row.joinedAt ?? row.profile.createdAt });
   }
   return memberships;
-}
+});
 
 /**
  * The general-purpose "does this user belong to a company, and as what
@@ -85,7 +90,7 @@ export async function getEmployerMemberships(userId: string): Promise<EmployerMe
  * runs from plain Server Components too; every caller just gets the same
  * deterministic default on every request until they actually switch.
  */
-export async function getEmployerAccess(userId: string): Promise<EmployerMembership | null> {
+export const getEmployerAccess = cache(async (userId: string): Promise<EmployerMembership | null> => {
   const memberships = await getEmployerMemberships(userId);
   if (memberships.length === 0) return null;
 
@@ -95,7 +100,7 @@ export async function getEmployerAccess(userId: string): Promise<EmployerMembers
     if (current) return current;
   }
   return memberships[0];
-}
+});
 
 /** Same return shape as `getEmployerProfile`, but resolved via `getEmployerAccess` — a drop-in replacement everywhere a page/route only needs the profile, not the caller's role within it. */
 export async function getEmployerProfileForUser(userId: string): Promise<EmployerProfile | null> {

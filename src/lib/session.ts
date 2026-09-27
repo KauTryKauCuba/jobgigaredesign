@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { db } from "./db";
 import { users } from "./db/schema";
 
@@ -43,7 +44,11 @@ export async function createSession(payload: SessionPayload) {
   });
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+// Wrapped in React's cache() so the JWT verify + DB round trip only happens
+// once per request — every helper below (getOnboardingRedirect, getAuthUser,
+// getEmployerAccess, etc.) calls this independently, and without memoizing
+// it a single page render was firing this several times over.
+export const getSession = cache(async (): Promise<SessionPayload | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
@@ -77,7 +82,7 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!user) return null;
 
   return { userId, role, employerProfileId };
-}
+});
 
 // Re-signs the session cookie with a different "current company" — the only
 // way `employerProfileId` ever changes. Callable only from a Route Handler
