@@ -108,3 +108,4 @@ export async function getJobseekerProfileById(profileId: string) {
 }
 
 export type JobseekerProfile = NonNullable<Awaited<ReturnType<typeof getJobseekerProfile>>>;
+export type JobseekerProfileWithResume = NonNullable<Awaited<ReturnType<typeof getJobseekerProfileById>>>;

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, notInArray } from "drizzle-orm";
 import { db } from "./db";
 import { employerProfiles, interviewEvaluations, jobApplications, jobPostings, jobseekerProfiles } from "./db/schema";
 import type { InterviewEvaluation } from "./interviewEvaluation";
@@ -36,7 +36,6 @@ export async function getApplicationsForEmployer(employerProfileId: string) {
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
-      applicantResumeUrl: jobseekerProfiles.resumeUrl,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
       evaluationRound: interviewEvaluations.round,
       evaluationScores: interviewEvaluations.scores,
@@ -77,7 +76,6 @@ export async function getApplicationsForJobPosting(employerProfileId: string, jo
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
-      applicantResumeUrl: jobseekerProfiles.resumeUrl,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
       evaluationRound: interviewEvaluations.round,
       evaluationScores: interviewEvaluations.scores,
@@ -166,7 +164,6 @@ export async function getInterviewApplicationsForEmployer(employerProfileId: str
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
-      applicantResumeUrl: jobseekerProfiles.resumeUrl,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
       evaluationRound: interviewEvaluations.round,
       evaluationScores: interviewEvaluations.scores,
@@ -213,7 +210,6 @@ export async function getShortlistedApplicationsForEmployer(employerProfileId: s
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
-      applicantResumeUrl: jobseekerProfiles.resumeUrl,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
       evaluationRound: interviewEvaluations.round,
       evaluationScores: interviewEvaluations.scores,
@@ -254,10 +250,14 @@ export async function getAppliedJobPostingIds(jobseekerProfileId: string): Promi
 // made, with just enough of the posting/employer to show what it is and who
 // it's with.
 export async function getApplicationsForJobseeker(jobseekerProfileId: string) {
+  // `posting` intentionally omits `posterUrl` (base64, can run MB-scale) —
+  // this list never renders a poster image, same bug/fix as
+  // jobPostingListColumns in job-postings.ts.
+  const { posterUrl: _posterUrl, ...postingColumns } = getTableColumns(jobPostings);
   return db
     .select({
       application: jobApplications,
-      posting: jobPostings,
+      posting: postingColumns,
       companyName: employerProfiles.companyName,
       companyLogoUrl: employerProfiles.logoUrl,
     })

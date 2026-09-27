@@ -188,7 +188,7 @@ export async function getJobPostingForEmployer(employerProfileId: string, id: st
 // the raw id.
 export async function getJobPostingForEmployerBySlug(employerProfileId: string, slug: string) {
   const [posting] = await db
-    .select()
+    .select(jobPostingListColumns)
     .from(jobPostings)
     .where(and(eq(jobPostings.slug, slug), eq(jobPostings.employerProfileId, employerProfileId)))
     .limit(1);

@@ -18,7 +18,7 @@ import TimePicker from "./TimePicker";
 import InterviewCountdown from "./InterviewCountdown";
 import RichTextContent from "./RichTextContent";
 import type { EmployerAddress } from "@/lib/employer-profile";
-import type { JobseekerProfile } from "@/lib/jobseeker-profile";
+import type { JobseekerProfileWithResume } from "@/lib/jobseeker-profile";
 import {
   EVALUATION_CRITERIA,
   EVALUATION_CRITERION_LABEL,
@@ -107,7 +107,6 @@ export type ApplicantDetail = {
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
-  applicantResumeUrl: string | null;
   evaluation?: InterviewEvaluation | null;
 };
 
@@ -173,7 +172,7 @@ export default function ApplicantDetailModal({
 
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [showInterviewForm, setShowInterviewForm] = useState(!!initialInterviewDate || !!autoOpenInterviewForm);
-  const [fullProfile, setFullProfile] = useState<JobseekerProfile | null>(null);
+  const [fullProfile, setFullProfile] = useState<JobseekerProfileWithResume | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
@@ -794,9 +793,9 @@ export default function ApplicantDetailModal({
               </div>
             ) : (
               <>
-                {applicant.applicantResumeUrl && (
+                {fullProfile?.resumeUrl && (
                   <a
-                    href={applicant.applicantResumeUrl}
+                    href={fullProfile.resumeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex w-full items-center justify-center gap-[6px] rounded-[10px] border border-black/[0.1] px-[12px] py-[8px] text-sm text-[#141B2E] hover:bg-black/[0.03]"

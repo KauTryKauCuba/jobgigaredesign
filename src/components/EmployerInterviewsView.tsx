@@ -79,7 +79,6 @@ type ApplicationRow = {
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
-  applicantResumeUrl: string | null;
   applicantResumeFileName: string | null;
   evaluation?: InterviewEvaluation | null;
 };
