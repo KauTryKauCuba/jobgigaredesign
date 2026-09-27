@@ -188,7 +188,7 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
 
   return (
     <div className="flex flex-col gap-[16px] lg:flex-row lg:items-start">
-      <div className={`min-w-0 lg:flex-[3] ${gradientFrameClass("teal")}`}>
+      <div className={`animate-fade-in-up min-w-0 lg:flex-[3] ${gradientFrameClass("teal")}`}>
         <div className="rounded-[19px] bg-white p-[22px]">
           <p className="text-sm text-[#141B2E]">Job posting</p>
           <p className="mt-[2px] text-xs text-[#9AA3B2]">

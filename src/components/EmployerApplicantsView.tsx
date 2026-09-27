@@ -401,7 +401,7 @@ export default function EmployerApplicantsView({
     >
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
       <div className="min-w-0 lg:flex-[3] flex flex-col gap-[20px]">
-      <div className={gradientFrameClass("teal")}>
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
         <div className="rounded-[19px] bg-white p-[22px]">
           <button
             type="button"
@@ -435,7 +435,7 @@ export default function EmployerApplicantsView({
         </div>
       </div>
 
-      <div className={gradientFrameClass("teal")}>
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
         <div className="rounded-[19px] bg-white p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Applicants at a glance</p>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
@@ -570,10 +570,15 @@ export default function EmployerApplicantsView({
               </p>
             ) : (
               <div className="mt-[10px] flex flex-col gap-[10px]">
-                {postings.map((posting) => {
+                {postings.map((posting, index) => {
                   const collapsed = collapsedPostings.has(posting.id);
                   return (
-                  <div key={posting.id} id={`posting-${posting.id}`} className={gradientFrameClass("teal")}>
+                  <div
+                    key={posting.id}
+                    id={`posting-${posting.id}`}
+                    className={`animate-fade-in-up ${gradientFrameClass("teal")}`}
+                    style={{ animationDelay: `${120 + index * 40}ms` }}
+                  >
                   <div className="rounded-[19px] bg-white p-[22px]">
                     <button
                       type="button"

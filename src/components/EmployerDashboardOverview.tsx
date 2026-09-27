@@ -102,13 +102,18 @@ function SectionCard({
   title,
   viewAllHref,
   children,
+  animationDelayMs = 0,
 }: {
   title: string;
   viewAllHref?: string;
   children: React.ReactNode;
+  animationDelayMs?: number;
 }) {
   return (
-    <div className={`h-full ${gradientFrameClass("teal")}`}>
+    <div
+      className={`h-full animate-fade-in-up ${gradientFrameClass("teal")}`}
+      style={{ animationDelay: `${animationDelayMs}ms` }}
+    >
       <div className="flex h-full flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
         <div className="flex items-center justify-between gap-[8px]">
           <p className="text-sm text-[#141B2E]">{title}</p>
@@ -617,7 +622,7 @@ export default function EmployerDashboardOverview({
         </div>
       )}
 
-      <div className={gradientFrameClass("teal")}>
+      <div className={`${gradientFrameClass("teal")} animate-fade-in-up`}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
           <div className="flex items-center justify-between gap-[8px]">
             <p className="text-sm text-[#141B2E]">Overview</p>
@@ -735,7 +740,7 @@ export default function EmployerDashboardOverview({
 
       <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">
         <div id="upcoming-interviews" className="scroll-mt-[100px]">
-        <SectionCard title="Upcoming interviews" viewAllHref="/employer/interviews">
+        <SectionCard title="Upcoming interviews" viewAllHref="/employer/interviews" animationDelayMs={0}>
           {data.upcomingInterviews.length === 0 ? (
             <EmptyRow>No interviews scheduled yet.</EmptyRow>
           ) : (
@@ -770,14 +775,14 @@ export default function EmployerDashboardOverview({
         </SectionCard>
         </div>
 
-        <SectionCard title="Top Matches">
+        <SectionCard title="Top Matches" animationDelayMs={60}>
           <TopMatchesCard initialEnabled={initialSmartMatchEnabled} initialCriteria={initialCriteria} />
         </SectionCard>
       </div>
 
       <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">
         <div id="recent-applicants" className="scroll-mt-[100px]">
-        <SectionCard title="Recent applicants" viewAllHref="/employer/applicants">
+        <SectionCard title="Recent applicants" viewAllHref="/employer/applicants" animationDelayMs={120}>
           {data.recentApplicants.length === 0 ? (
             <EmptyRow>No applicants yet — once candidates apply, they&rsquo;ll show up here.</EmptyRow>
           ) : (
@@ -826,7 +831,7 @@ export default function EmployerDashboardOverview({
         </SectionCard>
         </div>
 
-        <SectionCard title="Where your applicants currently stand">
+        <SectionCard title="Where your applicants currently stand" animationDelayMs={180}>
           <div className="flex flex-col gap-[8px]">
             {data.funnel.map((stage) => (
               <div key={stage.stage} className="flex items-center gap-[10px]">
@@ -854,7 +859,7 @@ export default function EmployerDashboardOverview({
 
       <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">
         <div id="posting-performance" className="scroll-mt-[100px]">
-        <SectionCard title="Per-posting performance" viewAllHref="/employer/jobs">
+        <SectionCard title="Per-posting performance" viewAllHref="/employer/jobs" animationDelayMs={240}>
           {data.postingPerformance.length === 0 ? (
             <EmptyRow>No postings yet — views and applicant counts per posting will show up here.</EmptyRow>
           ) : (
@@ -893,7 +898,7 @@ export default function EmployerDashboardOverview({
         </SectionCard>
         </div>
 
-        <SectionCard title="Hiring trend">
+        <SectionCard title="Hiring trend" animationDelayMs={300}>
           {data.avgTimeToHireDays === null ? (
             <EmptyRow>No hires yet — trend and time-to-hire will show up here once you hire someone.</EmptyRow>
           ) : (

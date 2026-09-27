@@ -43,7 +43,9 @@ function Sidebar({ active }: { active: EmployerNavKey }) {
             e.preventDefault();
             guardNavigation(() => router.push(item.href));
           }}
-          className="flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] lg:rounded-[10px] lg:aria-[current=page]:bg-[#E6F9FA] lg:aria-[current=page]:text-brand-teal-dark lg:aria-[current=page]:shadow-none"
+          className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] lg:rounded-[10px] lg:aria-[current=page]:bg-[#E6F9FA] lg:aria-[current=page]:text-brand-teal-dark lg:aria-[current=page]:shadow-none ${
+            item.key === active ? "animate-fade-in-up" : ""
+          }`}
         >
           <item.icon className="h-[16px] w-[16px] shrink-0" />
           {item.label}

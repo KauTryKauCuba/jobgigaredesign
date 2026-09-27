@@ -1086,7 +1086,7 @@ export default function EmployerOnboardingForm({
         }`}
       >
       <div
-        className={`${cardClass} min-w-0 lg:sticky ${mode === "edit" ? "lg:top-[85px]" : "lg:top-[22px]"} ${
+        className={`animate-fade-in-up ${cardClass} min-w-0 lg:sticky ${mode === "edit" ? "lg:top-[85px]" : "lg:top-[22px]"} ${
           sidebarSlot ? "lg:flex-1" : bothShown ? "lg:flex-[1]" : "lg:flex-[3]"
         }`}
       >
@@ -1219,7 +1219,7 @@ export default function EmployerOnboardingForm({
 
       {showCompany && (
       <div className={`flex min-w-0 flex-col gap-[20px] ${bothShown ? "lg:flex-[2]" : "lg:flex-[3]"}`}>
-      <div className={cardClass}>
+      <div className={`animate-fade-in-up ${cardClass}`}>
         <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px] text-left">
           <InlineIllustration
             src="/illustrations/company-name-web-search.svg"
@@ -1402,7 +1402,7 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={cardClass}>
+      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "60ms" }}>
         <div className="rounded-[19px] bg-white p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Company profile</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
@@ -1631,7 +1631,7 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={cardClass}>
+      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "120ms" }}>
         <div className="rounded-[19px] bg-white p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">About your company</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">

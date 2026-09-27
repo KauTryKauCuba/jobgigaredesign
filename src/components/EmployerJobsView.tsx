@@ -2602,7 +2602,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
     <div className="flex min-w-0 flex-col gap-[20px] lg:flex-[3]">
-    <div className={gradientFrameClass("teal")}>
+    <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
       <div className="relative flex flex-col gap-[16px] overflow-hidden rounded-[19px] bg-white p-[22px]">
         <JobTitleIllustration
           lit={heroTitle.trim().length > 0}
@@ -2648,7 +2648,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
       </div>
     </div>
 
-    <div className={gradientFrameClass("teal")}>
+    <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
       <div className="rounded-[19px] bg-white p-[22px]">
         <button
           type="button"
@@ -2682,7 +2682,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
       </div>
     </div>
 
-    <div className={gradientFrameClass("teal")}>
+    <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
       <div className="rounded-[19px] bg-white p-[22px]">
         <p className="mb-[12px] text-sm text-[#141B2E]">Hiring pipeline at a glance</p>
         <div className="grid grid-cols-4 gap-[12px]">
@@ -2726,12 +2726,17 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
           <p className="text-sm text-[#141B2E]">Your job postings, organized by status</p>
           {actionError && <p className="mt-[6px] text-xs text-red-500">{actionError}</p>}
           <div className="mt-[10px] flex flex-col gap-[10px]">
-            {STATUS_ORDER.map((status) => {
+            {STATUS_ORDER.map((status, index) => {
               const statusPostings = postings.filter((p) => p.status === status);
               if (statusPostings.length === 0) return null;
               const collapsed = collapsedStatuses.has(status);
               return (
-                <div key={status} id={`status-section-${status}`} className={`${gradientFrameClass("teal")} scroll-mt-[100px]`}>
+                <div
+                  key={status}
+                  id={`status-section-${status}`}
+                  className={`animate-fade-in-up ${gradientFrameClass("teal")} scroll-mt-[100px]`}
+                  style={{ animationDelay: `${180 + index * 40}ms` }}
+                >
                 <div className="rounded-[19px] bg-white p-[22px]">
                   <button
                     type="button"

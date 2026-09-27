@@ -183,7 +183,7 @@ export default function EmployerTeamView({
 
   return (
     <div className="flex flex-col gap-[20px]">
-      <div className={gradientFrameClass("teal")}>
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
           <div>
             <p className="text-sm text-[#141B2E]">Invite a teammate</p>
@@ -225,7 +225,7 @@ export default function EmployerTeamView({
         </div>
       </div>
 
-      <div className={gradientFrameClass("teal")}>
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
           <p className="text-sm text-[#141B2E]">
             {members.length} member{members.length === 1 ? "" : "s"}
@@ -300,7 +300,7 @@ export default function EmployerTeamView({
       </div>
 
       {activity.length > 0 && (
-        <div className={gradientFrameClass("teal")}>
+        <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
           <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[22px]">
             <p className="text-sm text-[#141B2E]">Activity</p>
             <div className="flex flex-col gap-[8px]">

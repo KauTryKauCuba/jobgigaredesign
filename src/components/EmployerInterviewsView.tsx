@@ -475,7 +475,7 @@ export default function EmployerInterviewsView({
       }
       subheading="Everyone currently scheduled for an interview, across every job posting."
     >
-      <div className={`${gradientFrameClass("teal")} mx-auto w-full max-w-[1440px]`}>
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto w-full max-w-[1440px]`}>
         <div className="rounded-[19px] bg-white p-[22px]">
           <button
             type="button"
@@ -509,7 +509,10 @@ export default function EmployerInterviewsView({
         </div>
       </div>
 
-      <div className={`${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}>
+      <div
+        className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}
+        style={{ animationDelay: "60ms" }}
+      >
         <div className="rounded-[19px] bg-white p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Interview status</p>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-3 lg:grid-cols-6">
@@ -554,7 +557,10 @@ export default function EmployerInterviewsView({
       </div>
 
       {view !== "calendar" && (
-        <div className="mx-auto mt-[20px] flex w-full max-w-[1440px] flex-wrap items-center gap-[8px]">
+        <div
+          className="animate-fade-in-up mx-auto mt-[20px] flex w-full max-w-[1440px] flex-wrap items-center gap-[8px]"
+          style={{ animationDelay: "90ms" }}
+        >
           <div className="flex h-[38px] flex-1 min-w-[200px] items-center gap-[6px] rounded-full border border-black/[0.1] bg-white px-[14px]">
             <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
             <input
@@ -588,7 +594,10 @@ export default function EmployerInterviewsView({
       )}
 
       {view === "calendar" ? (
-        <div className={`${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}>
+        <div
+          className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}
+          style={{ animationDelay: "120ms" }}
+        >
           <div className="rounded-[19px] bg-white p-[22px]">
             <InterviewBigCalendar
               interviews={calendarInterviews}
@@ -649,7 +658,7 @@ export default function EmployerInterviewsView({
                   : "No one’s been evaluated yet — save an evaluation on an interviewed candidate to see them here, ready for an offer or reject decision.",
               },
             ] as const
-          ).map((col) => (
+          ).map((col, index) => (
             <div
               key={col.key}
               onDragOver={(e) => {
@@ -672,7 +681,8 @@ export default function EmployerInterviewsView({
                 // silently flipping the status and skipping the step.
                 setViewingId(id);
               }}
-              className={`${gradientFrameClass("teal")} rounded-[20px] transition-shadow ${
+              style={{ animationDelay: `${120 + index * 40}ms` }}
+              className={`animate-fade-in-up ${gradientFrameClass("teal")} rounded-[20px] transition-shadow ${
                 dragOverKey === col.key ? "ring-2 ring-brand-teal-dark ring-offset-2" : ""
               }`}
             >
@@ -714,7 +724,7 @@ export default function EmployerInterviewsView({
       ) : (
       <div className="mx-auto mt-[12px] flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
       <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
-        <div className={gradientFrameClass("teal")}>
+        <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
           <div className="rounded-[19px] bg-white p-[22px]">
             <p className="mb-[12px] text-sm text-[#141B2E]">Calendar</p>
             <div className="flex flex-col gap-[12px]">
@@ -747,7 +757,10 @@ export default function EmployerInterviewsView({
         </div>
       </div>
 
-      <div className={`${gradientFrameClass("teal")} min-w-0 lg:flex-[3]`}>
+      <div
+        className={`animate-fade-in-up ${gradientFrameClass("teal")} min-w-0 lg:flex-[3]`}
+        style={{ animationDelay: "180ms" }}
+      >
         <div className="rounded-[19px] bg-white p-[22px]">
           {statusError && <p className="text-xs text-red-500">{statusError}</p>}
 
