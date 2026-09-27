@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
-import { gradientFrameClass } from "./formStyles";
+import Dropdown from "./Dropdown";
+import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
 import { SearchIcon } from "./icons";
 import Modal from "./Modal";
 import RichTextContent from "./RichTextContent";
@@ -143,11 +144,19 @@ type JobPosting = {
   openings: number;
   skills: string[];
   softSkills: string[];
-  minYearsExperience: number;
+  // null means "no requirement" — distinct from 0 ("requires 0 years",
+  // i.e. open to freshers), which is a real, meetable requirement that must
+  // still show the screening question. Coalescing to 0 here previously
+  // collapsed both cases together and hid the question for either.
+  minYearsExperience: number | null;
   minQualificationTier: string;
   drivingLicense?: string;
   languages: RequiredLanguage[];
   workAuthorizations: string[];
+  screeningEnabled: boolean;
+  // requiredAnswer stays server-side (see CustomScreeningQuestion below) —
+  // a jobseeker shouldn't be able to read the "correct" answer off the page.
+  customQuestions: { id: string; question: string }[];
 };
 
 export type ActivePostingRow = {
@@ -175,6 +184,11 @@ export type ActivePostingRow = {
     languages: { language: string; level: string }[];
     workAuthorizations: string[];
     drivingLicense: string | null;
+    screeningEnabled: boolean;
+    // Stripped of requiredAnswer before this ever reaches the client (see
+    // jobseeker/page.tsx) — the page's initial props are visible in the
+    // page source, so the "correct" answer can never travel in this shape.
+    customScreeningQuestions: { id: string; question: string }[];
     createdAt: string;
   };
   companyName: string;
@@ -211,6 +225,32 @@ const LANGUAGE_LEVEL_LABEL: Record<string, string> = {
   fluent: "Fluent",
   native: "Native",
 };
+// Mirrors QUALIFICATION_TIERS in EmployerJobsView.tsx — the same fixed list
+// the employer picks a minimum from, offered here for the jobseeker to
+// answer with their own highest level.
+const QUALIFICATION_TIERS = ["SPM", "STPM", "Diploma", "Degree", "Master", "PhD", "Other"] as const;
+
+type ScreeningAnswers = {
+  yearsExperience: string;
+  qualificationTier: string;
+  drivingLicense: string;
+  languageLevels: Record<string, string>;
+  workAuthorization: string;
+  // Keyed by question id — "" means unanswered, distinct from an explicit
+  // "no", so the modal can tell the two apart while the jobseeker fills it in.
+  customAnswers: Record<string, "" | "yes" | "no">;
+};
+
+function blankScreeningAnswers(): ScreeningAnswers {
+  return {
+    yearsExperience: "",
+    qualificationTier: "",
+    drivingLicense: "",
+    languageLevels: {},
+    workAuthorization: "",
+    customAnswers: {},
+  };
+}
 
 function relativeTimeAgo(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
@@ -248,14 +288,16 @@ function toJobPosting(row: ActivePostingRow): JobPosting {
     openings: posting.openings,
     skills: posting.skills,
     softSkills: posting.softSkills,
-    minYearsExperience: posting.minYearsExperience ?? 0,
+    minYearsExperience: posting.minYearsExperience,
     minQualificationTier: posting.minQualificationTier ?? "No requirement",
-    drivingLicense: posting.drivingLicense ? DRIVING_LICENSE_LABEL[posting.drivingLicense] : undefined,
-    languages: posting.languages.map((l) => ({
-      language: l.language,
-      level: LANGUAGE_LEVEL_LABEL[l.level] ?? l.level,
-    })),
-    workAuthorizations: posting.workAuthorizations.map((w) => WORK_AUTHORIZATION_LABEL[w] ?? w),
+    // Kept as raw values (not label-mapped here) — the screening modal needs
+    // the same raw values the posting stored to submit as answers; the
+    // display block below maps them to labels at render time instead.
+    drivingLicense: posting.drivingLicense ?? undefined,
+    languages: posting.languages,
+    workAuthorizations: posting.workAuthorizations,
+    screeningEnabled: posting.screeningEnabled,
+    customQuestions: posting.customScreeningQuestions,
   };
 }
 
@@ -289,6 +331,8 @@ const CURATED_JOB_POSTINGS: JobPosting[] = [
     minQualificationTier: "Degree",
     languages: [{ language: "English", level: "Fluent" }],
     workAuthorizations: ["Malaysian citizen", "Permanent resident", "Work pass holder"],
+    screeningEnabled: false,
+    customQuestions: [],
   },
   {
     id: "curated-2",
@@ -311,6 +355,8 @@ const CURATED_JOB_POSTINGS: JobPosting[] = [
     minYearsExperience: 4,
     minQualificationTier: "Degree",
     languages: [{ language: "English", level: "Fluent" }],
+    screeningEnabled: false,
+    customQuestions: [],
     workAuthorizations: ["Malaysian citizen", "Permanent resident", "Work pass holder"],
   },
   {
@@ -333,6 +379,8 @@ const CURATED_JOB_POSTINGS: JobPosting[] = [
     softSkills: ["Communication", "Empathy", "Relationship building"],
     minYearsExperience: 2,
     minQualificationTier: "Degree",
+    screeningEnabled: false,
+    customQuestions: [],
     languages: [{ language: "English", level: "Fluent" }],
     workAuthorizations: ["Malaysian citizen", "Permanent resident"],
   },
@@ -355,6 +403,8 @@ const CURATED_JOB_POSTINGS: JobPosting[] = [
     skills: ["Operations coordination", "Logistics tools", "Excel"],
     softSkills: ["Organization", "Problem solving", "Communication"],
     minYearsExperience: 1,
+    screeningEnabled: false,
+    customQuestions: [],
     minQualificationTier: "Diploma",
     languages: [{ language: "English", level: "Fluent" }],
     workAuthorizations: ["Malaysian citizen", "Permanent resident"],
@@ -377,6 +427,8 @@ const CURATED_JOB_POSTINGS: JobPosting[] = [
     openings: 1,
     skills: ["React", "TypeScript", "REST APIs"],
     softSkills: ["Communication", "Teamwork", "Attention to detail"],
+    screeningEnabled: false,
+    customQuestions: [],
     minYearsExperience: 2,
     minQualificationTier: "Degree",
     languages: [{ language: "English", level: "Fluent" }],
@@ -399,6 +451,8 @@ const CURATED_JOB_POSTINGS: JobPosting[] = [
     workArrangement: "Remote",
     openings: 1,
     skills: ["Technical writing", "Content design", "Process documentation"],
+    screeningEnabled: false,
+    customQuestions: [],
     softSkills: ["Clarity", "Attention to detail", "Collaboration"],
     minYearsExperience: 1,
     minQualificationTier: "Degree",
@@ -434,6 +488,10 @@ export default function JobPostingHighlights({
   const [appliedIds, setAppliedIds] = useState(() => new Set(appliedJobPostingIds));
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  // Only opened for a posting with screeningEnabled — everything else keeps
+  // applying a single click, exactly as before this feature existed.
+  const [screeningPostingId, setScreeningPostingId] = useState<string | null>(null);
+  const [screeningAnswers, setScreeningAnswers] = useState<ScreeningAnswers>(() => blankScreeningAnswers());
   const [reportingPostingId, setReportingPostingId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState<(typeof REPORT_REASONS)[number]["value"] | "">("");
   const [reportDetails, setReportDetails] = useState("");
@@ -441,23 +499,51 @@ export default function JobPostingHighlights({
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
 
-  async function apply(jobPostingId: string) {
+  async function apply(jobPostingId: string, answers?: ScreeningAnswers) {
     setApplying(true);
     setApplyError(null);
     try {
       const res = await fetch("/api/jobseeker/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobPostingId }),
+        body: JSON.stringify({
+          jobPostingId,
+          screeningAnswers: answers
+            ? {
+                yearsExperience: answers.yearsExperience.trim() ? Number(answers.yearsExperience) : null,
+                qualificationTier: answers.qualificationTier || null,
+                drivingLicense: answers.drivingLicense || null,
+                languages: Object.entries(answers.languageLevels)
+                  .filter(([, level]) => level)
+                  .map(([language, level]) => ({ language, level })),
+                workAuthorization: answers.workAuthorization || null,
+                customAnswers: Object.entries(answers.customAnswers)
+                  .filter(([, answer]) => answer)
+                  .map(([questionId, answer]) => ({ questionId, answer: answer === "yes" })),
+              }
+            : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't submit your application.");
       setAppliedIds((prev) => new Set(prev).add(jobPostingId));
+      setScreeningPostingId(null);
+      setScreeningAnswers(blankScreeningAnswers());
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : "Couldn't submit your application.");
     } finally {
       setApplying(false);
     }
+  }
+
+  function startApply(posting: JobPosting) {
+    setApplyError(null);
+    if (posting.screeningEnabled) {
+      setScreeningAnswers(blankScreeningAnswers());
+      setScreeningPostingId(posting.id);
+      return;
+    }
+    apply(posting.id);
   }
 
   function closeReportModal() {
@@ -523,6 +609,7 @@ export default function JobPostingHighlights({
   // the first remaining result on the very next render.
   const [selectedId, setSelectedId] = useState(allPostings[0]?.id);
   const selectedPosting = filteredPostings.find((p) => p.id === selectedId) ?? filteredPostings[0];
+  const screeningPosting = screeningPostingId ? allPostings.find((p) => p.id === screeningPostingId) : undefined;
 
   // Records a unique view once per posting per jobseeker — the endpoint
   // itself is a no-op for anyone not signed in as a jobseeker, and dedupes
@@ -796,32 +883,42 @@ export default function JobPostingHighlights({
                 </div>
               )}
 
+              {selectedPosting.screeningEnabled && (
               <div className="mt-[24px] border-t border-black/[0.06] pt-[16px]">
                 <p className="text-sm text-[#141B2E]">Screening requirements</p>
+                <p className="mt-[2px] text-xs text-[#9AA3B2]">
+                  You&rsquo;ll be asked to answer these when you apply.
+                </p>
                 <div className="mt-[12px] grid grid-cols-1 gap-x-[20px] gap-y-[12px] sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-[#4B5468]">Minimum experience</p>
-                    <p className="mt-[2px] text-sm text-[#141B2E]">
-                      {selectedPosting.minYearsExperience === 0
-                        ? "No requirement"
-                        : `${selectedPosting.minYearsExperience} year${selectedPosting.minYearsExperience === 1 ? "" : "s"}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#4B5468]">Minimum education</p>
-                    <p className="mt-[2px] text-sm text-[#141B2E]">{selectedPosting.minQualificationTier}</p>
-                  </div>
+                  {selectedPosting.minYearsExperience != null && (
+                    <div>
+                      <p className="text-xs text-[#4B5468]">Minimum experience</p>
+                      <p className="mt-[2px] text-sm text-[#141B2E]">
+                        {selectedPosting.minYearsExperience} year{selectedPosting.minYearsExperience === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  )}
+                  {selectedPosting.minQualificationTier !== "No requirement" && (
+                    <div>
+                      <p className="text-xs text-[#4B5468]">Minimum education</p>
+                      <p className="mt-[2px] text-sm text-[#141B2E]">{selectedPosting.minQualificationTier}</p>
+                    </div>
+                  )}
                   {selectedPosting.drivingLicense && (
                     <div>
                       <p className="text-xs text-[#4B5468]">Driving license</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">{selectedPosting.drivingLicense}</p>
+                      <p className="mt-[2px] text-sm text-[#141B2E]">
+                        {DRIVING_LICENSE_LABEL[selectedPosting.drivingLicense] ?? selectedPosting.drivingLicense}
+                      </p>
                     </div>
                   )}
                   {selectedPosting.languages.length > 0 && (
                     <div>
                       <p className="text-xs text-[#4B5468]">Languages required</p>
                       <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {selectedPosting.languages.map((l) => `${l.language} (${l.level})`).join(", ")}
+                        {selectedPosting.languages
+                          .map((l) => `${l.language} (${LANGUAGE_LEVEL_LABEL[l.level] ?? l.level})`)
+                          .join(", ")}
                       </p>
                     </div>
                   )}
@@ -829,12 +926,22 @@ export default function JobPostingHighlights({
                     <div className="sm:col-span-2">
                       <p className="text-xs text-[#4B5468]">Accepted work authorization</p>
                       <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {selectedPosting.workAuthorizations.join(", ")}
+                        {selectedPosting.workAuthorizations.map((w) => WORK_AUTHORIZATION_LABEL[w] ?? w).join(", ")}
+                      </p>
+                    </div>
+                  )}
+                  {selectedPosting.customQuestions.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <p className="text-xs text-[#4B5468]">Additional questions</p>
+                      <p className="mt-[2px] text-sm text-[#141B2E]">
+                        {selectedPosting.customQuestions.length} yes/no question
+                        {selectedPosting.customQuestions.length === 1 ? "" : "s"}
                       </p>
                     </div>
                   )}
                 </div>
               </div>
+              )}
 
               {(() => {
                 // Curated postings have no real job_postings row behind
@@ -862,7 +969,7 @@ export default function JobPostingHighlights({
                     <button
                       type="button"
                       disabled={applied || applying}
-                      onClick={() => apply(selectedPosting.id)}
+                      onClick={() => startApply(selectedPosting)}
                       className="mt-[24px] flex h-[42px] items-center rounded-full bg-[#FFE9A6] px-[22px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {applied ? "Applied" : applying ? "Applying…" : "Apply now"}
@@ -940,6 +1047,156 @@ export default function JobPostingHighlights({
             <button
               type="button"
               onClick={closeReportModal}
+              className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
+            >
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {screeningPosting && (
+        <Modal
+          ariaLabel="Screening questions"
+          onClose={() => {
+            setScreeningPostingId(null);
+            setApplyError(null);
+          }}
+        >
+          <h2 className="text-lg font-semibold text-[#141B2E]">Before you apply</h2>
+          <p className="mt-[6px] text-xs text-[#4B5468]">
+            {screeningPosting.company} set a few requirements for this role — answer them and we&rsquo;ll let you
+            know how you match.
+          </p>
+
+          <div className="mt-[14px] flex flex-col gap-[12px]">
+            {screeningPosting.minYearsExperience != null && (
+              <label className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                Years of experience (requires {screeningPosting.minYearsExperience}+)
+                <input
+                  type="number"
+                  min={0}
+                  value={screeningAnswers.yearsExperience}
+                  onChange={(e) =>
+                    setScreeningAnswers((prev) => ({ ...prev, yearsExperience: e.target.value }))
+                  }
+                  className={formInputClass("gold")}
+                />
+              </label>
+            )}
+
+            {screeningPosting.minQualificationTier !== "No requirement" && (
+              <label className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                Your highest education level (requires {screeningPosting.minQualificationTier}+)
+                <Dropdown
+                  label="Highest education level"
+                  value={screeningAnswers.qualificationTier}
+                  accent="gold"
+                  options={[
+                    { value: "", label: "Select" },
+                    ...QUALIFICATION_TIERS.map((tier) => ({ value: tier, label: tier })),
+                  ]}
+                  onChange={(value) => setScreeningAnswers((prev) => ({ ...prev, qualificationTier: value }))}
+                />
+              </label>
+            )}
+
+            {screeningPosting.drivingLicense && (
+              <label className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                Driving license (requires {DRIVING_LICENSE_LABEL[screeningPosting.drivingLicense] ?? screeningPosting.drivingLicense})
+                <Dropdown
+                  label="Driving license"
+                  value={screeningAnswers.drivingLicense}
+                  accent="gold"
+                  options={[
+                    { value: "", label: "Select" },
+                    ...Object.entries(DRIVING_LICENSE_LABEL).map(([value, label]) => ({ value, label })),
+                  ]}
+                  onChange={(value) => setScreeningAnswers((prev) => ({ ...prev, drivingLicense: value }))}
+                />
+              </label>
+            )}
+
+            {screeningPosting.languages.map((required) => (
+              <label key={required.language} className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                {required.language} (requires {LANGUAGE_LEVEL_LABEL[required.level] ?? required.level}+)
+                <Dropdown
+                  label={`${required.language} level`}
+                  value={screeningAnswers.languageLevels[required.language] ?? ""}
+                  accent="gold"
+                  options={[
+                    { value: "", label: "Select" },
+                    ...Object.entries(LANGUAGE_LEVEL_LABEL).map(([value, label]) => ({ value, label })),
+                  ]}
+                  onChange={(value) =>
+                    setScreeningAnswers((prev) => ({
+                      ...prev,
+                      languageLevels: { ...prev.languageLevels, [required.language]: value },
+                    }))
+                  }
+                />
+              </label>
+            ))}
+
+            {screeningPosting.workAuthorizations.length > 0 && (
+              <label className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                Work authorization (accepts{" "}
+                {screeningPosting.workAuthorizations.map((w) => WORK_AUTHORIZATION_LABEL[w] ?? w).join(", ")})
+                <Dropdown
+                  label="Work authorization"
+                  value={screeningAnswers.workAuthorization}
+                  accent="gold"
+                  options={[
+                    { value: "", label: "Select" },
+                    ...Object.entries(WORK_AUTHORIZATION_LABEL).map(([value, label]) => ({ value, label })),
+                  ]}
+                  onChange={(value) => setScreeningAnswers((prev) => ({ ...prev, workAuthorization: value }))}
+                />
+              </label>
+            )}
+
+            {screeningPosting.customQuestions.map((q) => (
+              <div key={q.id} className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                {q.question}
+                <div className="flex gap-[8px]">
+                  {(["yes", "no"] as const).map((choice) => (
+                    <button
+                      key={choice}
+                      type="button"
+                      aria-pressed={screeningAnswers.customAnswers[q.id] === choice}
+                      onClick={() =>
+                        setScreeningAnswers((prev) => ({
+                          ...prev,
+                          customAnswers: { ...prev.customAnswers, [q.id]: choice },
+                        }))
+                      }
+                      className="h-[34px] flex-1 rounded-[10px] border border-black/[0.1] text-sm text-[#4B5468] transition-colors aria-pressed:border-brand-gold-dark aria-pressed:bg-[#FFF3D6] aria-pressed:text-[#A67C00]"
+                    >
+                      {choice === "yes" ? "Yes" : "No"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {applyError && <p className="mt-[10px] text-xs text-red-500">{applyError}</p>}
+
+          <div className="mt-[14px] flex flex-col gap-[8px]">
+            <button
+              type="button"
+              disabled={applying}
+              onClick={() => apply(screeningPosting.id, screeningAnswers)}
+              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {applying ? "Submitting…" : "Submit and apply"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setScreeningPostingId(null);
+                setApplyError(null);
+              }}
               className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
             >
               Cancel

@@ -3,15 +3,23 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
+import {
+  DRIVING_LICENSES,
+  EMPLOYMENT_TYPES,
+  WORK_ARRANGEMENTS,
+  WORK_AUTHORIZATIONS,
+  isCustomQuestionArray,
+  isLanguageArray,
+  isNonEmptyString,
+  isOptionalInt,
+  isOptionalString,
+  isSkillSuggestions,
+  isStringArray,
+} from "@/lib/job-posting-validation";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { getSession } from "@/lib/session";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 
-const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"] as const;
-const WORK_ARRANGEMENTS = ["remote", "hybrid", "onsite"] as const;
-const WORK_AUTHORIZATIONS = ["citizen", "permanent_resident", "work_pass_holder", "needs_sponsorship"] as const;
-const DRIVING_LICENSES = ["b2", "b", "d", "da", "e"] as const;
-const LANGUAGE_LEVELS = ["basic", "conversational", "fluent", "native"] as const;
 // Statuses an employer can set directly from the Manage Job list/form.
 // pending/active/filled/rejected/flagged all require the (not yet built)
 // superadmin review flow or an applicant-driven event, so they're excluded.
@@ -20,37 +28,6 @@ const SETTABLE_STATUSES = ["draft", "pending", "closed"] as const;
 async function getOwnedProfile(userId: string) {
   const access = await getEmployerAccess(userId);
   return access ? { id: access.profile.id } : null;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isOptionalString(value: unknown): value is string | null | undefined {
-  return value === undefined || value === null || typeof value === "string";
-}
-
-function isOptionalInt(value: unknown): value is number | null | undefined {
-  return value === undefined || value === null || (typeof value === "number" && Number.isInteger(value));
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((v) => typeof v === "string");
-}
-
-type LanguageReq = { language: string; level: (typeof LANGUAGE_LEVELS)[number] };
-
-function isLanguageArray(value: unknown): value is LanguageReq[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (v) =>
-        v &&
-        typeof v === "object" &&
-        isNonEmptyString((v as Record<string, unknown>).language) &&
-        (LANGUAGE_LEVELS as readonly string[]).includes((v as Record<string, unknown>).level as string),
-    )
-  );
 }
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -112,6 +89,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     languages,
     workAuthorizations,
     drivingLicense,
+    screeningEnabled,
+    customScreeningQuestions,
+    skillSuggestions,
+    askMinYearsExperience,
+    askMinQualificationTier,
+    askDrivingLicense,
+    askLanguages,
+    askWorkAuthorizations,
   } = (body ?? {}) as Record<string, unknown>;
 
   if (status !== undefined && !(SETTABLE_STATUSES as readonly string[]).includes(status as string)) {
@@ -170,6 +155,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   ) {
     return NextResponse.json({ error: "Invalid driving license." }, { status: 400 });
   }
+  if (customScreeningQuestions !== undefined && !isCustomQuestionArray(customScreeningQuestions)) {
+    return NextResponse.json({ error: "Invalid custom screening questions." }, { status: 400 });
+  }
+  if (skillSuggestions !== undefined && !isSkillSuggestions(skillSuggestions)) {
+    return NextResponse.json({ error: "Invalid skill suggestions." }, { status: 400 });
+  }
   if (!isOptionalString(addressLine1) || !isOptionalString(addressLine2)) {
     return NextResponse.json({ error: "Invalid street address." }, { status: 400 });
   }
@@ -209,6 +200,34 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (workAuthorizations !== undefined) updates.workAuthorizations = workAuthorizations;
   if (drivingLicense !== undefined) {
     updates.drivingLicense = isNonEmptyString(drivingLicense) ? drivingLicense : null;
+  }
+  if (customScreeningQuestions !== undefined && isCustomQuestionArray(customScreeningQuestions)) {
+    updates.customScreeningQuestions = customScreeningQuestions;
+  }
+  if (skillSuggestions !== undefined && isSkillSuggestions(skillSuggestions)) {
+    updates.skillSuggestions = skillSuggestions;
+  }
+  if (askMinYearsExperience !== undefined) updates.askMinYearsExperience = askMinYearsExperience === true;
+  if (askMinQualificationTier !== undefined) updates.askMinQualificationTier = askMinQualificationTier === true;
+  if (askDrivingLicense !== undefined) updates.askDrivingLicense = askDrivingLicense === true;
+  if (askLanguages !== undefined) updates.askLanguages = askLanguages === true;
+  if (askWorkAuthorizations !== undefined) updates.askWorkAuthorizations = askWorkAuthorizations === true;
+  if (screeningEnabled !== undefined) {
+    updates.screeningEnabled = screeningEnabled === true;
+  }
+  // Authoritative, same as the create route: whenever the posting ends up
+  // with screening off — whether this request just turned it off, or it was
+  // already off and this request only touched a requirement field without
+  // resending screeningEnabled — the requirement fields get wiped too, so a
+  // screening-disabled posting can never end up with stale requirement data.
+  const screeningEnabledAfterUpdate = updates.screeningEnabled ?? existing.screeningEnabled;
+  if (!screeningEnabledAfterUpdate) {
+    updates.minYearsExperience = null;
+    updates.minQualificationTier = null;
+    updates.languages = [];
+    updates.workAuthorizations = [];
+    updates.drivingLicense = null;
+    updates.customScreeningQuestions = [];
   }
 
   const [updated] = await db

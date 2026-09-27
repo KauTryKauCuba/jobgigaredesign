@@ -102,6 +102,7 @@ type MatchResult = {
   jobPostingId: string;
   score: number;
   eligible: boolean;
+  ineligibleReasons: string[];
 };
 
 // Same bands as TopMatchesCard.tsx (the Applicants page's own "Top Matches")
@@ -210,7 +211,15 @@ function ApplicantRow({
       </div>
       {band && match && (
         <span className={`shrink-0 rounded-full px-[10px] py-[3px] text-xs ${band.bg} ${band.text}`}>
-          {match.score}% match
+          {match.score}% job match
+        </span>
+      )}
+      {match && !match.eligible && (
+        <span
+          className="shrink-0 rounded-full bg-[#FDEDE8] px-[10px] py-[3px] text-xs text-[#C2410C]"
+          title={match.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
+        >
+          Failed screening
         </span>
       )}
       <span className={`shrink-0 rounded-full px-[10px] py-[3px] text-xs ${color.bg} ${color.text}`}>
@@ -324,9 +333,15 @@ function PostingAnalytics({
   const ageBandMax = Math.max(1, ...ageBandCounts.map((b) => b.count));
 
   // 5. Match score distribution across the same bands used on applicant rows.
+  // Ineligible candidates keep a real (non-zero) score now — see
+  // src/app/api/employer/applicants/matches/route.ts — so they're excluded
+  // here too, same as everywhere else eligibility gates who counts as a
+  // genuine match, otherwise a hard-filter failure could still inflate the
+  // "Strong match" band shown to the employer.
   const scores = rows
-    .map((r) => matchByApplicationId[r.application.id]?.score)
-    .filter((s): s is number => typeof s === "number");
+    .map((r) => matchByApplicationId[r.application.id])
+    .filter((m): m is MatchResult => !!m && m.eligible)
+    .map((m) => m.score);
   const scoreBands = [
     { ...matchBand(80), label: "Strong (80+)", min: 80, max: Infinity },
     { ...matchBand(60), label: "Good (60-79)", min: 60, max: 79 },

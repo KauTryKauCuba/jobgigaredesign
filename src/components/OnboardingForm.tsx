@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import DatePicker from "./DatePicker";
 import Dropdown from "./Dropdown";
-import MonthYearPicker from "./MonthYearPicker";
+import MonthYearPicker, { parseMonthYearValue } from "./MonthYearPicker";
 import { useDraftName } from "./DraftNameContext";
 import Field from "./Field";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
@@ -16,6 +16,8 @@ import { PENDING_RESUME_KEY } from "./ResumeUpload";
 import SiriOrb from "./SiriOrb";
 import { useRegisterUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { INDUSTRIES } from "@/lib/industries";
+import { MALAYSIA_STATES } from "@/lib/malaysia";
+import { NATIONALITIES } from "@/lib/nationalities";
 import { plainTextToHtml } from "@/lib/richText";
 import type { JobseekerProfile } from "@/lib/jobseeker-profile";
 
@@ -98,8 +100,281 @@ const AVATAR_MAX_BYTES = 3 * 1024 * 1024;
 type QualificationTier = (typeof QUALIFICATION_TIERS)[number]["value"];
 type LanguageLevel = (typeof LANGUAGE_LEVELS)[number]["value"];
 
+// A draggable visual companion to the Min/Max salary number inputs above it
+// — purely reflects and updates the same two values, so typing stays the
+// primary way to set an exact figure, but dragging a handle works too.
+// Pointer-capture drag, same technique as useDragScroll's row-panning
+// (EmployerDashboardOverview.tsx) — the handle keeps receiving move/up
+// events even once the cursor leaves it mid-drag.
+//
+// The scale grows in fixed 10k chunks once a value gets close to the current
+// ceiling, rather than continuously stretching in proportion to the value
+// itself — a continuously-proportional scale means a handle's position
+// eventually stops moving no matter how far you keep dragging it (the
+// percentage becomes a fixed ratio once both numerator and denominator scale
+// together). Growing in discrete jumps instead means the percentage is only
+// ever recalculated against a momentarily-fixed ceiling, so dragging always
+// keeps moving the handle, however far past the base scale you go.
+const SALARY_SLIDER_BASE_SCALE = 10000;
+const SALARY_SLIDER_CHUNK = 10000;
+const SALARY_SLIDER_STEP = 100;
+
+function salaryScaleMaxFor(value: number): number {
+  let scale = SALARY_SLIDER_BASE_SCALE;
+  while (value > scale) scale += SALARY_SLIDER_CHUNK;
+  return scale;
+}
+
+function SalaryRangeSlider({
+  min,
+  max,
+  onMinChange,
+  onMaxChange,
+}: {
+  min: number;
+  max: number;
+  onMinChange: (value: number) => void;
+  onMaxChange: (value: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState<"min" | "max" | null>(null);
+  // Sticky — only ever grows, never auto-shrinks back down. Recalculating
+  // the scale fresh from the current value on every render meant crossing
+  // back over a chunk boundary (e.g. typing 19999 after 20000) snapped the
+  // scale back down immediately, and landing exactly on a boundary while
+  // dragging could flip it back and forth every render.
+  const [scaleMax, setScaleMax] = useState(SALARY_SLIDER_BASE_SCALE);
+  const neededScale = salaryScaleMaxFor(Math.max(min, max));
+  if (neededScale > scaleMax) setScaleMax(neededScale);
+
+  // Kept current in refs (not just closed over) so the interval below always
+  // nudges from the latest value, not whatever min/max were when the pointer
+  // first went past the edge. Synced via an effect (safe to write a ref
+  // outside render) rather than directly during render.
+  const minRef = useRef(min);
+  const maxRef = useRef(max);
+  const onMinChangeRef = useRef(onMinChange);
+  const onMaxChangeRef = useRef(onMaxChange);
+  useEffect(() => {
+    minRef.current = min;
+    maxRef.current = max;
+    onMinChangeRef.current = onMinChange;
+    onMaxChangeRef.current = onMaxChange;
+  });
+
+  // Holding past the track's edge (not just a single fast flick past it)
+  // keeps expanding the scale every tick, the same "auto-scroll near the
+  // edge" pattern drag-and-drop lists use — otherwise you'd have to keep
+  // physically moving the cursor further and further off-screen to get more
+  // than one 10k jump.
+  const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function stopHold() {
+    if (holdTimerRef.current) {
+      clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }
+  useEffect(() => stopHold, []);
+
+  function ratioFromClientX(clientX: number): number {
+    const track = trackRef.current;
+    if (!track) return 0;
+    const rect = track.getBoundingClientRect();
+    return (clientX - rect.left) / rect.width;
+  }
+
+  // Latest overshoot, refreshed on every pointermove — read fresh by the
+  // interval each tick, rather than frozen at whatever it was when holding
+  // started, so dragging further out while already holding actually speeds
+  // the expansion up instead of sticking at the first rate.
+  const overshootRef = useRef(0);
+
+  function handleDrag(kind: "min" | "max", clientX: number) {
+    const ratio = ratioFromClientX(clientX);
+    const overshoot = ratio - 1;
+    overshootRef.current = overshoot;
+    if (overshoot <= 0) {
+      stopHold();
+      const value = Math.round((Math.max(0, ratio) * scaleMax) / SALARY_SLIDER_STEP) * SALARY_SLIDER_STEP;
+      if (kind === "min") onMinChangeRef.current(Math.min(value, maxRef.current));
+      else onMaxChangeRef.current(Math.max(value, minRef.current));
+      return;
+    }
+    if (holdTimerRef.current) return; // already ticking for this hold
+    // Speed scales with how far past the edge the cursor is, so dragging
+    // further out (not just holding right at the edge) expands faster.
+    holdTimerRef.current = setInterval(() => {
+      const bump = Math.max(SALARY_SLIDER_STEP, Math.round(overshootRef.current * SALARY_SLIDER_CHUNK));
+      if (kind === "min") onMinChangeRef.current(minRef.current + bump);
+      else onMaxChangeRef.current(maxRef.current + bump);
+    }, 120);
+  }
+
+  const minPct = Math.min(100, (min / scaleMax) * 100);
+  const maxPct = Math.min(100, (max / scaleMax) * 100);
+
+  return (
+    <div className="col-span-full select-none">
+      <div ref={trackRef} className="relative mt-[18px] h-[6px] rounded-full bg-[#F1F4F8]">
+        <div
+          className="absolute h-full rounded-full bg-[#FFE9A6]"
+          style={{ left: `${minPct}%`, width: `${Math.max(0, maxPct - minPct)}%` }}
+        />
+        <div
+          role="slider"
+          aria-label="Minimum salary"
+          aria-valuemin={0}
+          aria-valuemax={scaleMax}
+          aria-valuenow={min}
+          tabIndex={0}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setDragging("min");
+          }}
+          onPointerUp={() => {
+            setDragging(null);
+            stopHold();
+          }}
+          onPointerCancel={() => {
+            setDragging(null);
+            stopHold();
+          }}
+          onPointerMove={(e) => {
+            if (e.buttons !== 1) return;
+            handleDrag("min", e.clientX);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") onMinChange(Math.max(0, min - SALARY_SLIDER_STEP));
+            if (e.key === "ArrowRight") onMinChange(Math.min(max, min + SALARY_SLIDER_STEP));
+          }}
+          className="absolute top-1/2 h-[16px] w-[16px] -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border-2 border-white bg-brand-gold-dark shadow-[0_1px_3px_rgba(0,0,0,0.2)] active:cursor-grabbing"
+          style={{ left: `${minPct}%` }}
+        >
+          {dragging === "min" && (
+            <span className="absolute bottom-[22px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#141B2E] px-[8px] py-[3px] text-xs text-white">
+              RM{min.toLocaleString()}
+            </span>
+          )}
+        </div>
+        <div
+          role="slider"
+          aria-label="Maximum salary"
+          aria-valuemin={0}
+          aria-valuemax={scaleMax}
+          aria-valuenow={max}
+          tabIndex={0}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setDragging("max");
+          }}
+          onPointerUp={() => {
+            setDragging(null);
+            stopHold();
+          }}
+          onPointerCancel={() => {
+            setDragging(null);
+            stopHold();
+          }}
+          onPointerMove={(e) => {
+            if (e.buttons !== 1) return;
+            handleDrag("max", e.clientX);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") onMaxChange(Math.max(min, max - SALARY_SLIDER_STEP));
+            if (e.key === "ArrowRight") onMaxChange(max + SALARY_SLIDER_STEP);
+          }}
+          className="absolute top-1/2 h-[16px] w-[16px] -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border-2 border-white bg-brand-gold-dark shadow-[0_1px_3px_rgba(0,0,0,0.2)] active:cursor-grabbing"
+          style={{ left: `${maxPct}%` }}
+        >
+          {dragging === "max" && (
+            <span className="absolute bottom-[22px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#141B2E] px-[8px] py-[3px] text-xs text-white">
+              RM{max.toLocaleString()}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="mt-[6px] flex items-center justify-between text-xs text-[#9AA3B2]">
+        <span>RM0</span>
+        <span>RM{scaleMax.toLocaleString()}</span>
+      </div>
+    </div>
+  );
+}
+
+// Matches MAX_SUGGESTIONS in the suggest-skills API routes — manual entry
+// had no cap while AI suggestions did, letting someone paste far more
+// skills than the AI path could ever produce.
+const MAX_MANUAL_SKILLS = 40;
+
+// Skill tags are compared case-insensitively so "JavaScript" and
+// "javascript" can't both end up on the same profile as separate entries —
+// a plain .includes() only catches exact-case duplicates.
+function includesSkillCaseInsensitive(list: string[], value: string): boolean {
+  const target = value.toLowerCase();
+  return list.some((s) => s.toLowerCase() === target);
+}
+
+// Union of two skill lists, case-insensitively deduped (used when merging
+// resume-parsed skills into what's already on the form).
+function mergeSkillsCaseInsensitive(existing: string[], incoming: string[]): string[] {
+  const merged = [...existing];
+  for (const skill of incoming) {
+    if (merged.length >= MAX_MANUAL_SKILLS) break;
+    if (!includesSkillCaseInsensitive(merged, skill)) merged.push(skill);
+  }
+  return merged;
+}
+
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
+}
+
+// AI resume parsing still returns a free-text location guess (no structured
+// city/state), since the parsing schema isn't Malaysia-specific. Best-effort
+// splits it into city/state by matching a known state name at the end of the
+// string (e.g. "Petaling Jaya, Selangor" -> city "Petaling Jaya", state
+// "Selangor") — falls back to putting the whole guess in `city` with no
+// state if none matches, rather than silently dropping it.
+// Sums each work-experience entry's duration (start to end, or start to now
+// for a current role) rounded to the nearest year — a naive sum rather than
+// merging overlapping date ranges, same simplification most "total years of
+// experience" auto-calculators make, since genuinely overlapping full-time
+// roles are rare and not worth the extra complexity here.
+function computeYearsFromWorkExperiences(entries: WorkExperienceEntry[]): number | null {
+  let totalMonths = 0;
+  let counted = 0;
+  const now = new Date();
+  for (const entry of entries) {
+    const start = parseMonthYearValue(entry.startDate);
+    if (!start.month || !start.year) continue;
+    const startDate = new Date(Number(start.year), Number(start.month) - 1, 1);
+    let endDate: Date;
+    if (entry.isCurrent) {
+      endDate = now;
+    } else {
+      const end = parseMonthYearValue(entry.endDate);
+      if (!end.month || !end.year) continue;
+      endDate = new Date(Number(end.year), Number(end.month) - 1, 1);
+    }
+    const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+    if (months <= 0) continue;
+    totalMonths += months;
+    counted++;
+  }
+  if (counted === 0) return null;
+  return Math.round(totalMonths / 12);
+}
+
+function splitLocationGuess(raw: string): { city: string; state: (typeof MALAYSIA_STATES)[number] | "" } {
+  const trimmed = raw.trim();
+  for (const s of MALAYSIA_STATES) {
+    if (trimmed.toLowerCase().endsWith(s.toLowerCase())) {
+      const city = trimmed.slice(0, trimmed.length - s.length).replace(/,\s*$/, "").trim();
+      return { city, state: s };
+    }
+  }
+  return { city: trimmed, state: "" };
 }
 
 type WorkExperienceEntry = {
@@ -246,6 +521,7 @@ type ParsedProfile = {
   yearsExperience: number | null;
   professionalSkills: string[];
   softSkills: string[];
+  otherSkills: string[];
   employmentType: (typeof EMPLOYMENT_TYPES)[number]["value"] | null;
   expectedSalaryMin: number | null;
   expectedSalaryMax: number | null;
@@ -284,11 +560,15 @@ type DraftData = {
   phone: string;
   drivingLicense: (typeof DRIVING_LICENSES)[number]["value"] | "";
   location: string;
+  city: string;
+  state: (typeof MALAYSIA_STATES)[number] | "";
   targetRole: string;
   preferredIndustry: (typeof INDUSTRIES)[number] | "";
   yearsExperience: string;
   professionalSkills: string[];
   softSkills: string[];
+  otherSkills: string[];
+  skillSuggestions: { professionalSkills: string[]; softSkills: string[] } | null;
   employmentType: (typeof EMPLOYMENT_TYPES)[number]["value"];
   expectedSalaryMin: string;
   expectedSalaryMax: string;
@@ -467,6 +747,13 @@ export default function OnboardingForm({
   // — lets the resume-photo suggestion still offer to replace it, instead of
   // hiding just because *some* avatar happens to be set.
   const [avatarIsAccountDefault, setAvatarIsAccountDefault] = useState(false);
+  // Same idea as avatarIsAccountDefault — true only while the current
+  // avatarUrl came from accepting a resume's suggested photo, never a
+  // manual upload the jobseeker deliberately chose. Lets removing that
+  // resume and uploading a different one surface its own photo suggestion
+  // too, instead of staying hidden forever just because *some* avatar
+  // happens to already be set from the previous resume.
+  const [avatarIsFromResumeSuggestion, setAvatarIsFromResumeSuggestion] = useState(false);
   // A URL can fail to load for reasons outside our control — e.g. a Google
   // account picture blocked by the viewer's own ad blocker/privacy
   // extension — without the underlying value actually being broken. Falls
@@ -497,6 +784,9 @@ export default function OnboardingForm({
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   const [showResumeWarning, setShowResumeWarning] = useState(false);
+  const [showRemoveResumeConfirm, setShowRemoveResumeConfirm] = useState(false);
+  const [showResetResumeConfirm, setShowResetResumeConfirm] = useState(false);
+  const [showFinishSuccess, setShowFinishSuccess] = useState(false);
   const [showParseConfirm, setShowParseConfirm] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parseElapsedMs, setParseElapsedMs] = useState(0);
@@ -534,7 +824,11 @@ export default function OnboardingForm({
   const [drivingLicense, setDrivingLicense] = useState<(typeof DRIVING_LICENSES)[number]["value"] | "">(
     (initialProfile?.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null | undefined) ?? "",
   );
-  const [location, setLocation] = useState(initialProfile?.location ?? "");
+  const [city, setCity] = useState(initialProfile?.city ?? "");
+  const [state, setState] = useState<(typeof MALAYSIA_STATES)[number] | "">(
+    (initialProfile?.state as (typeof MALAYSIA_STATES)[number] | undefined) ?? "",
+  );
+  const location = city.trim() && state ? `${city.trim()}, ${state}` : city.trim() || state;
   const [targetRole, setTargetRole] = useState(initialProfile?.targetRole ?? "");
   const [preferredIndustry, setPreferredIndustry] = useState<(typeof INDUSTRIES)[number] | "">(
     (initialProfile?.preferredIndustry as (typeof INDUSTRIES)[number] | null | undefined) ?? "",
@@ -542,12 +836,20 @@ export default function OnboardingForm({
   const [yearsExperience, setYearsExperience] = useState(
     initialProfile?.yearsExperience != null ? String(initialProfile.yearsExperience) : "",
   );
+  // Once the user edits this by hand, it stops auto-recalculating from
+  // Experience & background — an explicit override should stick, not get
+  // silently clobbered the next time a work-history date changes. Starts
+  // true for a brand-new profile (nothing typed yet) so the very first
+  // completed work-experience entry fills it in for free.
+  const [yearsExperienceAuto, setYearsExperienceAuto] = useState(initialProfile?.yearsExperience == null);
   const [professionalSkillInput, setProfessionalSkillInput] = useState("");
   const [professionalSkills, setProfessionalSkills] = useState<string[]>(
     initialProfile?.professionalSkills ?? [],
   );
   const [softSkillInput, setSoftSkillInput] = useState("");
   const [softSkills, setSoftSkills] = useState<string[]>(initialProfile?.softSkills ?? []);
+  const [otherSkillInput, setOtherSkillInput] = useState("");
+  const [otherSkills, setOtherSkills] = useState<string[]>(initialProfile?.otherSkills ?? []);
   const [skillSuggestions, setSkillSuggestions] = useState<{
     professionalSkills: string[];
     softSkills: string[];
@@ -597,6 +899,19 @@ export default function OnboardingForm({
   const [workExperiences, setWorkExperiences] = useState<WorkExperienceEntry[]>(
     initialProfile ? mapWorkExperiences(initialProfile.workExperiences) : [],
   );
+
+  // Keeps Years of experience in sync with Experience & background for as
+  // long as the user hasn't typed into that field directly — recalculated
+  // during render (React's "adjust state when a dependency changes" pattern)
+  // rather than an effect, since it only needs to react to entries changing.
+  const [prevWorkExperiences, setPrevWorkExperiences] = useState(workExperiences);
+  if (yearsExperienceAuto && workExperiences !== prevWorkExperiences) {
+    setPrevWorkExperiences(workExperiences);
+    const computed = computeYearsFromWorkExperiences(workExperiences);
+    if (computed !== null) setYearsExperience(String(computed));
+  } else if (workExperiences !== prevWorkExperiences) {
+    setPrevWorkExperiences(workExperiences);
+  }
   const [education, setEducation] = useState<EducationEntry[]>(
     initialProfile ? mapEducation(initialProfile.education) : [],
   );
@@ -641,12 +956,15 @@ export default function OnboardingForm({
           if (draft.nationality) setNationality(draft.nationality);
           if (draft.phone) setPhone(draft.phone);
           if (draft.drivingLicense) setDrivingLicense(draft.drivingLicense);
-          if (draft.location) setLocation(draft.location);
+          if (draft.city) setCity(draft.city);
+          if (draft.state) setState(draft.state);
           if (draft.targetRole) setTargetRole(draft.targetRole);
           if (draft.preferredIndustry) setPreferredIndustry(draft.preferredIndustry);
           if (draft.yearsExperience) setYearsExperience(draft.yearsExperience);
           if (draft.professionalSkills?.length) setProfessionalSkills(draft.professionalSkills);
           if (draft.softSkills?.length) setSoftSkills(draft.softSkills);
+          if (draft.otherSkills?.length) setOtherSkills(draft.otherSkills);
+          if (draft.skillSuggestions) setSkillSuggestions(draft.skillSuggestions);
           if (draft.employmentType) setEmploymentType(draft.employmentType);
           if (draft.expectedSalaryMin) setExpectedSalaryMin(draft.expectedSalaryMin);
           if (draft.expectedSalaryMax) setExpectedSalaryMax(draft.expectedSalaryMax);
@@ -728,11 +1046,15 @@ export default function OnboardingForm({
         phone,
         drivingLicense,
         location,
+        city,
+        state,
         targetRole,
         preferredIndustry,
         yearsExperience,
         professionalSkills,
         softSkills,
+        otherSkills,
+        skillSuggestions,
         employmentType,
         expectedSalaryMin,
         expectedSalaryMax,
@@ -800,11 +1122,15 @@ export default function OnboardingForm({
     phone,
     drivingLicense,
     location,
+    city,
+    state,
     targetRole,
     preferredIndustry,
     yearsExperience,
     professionalSkills,
     softSkills,
+    otherSkills,
+    skillSuggestions,
     employmentType,
     expectedSalaryMin,
     expectedSalaryMax,
@@ -862,7 +1188,11 @@ export default function OnboardingForm({
 
   function addProfessionalSkill() {
     const value = professionalSkillInput.trim();
-    if (!value || professionalSkills.includes(value)) {
+    if (
+      !value ||
+      includesSkillCaseInsensitive(professionalSkills, value) ||
+      professionalSkills.length >= MAX_MANUAL_SKILLS
+    ) {
       setProfessionalSkillInput("");
       return;
     }
@@ -883,7 +1213,7 @@ export default function OnboardingForm({
 
   function addSoftSkill() {
     const value = softSkillInput.trim();
-    if (!value || softSkills.includes(value)) {
+    if (!value || includesSkillCaseInsensitive(softSkills, value) || softSkills.length >= MAX_MANUAL_SKILLS) {
       setSoftSkillInput("");
       return;
     }
@@ -899,6 +1229,27 @@ export default function OnboardingForm({
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       addSoftSkill();
+    }
+  }
+
+  function addOtherSkill() {
+    const value = otherSkillInput.trim();
+    if (!value || includesSkillCaseInsensitive(otherSkills, value) || otherSkills.length >= MAX_MANUAL_SKILLS) {
+      setOtherSkillInput("");
+      return;
+    }
+    setOtherSkills((prev) => [...prev, value]);
+    setOtherSkillInput("");
+  }
+
+  function removeOtherSkill(skill: string) {
+    setOtherSkills((prev) => prev.filter((s) => s !== skill));
+  }
+
+  function handleOtherSkillKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addOtherSkill();
     }
   }
 
@@ -923,9 +1274,11 @@ export default function OnboardingForm({
       if (!res.ok) throw new Error(data.error ?? "Couldn't suggest skills.");
       setSkillSuggestions({
         professionalSkills: (data.suggestions?.professionalSkills ?? []).filter(
-          (s: string) => !professionalSkills.includes(s),
+          (s: string) => !includesSkillCaseInsensitive(professionalSkills, s),
         ),
-        softSkills: (data.suggestions?.softSkills ?? []).filter((s: string) => !softSkills.includes(s)),
+        softSkills: (data.suggestions?.softSkills ?? []).filter(
+          (s: string) => !includesSkillCaseInsensitive(softSkills, s),
+        ),
       });
       setSuggestSkillsTokens(typeof data.usage?.total_tokens === "number" ? data.usage.total_tokens : null);
       setSuggestSkillsDurationMs(typeof data.durationMs === "number" ? data.durationMs : null);
@@ -938,14 +1291,18 @@ export default function OnboardingForm({
   }
 
   function addSuggestedProfessionalSkill(skill: string) {
-    setProfessionalSkills((prev) => (prev.includes(skill) ? prev : [...prev, skill]));
+    setProfessionalSkills((prev) =>
+      includesSkillCaseInsensitive(prev, skill) || prev.length >= MAX_MANUAL_SKILLS ? prev : [...prev, skill],
+    );
     setSkillSuggestions((prev) =>
       prev ? { ...prev, professionalSkills: prev.professionalSkills.filter((s) => s !== skill) } : prev,
     );
   }
 
   function addSuggestedSoftSkill(skill: string) {
-    setSoftSkills((prev) => (prev.includes(skill) ? prev : [...prev, skill]));
+    setSoftSkills((prev) =>
+      includesSkillCaseInsensitive(prev, skill) || prev.length >= MAX_MANUAL_SKILLS ? prev : [...prev, skill],
+    );
     setSkillSuggestions((prev) => (prev ? { ...prev, softSkills: prev.softSkills.filter((s) => s !== skill) } : prev));
   }
 
@@ -968,7 +1325,14 @@ export default function OnboardingForm({
       setNationality(profile.nationality ?? "");
       setPhone(profile.phone ?? "");
       setDrivingLicense((profile.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null) ?? "");
-      setLocation(profile.location ?? "");
+      if (profile.location) {
+        const guess = splitLocationGuess(profile.location);
+        setCity(guess.city);
+        setState(guess.state);
+      } else {
+        setCity("");
+        setState("");
+      }
       setTargetRole(profile.targetRole ?? "");
       setYearsExperience(profile.yearsExperience !== null ? String(profile.yearsExperience) : "");
       setProfessionalSkills(profile.professionalSkills);
@@ -1082,10 +1446,12 @@ export default function OnboardingForm({
       });
     }
     if (profile.location) {
-      setLocation((prev) => {
+      setCity((prev) => {
         if (prev.trim()) return prev;
+        const guess = splitLocationGuess(profile.location as string);
         mark();
-        return profile.location as string;
+        setState((prevState) => prevState || guess.state);
+        return guess.city;
       });
     }
     if (profile.targetRole) {
@@ -1105,13 +1471,13 @@ export default function OnboardingForm({
     if (profile.professionalSkills.length > 0) {
       setProfessionalSkills((prev) => {
         mark();
-        return Array.from(new Set([...prev, ...profile.professionalSkills]));
+        return mergeSkillsCaseInsensitive(prev, profile.professionalSkills);
       });
     }
     if (profile.softSkills.length > 0) {
       setSoftSkills((prev) => {
         mark();
-        return Array.from(new Set([...prev, ...profile.softSkills]));
+        return mergeSkillsCaseInsensitive(prev, profile.softSkills);
       });
     }
     if (profile.employmentType) {
@@ -1250,6 +1616,7 @@ export default function OnboardingForm({
 
     setAvatarError(null);
     setAvatarIsAccountDefault(false);
+    setAvatarIsFromResumeSuggestion(false);
     setAvatarLoadFailed(false);
     const reader = new FileReader();
     reader.onload = () => setAvatarUrl(typeof reader.result === "string" ? reader.result : null);
@@ -1260,6 +1627,7 @@ export default function OnboardingForm({
   function clearAvatar() {
     setAvatarUrl(null);
     setAvatarIsAccountDefault(false);
+    setAvatarIsFromResumeSuggestion(false);
     setAvatarError(null);
     if (avatarInputRef.current) avatarInputRef.current.value = "";
   }
@@ -1268,6 +1636,7 @@ export default function OnboardingForm({
     if (!suggestedAvatarUrl) return;
     setAvatarUrl(suggestedAvatarUrl);
     setAvatarIsAccountDefault(false);
+    setAvatarIsFromResumeSuggestion(true);
     setAvatarLoadFailed(false);
     setSuggestedAvatarUrl(null);
   }
@@ -1415,7 +1784,8 @@ export default function OnboardingForm({
   function resetResumeFields() {
     clearResume();
     setFullName("");
-    setLocation("");
+    setCity("");
+    setState("");
     setTargetRole("");
     setYearsExperience("");
     setProfessionalSkills([]);
@@ -1436,7 +1806,9 @@ export default function OnboardingForm({
 
   const formValid =
     fullName.trim().length > 0 &&
-    location.trim().length > 0 &&
+    dateOfBirth.trim().length > 0 &&
+    city.trim().length > 0 &&
+    state.length > 0 &&
     targetRole.trim().length > 0 &&
     isNonNegativeInt(yearsExperience) &&
     professionalSkills.length > 0 &&
@@ -1450,7 +1822,8 @@ export default function OnboardingForm({
   const salaryFilled = isNonNegativeInt(expectedSalaryMin) && isNonNegativeInt(expectedSalaryMax);
   const requiredFieldChecklist = [
     { label: "Full name", done: fullName.trim().length > 0, fieldId: "fullName" },
-    { label: "Location", done: location.trim().length > 0, fieldId: "location" },
+    { label: "Date of birth", done: dateOfBirth.trim().length > 0, fieldId: "dateOfBirth" },
+    { label: "City and state", done: city.trim().length > 0 && state.length > 0, fieldId: "city" },
     { label: "Target role", done: targetRole.trim().length > 0, fieldId: "targetRole" },
     { label: "Years of experience", done: isNonNegativeInt(yearsExperience), fieldId: "yearsExperience" },
     { label: "Professional Skills", done: professionalSkills.length > 0, fieldId: "professionalSkillInput" },
@@ -1559,12 +1932,14 @@ export default function OnboardingForm({
           nationality: nationality.trim() || null,
           phone: phone.trim() || null,
           drivingLicense: drivingLicense || null,
-          location,
+          city,
+          state,
           targetRole,
           preferredIndustry,
           yearsExperience: Number(yearsExperience),
           professionalSkills,
           softSkills,
+          otherSkills,
           employmentType,
           expectedSalaryMin: Number(expectedSalaryMin),
           expectedSalaryMax: Number(expectedSalaryMax),
@@ -1626,8 +2001,8 @@ export default function OnboardingForm({
         setIsEditing(false);
         router.refresh();
       } else {
-        router.push("/jobseeker/dashboard");
         router.refresh();
+        setShowFinishSuccess(true);
       }
       return true;
     } catch (err) {
@@ -1703,7 +2078,7 @@ export default function OnboardingForm({
               </div>
               <button
                 type="button"
-                onClick={clearResume}
+                onClick={() => setShowRemoveResumeConfirm(true)}
                 aria-label="Remove resume"
                 disabled={parsing}
                 className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05] hover:text-[#141B2E] disabled:cursor-not-allowed disabled:opacity-40"
@@ -1730,7 +2105,7 @@ export default function OnboardingForm({
               </div>
               <button
                 type="button"
-                onClick={clearResume}
+                onClick={() => setShowRemoveResumeConfirm(true)}
                 aria-label="Remove resume"
                 className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05] hover:text-[#141B2E]"
               >
@@ -1800,7 +2175,7 @@ export default function OnboardingForm({
           {(resumeFile || restoredResume) && (
             <button
               type="button"
-              onClick={resetResumeFields}
+              onClick={() => setShowResetResumeConfirm(true)}
               disabled={parsing}
               aria-label="Clear resume-filled details"
               className="mt-[8px] h-[38px] w-full whitespace-nowrap rounded-[12px] bg-[#F1F4F8] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
@@ -1885,7 +2260,9 @@ export default function OnboardingForm({
             </div>
           </div>
 
-          {suggestedAvatarUrl && (!avatarUrl || avatarIsAccountDefault) && (
+          {suggestedAvatarUrl &&
+            suggestedAvatarUrl !== avatarUrl &&
+            (!avatarUrl || avatarIsAccountDefault || avatarIsFromResumeSuggestion) && (
             <div className="col-span-full flex items-center gap-[12px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[10px]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -1925,7 +2302,7 @@ export default function OnboardingForm({
               className={inputClass}
             />
           </Field>
-          <Field label="Date of birth (optional)" htmlFor="dateOfBirth">
+          <Field required label="Date of birth" htmlFor="dateOfBirth">
             <DatePicker
               id="dateOfBirth"
               value={dateOfBirth}
@@ -1958,13 +2335,15 @@ export default function OnboardingForm({
             />
           </Field>
           <Field label="Nationality (optional)" htmlFor="nationality">
-            <input
+            <Dropdown
               id="nationality"
-              type="text"
+              label="Nationality"
               value={nationality}
-              onChange={(e) => setNationality(e.target.value)}
-              placeholder="e.g. Malaysian"
-              className={inputClass}
+              options={[{ value: "", label: "Select" }, ...NATIONALITIES.map((n) => ({ value: n, label: n }))]}
+              onChange={setNationality}
+              accent="gold"
+              searchable
+              searchPlaceholder="Search nationalities..."
             />
           </Field>
           <Field label="Email" htmlFor="accountEmail">
@@ -1994,14 +2373,24 @@ export default function OnboardingForm({
               accent="gold"
             />
           </Field>
-          <Field required label="Location" htmlFor="location">
+          <Field required label="City" htmlFor="city">
             <input
-              id="location"
+              id="city"
               type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Petaling Jaya, Selangor"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="e.g. Petaling Jaya"
               className={inputClass}
+            />
+          </Field>
+          <Field required label="State" htmlFor="state">
+            <Dropdown
+              id="state"
+              label="State"
+              value={state}
+              options={[{ value: "" as const, label: "Select state" }, ...MALAYSIA_STATES.map((s) => ({ value: s, label: s }))]}
+              onChange={setState}
+              accent="gold"
             />
           </Field>
           <Field required label="Target role" htmlFor="targetRole">
@@ -2036,10 +2425,31 @@ export default function OnboardingForm({
               min={0}
               step={1}
               value={yearsExperience}
-              onChange={(e) => setYearsExperience(e.target.value)}
+              onChange={(e) => {
+                setYearsExperienceAuto(false);
+                setYearsExperience(e.target.value);
+              }}
               placeholder="e.g. 3"
               className={inputClass}
             />
+            {yearsExperienceAuto && workExperiences.length > 0 ? (
+              <p className="text-xs text-[#9AA3B2]">Auto-calculated from Experience &amp; background below.</p>
+            ) : (
+              !yearsExperienceAuto &&
+              computeYearsFromWorkExperiences(workExperiences) !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setYearsExperienceAuto(true);
+                    const computed = computeYearsFromWorkExperiences(workExperiences);
+                    if (computed !== null) setYearsExperience(String(computed));
+                  }}
+                  className="text-left text-xs text-brand-gold-dark hover:opacity-70"
+                >
+                  Recalculate from Experience &amp; background
+                </button>
+              )
+            )}
           </Field>
           <div className={`col-span-full ${gradientFrameClass("gold")}`}>
             <div className="flex flex-col gap-[12px] rounded-[19px] bg-white p-[22px]">
@@ -2170,6 +2580,39 @@ export default function OnboardingForm({
                 </div>
               )}
             </Field>
+
+            <Field label="Other Skills (optional)" htmlFor="otherSkillInput">
+              <input
+                id="otherSkillInput"
+                type="text"
+                value={otherSkillInput}
+                onChange={(e) => setOtherSkillInput(e.target.value)}
+                onKeyDown={handleOtherSkillKeyDown}
+                onBlur={addOtherSkill}
+                placeholder="Anything else relevant, not core to your target role — press Enter"
+                className={inputClass}
+              />
+              {otherSkills.length > 0 && (
+                <div className="mt-[10px] flex flex-wrap gap-[6px]">
+                  {otherSkills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="flex items-center gap-[6px] rounded-full bg-[#FFE9A6] py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
+                    >
+                      {skill}
+                      <button
+                        type="button"
+                        onClick={() => removeOtherSkill(skill)}
+                        aria-label={`Remove ${skill}`}
+                        className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-[#141B2E]/60 hover:bg-black/[0.08] hover:text-[#141B2E]"
+                      >
+                        <XIcon className="h-[9px] w-[9px]" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Field>
           </div>
           </div>
           </fieldset>
@@ -2193,6 +2636,16 @@ export default function OnboardingForm({
               value={employmentType}
               options={EMPLOYMENT_TYPES.map(({ value, label }) => ({ value, label }))}
               onChange={setEmploymentType}
+              accent="gold"
+            />
+          </Field>
+          <Field required label="Work arrangement" htmlFor="workArrangement">
+            <Dropdown
+              id="workArrangement"
+              label="Work arrangement"
+              value={workArrangement}
+              options={WORK_ARRANGEMENTS.map(({ value, label }) => ({ value, label }))}
+              onChange={setWorkArrangement}
               accent="gold"
             />
           </Field>
@@ -2221,16 +2674,13 @@ export default function OnboardingForm({
             />
           </Field>
 
-          <Field required label="Work arrangement" htmlFor="workArrangement">
-            <Dropdown
-              id="workArrangement"
-              label="Work arrangement"
-              value={workArrangement}
-              options={WORK_ARRANGEMENTS.map(({ value, label }) => ({ value, label }))}
-              onChange={setWorkArrangement}
-              accent="gold"
-            />
-          </Field>
+          <SalaryRangeSlider
+            min={Number(expectedSalaryMin) || 0}
+            max={Number(expectedSalaryMax) || 0}
+            onMinChange={(value) => setExpectedSalaryMin(String(value))}
+            onMaxChange={(value) => setExpectedSalaryMax(String(value))}
+          />
+
           <Field required label="Work authorization" htmlFor="workAuthorization">
             <Dropdown
               id="workAuthorization"
@@ -2691,6 +3141,92 @@ export default function OnboardingForm({
               </button>
             </div>
           </>
+        </Modal>
+      )}
+
+      {showRemoveResumeConfirm && (
+        <Modal ariaLabel="Remove this resume?" onClose={() => setShowRemoveResumeConfirm(false)}>
+          <h2 className="text-lg font-semibold text-[#141B2E]">Remove this resume?</h2>
+          <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
+            You&rsquo;ll need to upload it again (or fill things in yourself) if you change your mind
+            later — anything it already autofilled will stay put, though.
+          </p>
+          <div className="mt-[18px] flex flex-col gap-[8px]">
+            <button
+              type="button"
+              onClick={() => {
+                clearResume();
+                setShowRemoveResumeConfirm(false);
+              }}
+              className="flex h-[38px] items-center justify-center rounded-full border border-red-200 text-sm text-red-500 hover:bg-red-50"
+            >
+              Yes, remove it
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRemoveResumeConfirm(false)}
+              className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
+            >
+              Keep it
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showResetResumeConfirm && (
+        <Modal ariaLabel="Reset resume-filled details?" onClose={() => setShowResetResumeConfirm(false)}>
+          <h2 className="text-lg font-semibold text-[#141B2E]">Reset resume-filled details?</h2>
+          <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
+            This clears your resume along with everything it autofilled — name, skills, work
+            experience, education, and more. This can&rsquo;t be undone.
+          </p>
+          <div className="mt-[18px] flex flex-col gap-[8px]">
+            <button
+              type="button"
+              onClick={() => {
+                resetResumeFields();
+                setShowResetResumeConfirm(false);
+              }}
+              className="flex h-[38px] items-center justify-center rounded-full border border-red-200 text-sm text-red-500 hover:bg-red-50"
+            >
+              Yes, reset it
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowResetResumeConfirm(false)}
+              className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
+            >
+              Keep it
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showFinishSuccess && (
+        <Modal
+          ariaLabel="Profile complete!"
+          onClose={() => {
+            setShowFinishSuccess(false);
+            router.push("/jobseeker/dashboard");
+          }}
+        >
+          <h2 className="text-lg font-semibold text-[#141B2E]">You&rsquo;re all set! 🎉</h2>
+          <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
+            Thank you so much for taking the time to fill in all your details — your profile is
+            looking great! Let&rsquo;s get you to your dashboard so you can start exploring jobs.
+          </p>
+          <div className="mt-[20px] flex flex-col gap-[8px]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowFinishSuccess(false);
+                router.push("/jobseeker/dashboard");
+              }}
+              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90"
+            >
+              Take me to my dashboard
+            </button>
+          </div>
         </Modal>
       )}
 

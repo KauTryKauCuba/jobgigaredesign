@@ -2,7 +2,50 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobApplications, jobPostings, jobseekerProfiles } from "@/lib/db/schema";
+import { getApplicationsForJobseeker, getJobseekerProfileId } from "@/lib/job-applications";
+import { isLanguageArray, isOptionalInt, isOptionalString } from "@/lib/job-posting-validation";
+import { screeningEligibilityCheck } from "@/lib/matching";
 import { getSession } from "@/lib/session";
+
+// Powers the FloatingDemoWidget's jobseeker-side stat questions ("how many
+// jobs have I applied to", "do I have any interviews") — the jobseeker
+// applications page itself reads getApplicationsForJobseeker directly as a
+// server component, so this GET only exists for that client-side widget.
+export async function GET() {
+  const session = await getSession();
+  if (!session || session.role !== "jobseeker") {
+    return NextResponse.json({ error: "Not signed in as a jobseeker." }, { status: 401 });
+  }
+
+  const profileId = await getJobseekerProfileId(session.userId);
+  if (!profileId) return NextResponse.json({ applications: [] });
+
+  const rows = await getApplicationsForJobseeker(profileId);
+  const applications = rows.map((r) => ({
+    jobPostingId: r.posting.id,
+    jobPostingTitle: r.posting.title,
+    jobPostingSlug: r.posting.slug,
+    companyName: r.companyName,
+    status: r.application.status,
+    appliedAt: r.application.appliedAt,
+    interviewDetails: r.application.interviewDetails,
+  }));
+
+  return NextResponse.json({ applications });
+}
+
+function isCustomAnswerArray(value: unknown): value is { questionId: string; answer: boolean }[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (v) =>
+        v &&
+        typeof v === "object" &&
+        typeof (v as Record<string, unknown>).questionId === "string" &&
+        typeof (v as Record<string, unknown>).answer === "boolean",
+    )
+  );
+}
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -25,18 +68,62 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  const { jobPostingId } = (body ?? {}) as Record<string, unknown>;
+  const { jobPostingId, screeningAnswers } = (body ?? {}) as Record<string, unknown>;
   if (typeof jobPostingId !== "string" || !jobPostingId) {
     return NextResponse.json({ error: "Missing job posting." }, { status: 400 });
   }
 
   const [posting] = await db
-    .select({ id: jobPostings.id, status: jobPostings.status })
+    .select({
+      id: jobPostings.id,
+      status: jobPostings.status,
+      screeningEnabled: jobPostings.screeningEnabled,
+      minYearsExperience: jobPostings.minYearsExperience,
+      minQualificationTier: jobPostings.minQualificationTier,
+      drivingLicense: jobPostings.drivingLicense,
+      languages: jobPostings.languages,
+      workAuthorizations: jobPostings.workAuthorizations,
+      customScreeningQuestions: jobPostings.customScreeningQuestions,
+    })
     .from(jobPostings)
     .where(eq(jobPostings.id, jobPostingId))
     .limit(1);
   if (!posting || posting.status !== "active") {
     return NextResponse.json({ error: "This posting isn't accepting applications." }, { status: 400 });
+  }
+
+  // Only trusted when the posting actually has screening on — a jobseeker
+  // (or a stale client) can't force eligibility to be computed/stored for a
+  // posting the employer never gated.
+  let storedAnswers: {
+    yearsExperience: number | null;
+    qualificationTier: string | null;
+    drivingLicense: string | null;
+    languages: { language: string; level: string }[];
+    workAuthorization: string | null;
+    customAnswers: { questionId: string; answer: boolean }[];
+  } | null = null;
+  let eligible: boolean | null = null;
+  if (posting.screeningEnabled) {
+    const raw = (screeningAnswers ?? {}) as Record<string, unknown>;
+    const yearsExperience = isOptionalInt(raw.yearsExperience) ? (raw.yearsExperience ?? null) : null;
+    const qualificationTier = isOptionalString(raw.qualificationTier) ? (raw.qualificationTier ?? null) : null;
+    const drivingLicense = isOptionalString(raw.drivingLicense) ? (raw.drivingLicense ?? null) : null;
+    const languages = isLanguageArray(raw.languages) ? raw.languages : [];
+    const workAuthorization = isOptionalString(raw.workAuthorization) ? (raw.workAuthorization ?? null) : null;
+    const customAnswers = isCustomAnswerArray(raw.customAnswers) ? raw.customAnswers : [];
+    storedAnswers = { yearsExperience, qualificationTier, drivingLicense, languages, workAuthorization, customAnswers };
+    eligible = screeningEligibilityCheck(
+      {
+        minYearsExperience: posting.minYearsExperience,
+        minQualificationTier: posting.minQualificationTier,
+        drivingLicense: posting.drivingLicense,
+        languages: posting.languages,
+        workAuthorizations: posting.workAuthorizations,
+        customQuestions: posting.customScreeningQuestions,
+      },
+      storedAnswers,
+    ).eligible;
   }
 
   const [existing] = await db
@@ -50,6 +137,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, alreadyApplied: true });
   }
 
-  await db.insert(jobApplications).values({ jobPostingId, jobseekerProfileId: profile.id });
+  await db.insert(jobApplications).values({
+    jobPostingId,
+    jobseekerProfileId: profile.id,
+    screeningAnswers: storedAnswers,
+    screeningEligible: eligible,
+  });
   return NextResponse.json({ ok: true });
 }

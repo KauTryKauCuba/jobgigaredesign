@@ -51,29 +51,53 @@ export async function GET() {
   const criteria = withCriteriaDefaults(profile.smartMatchCriteria);
 
   const results: MatchResult[] = candidates.map((c) => {
-    const { eligible, reasons } = hardFilterCheck({
-      requiredWorkAuthorizations: c.requiredWorkAuthorizations,
-      candidateWorkAuthorization: c.applicantWorkAuthorization,
-      requiredDrivingLicense: c.requiredDrivingLicense,
-      candidateDrivingLicense: c.applicantDrivingLicense,
-      enabledWorkAuthorization: criteria.workAuthorization,
-      enabledDrivingLicense: criteria.drivingLicense,
-    });
+    // A posting with screening on has an explicit, applicant-given answer
+    // to check against — trust it outright in both directions rather than
+    // re-deriving eligibility from whatever the profile happens to say
+    // today (which can drift after the applicant answered screening, e.g.
+    // editing their profile's work authorization later). `screeningEligible`
+    // is null when screening wasn't required for this application, which
+    // falls through to the profile-derived hard filter below unchanged.
+    const { eligible, reasons } =
+      c.screeningEligible === false
+        ? { eligible: false, reasons: ["Doesn't meet this posting's screening requirements"] }
+        : c.screeningEligible === true
+          ? { eligible: true, reasons: [] }
+          : hardFilterCheck({
+              requiredWorkAuthorizations: c.requiredWorkAuthorizations,
+              candidateWorkAuthorization: c.applicantWorkAuthorization,
+              requiredDrivingLicense: c.requiredDrivingLicense,
+              candidateDrivingLicense: c.applicantDrivingLicense,
+              enabledWorkAuthorization: criteria.workAuthorization,
+              enabledDrivingLicense: criteria.drivingLicense,
+            });
 
+    // Employers and jobseekers file traits like "Communication" or
+    // "Leadership" inconsistently — one side's required *skill* is the
+    // other's *soft skill* tag, or vice versa. Matching each bucket only
+    // against its same-named counterpart produces false negatives for
+    // exactly this case, so all three skill components check the
+    // candidate's combined skills + soft skills pool, same as
+    // niceToHaveSkills already did.
+    const applicantAllSkills = [...c.applicantSkills, ...c.applicantSoftSkills, ...c.applicantOtherSkills];
     const breakdown: MatchBreakdown = {
-      skills: skillsOverlapScore(c.requiredSkills, c.applicantSkills),
-      softSkills: skillsOverlapScore(c.postingSoftSkills, c.applicantSoftSkills),
-      niceToHaveSkills: skillsOverlapScore(c.niceToHaveSkills, [...c.applicantSkills, ...c.applicantSoftSkills]),
+      skills: skillsOverlapScore(c.requiredSkills, applicantAllSkills),
+      softSkills: skillsOverlapScore(c.postingSoftSkills, applicantAllSkills),
+      niceToHaveSkills: skillsOverlapScore(c.niceToHaveSkills, applicantAllSkills),
       experience: experienceFitScore(c.minYearsExperience, c.applicantYearsExperience),
       industry: industryMatchScore(c.postingIndustry, c.applicantPreferredIndustry),
       workArrangement: workArrangementMatchScore(c.postingWorkArrangement, c.applicantWorkArrangement),
       employmentType: employmentTypeMatchScore(c.postingEmploymentType, c.applicantEmploymentType),
     };
 
-    // Ineligible candidates still get a score (so the employer can see how
-    // close they'd otherwise be) but it's zeroed and sorted last, since a
-    // hard-filter failure means they can't actually be hired for this role.
-    const score = eligible ? weightedScore(breakdown, criteria) : 0;
+    // Job-fit score (skills/experience/etc.) and screening eligibility are
+    // two separate questions — a candidate can be a strong skills fit but
+    // still fail a hard screening requirement (e.g. minimum education), or
+    // vice versa. Keeping the real weightedScore here even when ineligible
+    // lets the UI show both independently instead of a misleading 0%;
+    // callers that need "who can actually be hired" already filter on
+    // `eligible` directly rather than relying on the score being zeroed.
+    const score = weightedScore(breakdown, criteria);
 
     return {
       applicationId: c.applicationId,
@@ -90,7 +114,10 @@ export async function GET() {
     };
   });
 
-  results.sort((a, b) => b.score - a.score);
+  // Eligible candidates first (score alone no longer implies eligibility
+  // now that ineligible candidates keep their real job-fit score), then by
+  // score within each group.
+  results.sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score);
 
   return NextResponse.json({ results });
 }

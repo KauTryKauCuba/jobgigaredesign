@@ -1,0 +1,1 @@
+ALTER TABLE "jobseeker_profiles" ADD COLUMN "other_skills" text[] DEFAULT '{}' NOT NULL;

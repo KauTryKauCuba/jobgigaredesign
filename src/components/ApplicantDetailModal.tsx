@@ -422,7 +422,7 @@ export default function ApplicantDetailModal({
                     {applicant.applicantSkills.map((skill) => (
                       <span
                         key={skill}
-                        className="rounded-full bg-[#E6F9FA] px-[10px] py-[4px] text-xs text-brand-teal-dark"
+                        className="rounded-full bg-brand-teal-dark px-[10px] py-[4px] text-xs text-white"
                       >
                         {skill}
                       </span>
@@ -545,7 +545,7 @@ export default function ApplicantDetailModal({
                       {fullProfile.softSkills.map((skill) => (
                         <span
                           key={skill}
-                          className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-xs text-[#141B2E]"
+                          className="rounded-full bg-brand-teal-dark px-[10px] py-[4px] text-xs text-white"
                         >
                           {skill}
                         </span>

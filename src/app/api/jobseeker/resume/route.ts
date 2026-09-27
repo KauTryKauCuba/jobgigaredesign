@@ -192,7 +192,7 @@ export async function POST(request: Request) {
       .set({
         avatarUrl: avatarUrl.value ?? null,
         fullName: fullName.value ?? profile.fullName,
-        dateOfBirth: dateOfBirth.value ?? null,
+        dateOfBirth: dateOfBirth.value ?? profile.dateOfBirth,
         gender: gender.value ?? null,
         maritalStatus: maritalStatus.value ?? null,
         nationality: nationality.value ?? null,

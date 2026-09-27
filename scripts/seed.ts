@@ -81,12 +81,6 @@ function randomFullName() {
   return `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
 }
 
-const CITIES = [
-  "Kuala Lumpur", "Petaling Jaya", "Subang Jaya", "Shah Alam", "George Town, Penang",
-  "Johor Bahru", "Ipoh", "Malacca City", "Kota Kinabalu", "Kuching",
-  "Seremban", "Kuantan", "Alor Setar", "Miri", "Cyberjaya",
-] as const;
-
 // For employerProfiles' structured address — city + its state, and a street
 // name to build a plausible addressLine1 from.
 const COMPANY_ADDRESSES = [
@@ -744,6 +738,7 @@ async function main() {
     const email = `jobseeker${i + 1}@${SEED_EMAIL_DOMAIN}`;
     const yearsExperience = randInt(0, 15);
     const salaryMin = randInt(2500, 8000);
+    const jobseekerAddress = pick(COMPANY_ADDRESSES);
 
     const [user] = await db
       .insert(users)
@@ -762,7 +757,9 @@ async function main() {
         nationality: "Malaysian",
         phone: randomPhone(),
         drivingLicense: pick(DRIVING_LICENSES),
-        location: pick(CITIES),
+        location: `${jobseekerAddress.city}, ${jobseekerAddress.state}`,
+        city: jobseekerAddress.city,
+        state: jobseekerAddress.state,
         targetRole: pick(ROLE_POOLS[industry]),
         preferredIndustry: industry,
         yearsExperience,

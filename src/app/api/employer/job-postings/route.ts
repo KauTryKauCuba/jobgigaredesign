@@ -3,51 +3,28 @@ import { db } from "@/lib/db";
 import { jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
 import { generateUniqueJobPostingSlug, getJobPostingsForEmployer } from "@/lib/job-postings";
+import {
+  DRIVING_LICENSES,
+  EMPLOYMENT_TYPES,
+  WORK_ARRANGEMENTS,
+  WORK_AUTHORIZATIONS,
+  isCustomQuestionArray,
+  isLanguageArray,
+  isNonEmptyString,
+  isOptionalInt,
+  isOptionalString,
+  isSkillSuggestions,
+  isStringArray,
+} from "@/lib/job-posting-validation";
 import { getSession } from "@/lib/session";
 import { INDUSTRIES } from "@/lib/industries";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 
-const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"] as const;
-const WORK_ARRANGEMENTS = ["remote", "hybrid", "onsite"] as const;
-const WORK_AUTHORIZATIONS = ["citizen", "permanent_resident", "work_pass_holder", "needs_sponsorship"] as const;
-const DRIVING_LICENSES = ["b2", "b", "d", "da", "e"] as const;
-const LANGUAGE_LEVELS = ["basic", "conversational", "fluent", "native"] as const;
 // Only these two are reachable from Post a Job itself — pending (submit for
 // review) or draft (save for later). The other five states in
 // job_posting_status are only reached via the (not yet built) superadmin
 // review flow or employer actions on an existing posting (close, etc.).
 const CREATABLE_STATUSES = ["draft", "pending"] as const;
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isOptionalString(value: unknown): value is string | null | undefined {
-  return value === undefined || value === null || typeof value === "string";
-}
-
-function isOptionalInt(value: unknown): value is number | null | undefined {
-  return value === undefined || value === null || (typeof value === "number" && Number.isInteger(value));
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((v) => typeof v === "string");
-}
-
-type LanguageReq = { language: string; level: (typeof LANGUAGE_LEVELS)[number] };
-
-function isLanguageArray(value: unknown): value is LanguageReq[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (v) =>
-        v &&
-        typeof v === "object" &&
-        isNonEmptyString((v as Record<string, unknown>).language) &&
-        (LANGUAGE_LEVELS as readonly string[]).includes((v as Record<string, unknown>).level as string),
-    )
-  );
-}
 
 export async function GET() {
   const session = await getSession();
@@ -107,7 +84,16 @@ export async function POST(request: Request) {
     languages,
     workAuthorizations,
     drivingLicense,
+    screeningEnabled,
+    customScreeningQuestions,
+    skillSuggestions,
+    askMinYearsExperience,
+    askMinQualificationTier,
+    askDrivingLicense,
+    askLanguages,
+    askWorkAuthorizations,
   } = (body ?? {}) as Record<string, unknown>;
+  const screening = screeningEnabled === true;
 
   if (!(CREATABLE_STATUSES as readonly string[]).includes(status as string)) {
     return NextResponse.json({ error: "Invalid status." }, { status: 400 });
@@ -188,6 +174,12 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json({ error: "Invalid driving license." }, { status: 400 });
   }
+  if (customScreeningQuestions !== undefined && !isCustomQuestionArray(customScreeningQuestions)) {
+    return NextResponse.json({ error: "Invalid custom screening questions." }, { status: 400 });
+  }
+  if (skillSuggestions !== undefined && !isSkillSuggestions(skillSuggestions)) {
+    return NextResponse.json({ error: "Invalid skill suggestions." }, { status: 400 });
+  }
   if (!isOptionalString(postingName)) {
     return NextResponse.json({ error: "Invalid posting name." }, { status: 400 });
   }
@@ -234,15 +226,28 @@ export async function POST(request: Request) {
       skills: isStringArray(skills) ? skills : [],
       softSkills: isStringArray(softSkills) ? softSkills : [],
       niceToHaveSkills: isStringArray(niceToHaveSkills) ? niceToHaveSkills : [],
-      minYearsExperience: (minYearsExperience as number | null) ?? null,
-      minQualificationTier: isNonEmptyString(minQualificationTier) ? minQualificationTier : null,
-      languages: isLanguageArray(languages) ? languages : [],
-      workAuthorizations: isStringArray(workAuthorizations)
-        ? (workAuthorizations as (typeof WORK_AUTHORIZATIONS)[number][])
-        : [],
-      drivingLicense: isNonEmptyString(drivingLicense)
+      // Authoritative: even if the client sent stale requirement values
+      // alongside screeningEnabled: false, they're dropped here so a
+      // posting that isn't screening-gated can never end up asking
+      // applicants anything.
+      minYearsExperience: screening ? ((minYearsExperience as number | null) ?? null) : null,
+      minQualificationTier: screening && isNonEmptyString(minQualificationTier) ? minQualificationTier : null,
+      languages: screening && isLanguageArray(languages) ? languages : [],
+      workAuthorizations:
+        screening && isStringArray(workAuthorizations)
+          ? (workAuthorizations as (typeof WORK_AUTHORIZATIONS)[number][])
+          : [],
+      drivingLicense: screening && isNonEmptyString(drivingLicense)
         ? (drivingLicense as (typeof DRIVING_LICENSES)[number])
         : null,
+      screeningEnabled: screening,
+      customScreeningQuestions: screening && isCustomQuestionArray(customScreeningQuestions) ? customScreeningQuestions : [],
+      askMinYearsExperience: askMinYearsExperience !== false,
+      askMinQualificationTier: askMinQualificationTier !== false,
+      askDrivingLicense: askDrivingLicense !== false,
+      askLanguages: askLanguages !== false,
+      askWorkAuthorizations: askWorkAuthorizations !== false,
+      skillSuggestions: isSkillSuggestions(skillSuggestions) ? skillSuggestions : null,
     })
     .returning();
 

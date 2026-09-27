@@ -1,0 +1,1 @@
+ALTER TABLE "job_postings" ADD COLUMN "custom_screening_questions" jsonb DEFAULT '[]'::jsonb NOT NULL;

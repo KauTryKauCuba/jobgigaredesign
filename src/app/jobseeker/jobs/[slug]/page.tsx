@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import JobPostingDetailView from "@/components/JobPostingDetailView";
 import { getAuthUser } from "@/lib/auth-user";
-import { getActiveJobPostingBySlug } from "@/lib/job-postings";
+import { getActiveJobPostingBySlug, stripCustomQuestionAnswers } from "@/lib/job-postings";
 import { getJobseekerProfile } from "@/lib/jobseeker-profile";
 import {
   employmentTypeMatchScore,
@@ -51,13 +51,17 @@ export default async function JobPostingDetailPage({ params }: { params: Promise
           requiredDrivingLicense: posting.drivingLicense,
           candidateDrivingLicense: profile.drivingLicense,
         });
+        // Employers and jobseekers file traits like "Communication" or
+        // "Leadership" inconsistently — one side's required skill is the
+        // other's soft skill tag, or vice versa — so all three skill
+        // components check the candidate's combined pool rather than only
+        // their same-named counterpart bucket. Mirrors the employer-side fix
+        // in src/app/api/employer/applicants/matches/route.ts.
+        const profileAllSkills = [...profile.professionalSkills, ...profile.softSkills, ...profile.otherSkills];
         const breakdown: MatchBreakdown = {
-          skills: skillsOverlapScore(posting.skills, profile.professionalSkills),
-          softSkills: skillsOverlapScore(posting.softSkills, profile.softSkills),
-          niceToHaveSkills: skillsOverlapScore(posting.niceToHaveSkills, [
-            ...profile.professionalSkills,
-            ...profile.softSkills,
-          ]),
+          skills: skillsOverlapScore(posting.skills, profileAllSkills),
+          softSkills: skillsOverlapScore(posting.softSkills, profileAllSkills),
+          niceToHaveSkills: skillsOverlapScore(posting.niceToHaveSkills, profileAllSkills),
           experience: experienceFitScore(posting.minYearsExperience, profile.yearsExperience),
           industry: industryMatchScore(posting.industry, profile.preferredIndustry),
           workArrangement: workArrangementMatchScore(posting.workArrangement, profile.workArrangement),
@@ -76,7 +80,7 @@ export default async function JobPostingDetailPage({ params }: { params: Promise
     <JobPostingDetailView
       authUser={authUser}
       resume={resume}
-      posting={JSON.parse(JSON.stringify(posting))}
+      posting={JSON.parse(JSON.stringify(stripCustomQuestionAnswers(posting)))}
       companyName={row.companyName}
       companyLogoUrl={row.companyLogoUrl}
       match={match}

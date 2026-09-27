@@ -56,6 +56,42 @@ body {
   display: none;
 }
 
+/* Recolors a native scrollbar to match the surrounding form's accent (teal
+   for employer, gold for jobseeker) and thins it to about half a typical
+   "thin" scrollbar's width — for popovers like Dropdown's option list. */
+.scrollbar-thin-teal,
+.scrollbar-thin-gold {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin-teal {
+  scrollbar-color: var(--color-brand-teal-dark) transparent;
+}
+
+.scrollbar-thin-gold {
+  scrollbar-color: var(--color-brand-gold-dark) transparent;
+}
+
+.scrollbar-thin-teal::-webkit-scrollbar,
+.scrollbar-thin-gold::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin-teal::-webkit-scrollbar-track,
+.scrollbar-thin-gold::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin-teal::-webkit-scrollbar-thumb {
+  background-color: var(--color-brand-teal-dark);
+  border-radius: 999px;
+}
+
+.scrollbar-thin-gold::-webkit-scrollbar-thumb {
+  background-color: var(--color-brand-gold-dark);
+  border-radius: 999px;
+}
+
 @media (max-width: 1440px) {
   .shell {
     padding-inline: 9%;
@@ -544,6 +580,26 @@ body {
   }
   .poster-teaser-poster {
     opacity: 0;
+  }
+}
+
+/* Poster Generator's "generating" progress bar — indeterminate, since real
+   Seedream generation time isn't known in advance (unlike the old fixed-delay
+   fake progress this replaced). A bar sweeps back and forth. */
+@keyframes poster-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.poster-progress-indeterminate {
+  animation: poster-progress-indeterminate 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .poster-progress-indeterminate {
+    animation: none;
   }
 }
 

@@ -435,6 +435,104 @@
       "when": 1790283545283,
       "tag": "0061_amazing_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1790344071154,
+      "tag": "0062_abnormal_bill_hollister",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1790344957104,
+      "tag": "0063_lovely_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1790392657016,
+      "tag": "0064_dapper_giant_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1790393376005,
+      "tag": "0065_absent_sinister_six",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1790401054564,
+      "tag": "0066_old_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790401882469,
+      "tag": "0067_fancy_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1790408884532,
+      "tag": "0068_wealthy_punisher",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1790409098320,
+      "tag": "0069_petite_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1790413734869,
+      "tag": "0070_cynical_silver_centurion",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1790414605225,
+      "tag": "0071_confused_madelyne_pryor",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1790423125591,
+      "tag": "0072_smiling_captain_cross",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790424042308,
+      "tag": "0073_clammy_killmonger",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1790425487862,
+      "tag": "0074_bumpy_bug",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1790426771838,
+      "tag": "0075_glorious_slipstream",
+      "breakpoints": true
     }
   ]
 }

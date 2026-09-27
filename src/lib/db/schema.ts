@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, doublePrecision } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["employer", "jobseeker"]);
 
@@ -226,7 +226,7 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
     .references(() => users.id),
   avatarUrl: text("avatar_url"),
   fullName: text("full_name").notNull(),
-  dateOfBirth: text("date_of_birth"),
+  dateOfBirth: text("date_of_birth").notNull(),
   gender: genderEnum("gender"),
   maritalStatus: maritalStatusEnum("marital_status"),
   nationality: text("nationality"),
@@ -238,7 +238,14 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
   resumeUrl: text("resume_url"),
   resumeFileName: text("resume_file_name"),
   resumeFileSize: integer("resume_file_size"),
+  // `location` stays the "City, State" display string (kept for the many
+  // existing reads of it, e.g. ApplicantDetailModal), auto-derived from
+  // city/state — the jobseeker no longer edits it directly. Country isn't
+  // stored since this app is Malaysia-only, same assumption MALAYSIA_STATES
+  // already makes everywhere else.
   location: text("location").notNull(),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
   targetRole: text("target_role").notNull(),
   targetOccupationCode: text("target_occupation_code"),
   // One of INDUSTRIES (src/lib/industries.ts) — required, matching
@@ -251,6 +258,10 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
   // the new split from a single Skills field into two categories.
   professionalSkills: text("skills").array().notNull(),
   softSkills: text("soft_skills").array().notNull().default([]),
+  // Mirrors jobPostings.niceToHaveSkills on the jobseeker side — extra skills
+  // that aren't core to the target role but are still relevant, so
+  // niceToHaveSkills matching isn't purely one-directional (posting-only).
+  otherSkills: text("other_skills").array().notNull().default([]),
   employmentType: text("employment_type").notNull(),
   expectedSalaryMin: integer("expected_salary_min").notNull(),
   expectedSalaryMax: integer("expected_salary_max").notNull(),
@@ -357,6 +368,8 @@ export const aiUsageFeatureEnum = pgEnum("ai_usage_feature", [
   "resume_parse",
   "skill_suggestion",
   "match_scoring",
+  "cover_letter",
+  "poster_generation",
 ]);
 
 // job_postings — finalized 7-state pipeline (see the design memory this was
@@ -428,6 +441,41 @@ export const jobPostings = pgTable("job_postings", {
     .default([]),
   workAuthorizations: workAuthorizationEnum("work_authorizations").array().notNull().default([]),
   drivingLicense: drivingLicenseEnum("driving_license"),
+  // Master switch for the fields above — when false, applying stays a
+  // one-click action and a jobseeker is never asked to answer any of them,
+  // regardless of what's stored in those columns (the API clears them on
+  // save when this is off, but this flag is the authoritative gate).
+  screeningEnabled: boolean("screening_enabled").notNull().default(false),
+  // Per-requirement "ask this" toggles — stored independently of whether
+  // the requirement column above actually has a value, since an employer
+  // can tick "Ask this" before ever filling the field in (or leave it
+  // ticked with the field still blank). Deriving this from "is the value
+  // non-null" instead loses the toggle's own state the moment the field
+  // is empty, which is exactly the case a plain "did I check the box" flag
+  // needs to survive.
+  askMinYearsExperience: boolean("ask_min_years_experience").notNull().default(true),
+  askMinQualificationTier: boolean("ask_min_qualification_tier").notNull().default(true),
+  askDrivingLicense: boolean("ask_driving_license").notNull().default(true),
+  askLanguages: boolean("ask_languages").notNull().default(true),
+  askWorkAuthorizations: boolean("ask_work_authorizations").notNull().default(true),
+  // Free-form yes/no questions beyond the structured fields above (e.g.
+  // "Willing to work weekends?") — kept auto-scorable like the rest of
+  // screening rather than open text, so it still fits hardFilterCheck's
+  // pass/fail model instead of needing manual review. Only used when
+  // screeningEnabled is true, same as the fields above.
+  customScreeningQuestions: jsonb("custom_screening_questions")
+    .$type<{ id: string; question: string; requiredAnswer: boolean }[]>()
+    .notNull()
+    .default([]),
+  // AI-generated skill suggestions the employer hasn't reviewed yet (the
+  // dashed "+ skill" chips on the post-a-job form's Skills card) — saved
+  // with the posting itself, not just in the browser, so they're still
+  // there when this draft is reopened later, from any device.
+  skillSuggestions: jsonb("skill_suggestions").$type<{
+    professionalSkills: string[];
+    softSkills: string[];
+    niceToHaveSkills: string[];
+  } | null>(),
   benefits: text("benefits"),
   status: jobPostingStatusEnum("status").notNull().default("draft"),
   rejectionReason: text("rejection_reason"),
@@ -447,21 +495,45 @@ export const jobPostings = pgTable("job_postings", {
   // Separate from `status` so an employer can stop taking new applications
   // while keeping the existing pipeline (interviews, offers) alive.
   acceptsNewApplications: boolean("accepts_new_applications").notNull().default(true),
-  // Social-media poster (Poster Generator page) — same "stored as a data URL"
-  // convention as avatarUrl/logoUrl/resumeUrl above. `posterGeneratingSince`
-  // is the wall-clock anchor for the fake generation delay: whether the
-  // browser tab stayed open the whole time or was reopened later, "is it
-  // done yet" is always `now - posterGeneratingSince >= POSTER_TARGET_MS`,
-  // never a live timer that can't survive navigation. Null once posterUrl is
-  // set. Only one posting per employer may have this set at a time — enforced
-  // in the API route, not the schema.
+  // Social-media poster (Poster Generator page), generated by Google's
+  // Gemini 3 Pro Image ("Nano Banana Pro") via icreat.ai — same "stored as
+  // a data URL" convention as
+  // avatarUrl/logoUrl/resumeUrl above. `posterGeneratingSince` marks when the
+  // async generation task was submitted (surfaced in the UI, and used as a
+  // staleness cutoff if a task never resolves); `posterTaskId` is icreat's
+  // task id, polled via /v1/task/result until it reports SUCCEEDED. Both are
+  // null once posterUrl is set. Only one posting per employer may have these
+  // set at a time — enforced in the API route, not the schema.
   posterUrl: text("poster_url"),
   posterGeneratingSince: timestamp("poster_generating_since", { withTimezone: true }),
+  posterTaskId: text("poster_task_id"),
+  // Style requested for the in-flight generation — carried from /poster/start
+  // to /poster/status (which can't otherwise know it) so it can be recorded
+  // on the job_posting_posters history row. Null once resolved.
+  posterPendingStyle: text("poster_pending_style"),
+  // `posterUrl` above stays as a "currently displayed" convenience mirror of
+  // the latest row in job_posting_posters — every successful generation also
+  // gets its own row there so past posters remain browsable/downloadable
+  // instead of being overwritten.
   // When the posting auto-closes — either a deadline or when hiresConfirmed
   // reaches openingsTotal.
   expiryDate: timestamp("expiry_date", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// job_posting_posters — one row per successfully generated poster image, so
+// employers can browse/download previous posters instead of only ever
+// seeing the latest one (which jobPostings.posterUrl still mirrors for
+// backward compatibility / cheap "does this posting have a poster" checks).
+export const jobPostingPosters = pgTable("job_posting_posters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobPostingId: uuid("job_posting_id")
+    .notNull()
+    .references(() => jobPostings.id, { onDelete: "cascade" }),
+  posterUrl: text("poster_url").notNull(),
+  style: text("style").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // job_applications — one row per jobseeker applying to one posting. Kept
@@ -569,6 +641,24 @@ export const jobApplications = pgTable(
       workArrangement: string;
       location: string;
     } | null>(),
+    // The jobseeker's answers to the posting's screening requirements,
+    // captured at apply time — only present when the posting had
+    // screeningEnabled on. One entry per requirement the employer actually
+    // set (not every possible question), mirroring jobPostings' own shape.
+    screeningAnswers: jsonb("screening_answers").$type<{
+      yearsExperience: number | null;
+      qualificationTier: string | null;
+      drivingLicense: string | null;
+      languages: { language: string; level: string }[];
+      workAuthorization: string | null;
+      customAnswers: { questionId: string; answer: boolean }[];
+    } | null>(),
+    // Whether the answers above meet every requirement the employer set.
+    // Null means screening wasn't required for this application (not "no
+    // answer given") — distinct from false, which forces the match score to
+    // 0 the same way the existing driving-license/work-authorization hard
+    // filters already do.
+    screeningEligible: boolean("screening_eligible"),
     appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     // Set once, the moment status actually transitions to "hired" — kept
@@ -773,5 +863,29 @@ export const aiUsageLogs = pgTable("ai_usage_logs", {
   // provider, which reports tokens instead.
   callCount: integer("call_count"),
   durationMs: integer("duration_ms"),
+  // Real per-call cost reported by the provider itself (e.g. icreat's
+  // `costUSD` on a finished image generation task) — takes priority over the
+  // published-list-pricing token-based estimate every other provider relies
+  // on, when present.
+  actualCostUsd: doublePrecision("actual_cost_usd"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// cover_letters — a jobseeker's own standalone tool, not tied to any
+// job_posting/job_application row: they paste in a job title/description and
+// company name for ANY role (on or off this platform) and get a generated
+// letter back, editable afterward. Deliberately has no jobPostingId/
+// jobApplicationId — unlike interview_evaluations' "one row per application"
+// shape, this is "many rows per jobseeker", one per letter they've generated.
+export const coverLetters = pgTable("cover_letters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobseekerProfileId: uuid("jobseeker_profile_id")
+    .notNull()
+    .references(() => jobseekerProfiles.id, { onDelete: "cascade" }),
+  companyName: text("company_name").notNull(),
+  jobTitle: text("job_title").notNull(),
+  jobPostingText: text("job_posting_text").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

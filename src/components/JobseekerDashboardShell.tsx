@@ -7,14 +7,15 @@ import FloatingDemoWidget from "./FloatingDemoWidget";
 import Navbar from "./Navbar";
 import SidebarResumeCard from "./SidebarResumeCard";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
-import { BriefcaseIcon, HomeIcon, UserIcon } from "./icons";
+import { BriefcaseIcon, FileIcon, HomeIcon, UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
-export type JobseekerNavKey = "overview" | "applications" | "profile";
+export type JobseekerNavKey = "overview" | "applications" | "coverLetters" | "profile";
 
 const NAV_ITEMS = [
   { key: "overview", href: "/jobseeker/dashboard", label: "Dashboard", icon: HomeIcon },
   { key: "applications", href: "/jobseeker/applications", label: "My Applications", icon: BriefcaseIcon },
+  { key: "coverLetters", href: "/jobseeker/cover-letters", label: "Cover Letters", icon: FileIcon },
   { key: "profile", href: "/jobseeker/profile", label: "My Profile", icon: UserIcon },
 ] as const;
 

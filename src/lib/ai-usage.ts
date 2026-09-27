@@ -3,7 +3,14 @@ import { desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { aiUsageLogs } from "./db/schema";
 
-type AiUsageFeature = "company_lookup" | "job_posting_suggestion" | "resume_parse" | "skill_suggestion" | "match_scoring";
+type AiUsageFeature =
+  | "company_lookup"
+  | "job_posting_suggestion"
+  | "resume_parse"
+  | "skill_suggestion"
+  | "match_scoring"
+  | "cover_letter"
+  | "poster_generation";
 
 type TokenUsage = {
   prompt_tokens?: number;
@@ -30,6 +37,10 @@ export async function logAiUsage(params: {
   // Perplexity Search calls — no token usage to report, so this is the only
   // volume metric available for that provider.
   callCount?: number | null;
+  // Real per-call cost the provider itself reported (e.g. icreat's
+  // `costUSD`) — when present, this is used instead of the published-list-
+  // pricing estimate the other providers rely on.
+  actualCostUsd?: number | null;
 }) {
   try {
     await db.insert(aiUsageLogs).values({
@@ -42,6 +53,7 @@ export async function logAiUsage(params: {
       totalTokens: params.usage?.total_tokens ?? null,
       callCount: params.callCount ?? null,
       durationMs: params.durationMs,
+      actualCostUsd: params.actualCostUsd ?? null,
     });
   } catch (err) {
     console.error("Failed to log AI usage:", err);
@@ -74,11 +86,18 @@ export async function logAiUsage(params: {
 // other MiMo variants. Treat this as a rough guess, not a verified rate.
 // Source confidence: low — replace with the real rate as soon as one is
 // confirmed from Xiaomi's own docs or console.
+//
+// icreat (Seedream 5.0 image generation): every logged row already carries
+// the real per-call cost icreat's own API returns (`costUSD`, stored as
+// `actualCostUsd`), so this fallback only applies to older/edge-case rows
+// where that wasn't captured. $0.035/call is what a single generation
+// actually cost during testing — not a published rate, just an observed one.
 const DEEPSEEK_INPUT_PER_M = 0.27;
 const DEEPSEEK_OUTPUT_PER_M = 1.1;
 const PERPLEXITY_PER_CALL = 0.012;
 const MIMO_INPUT_PER_M = 1.0;
 const MIMO_OUTPUT_PER_M = 3.0;
+const ICREAT_PER_CALL_FALLBACK = 0.035;
 
 function estimateCostUsd(
   provider: string,
@@ -94,6 +113,9 @@ function estimateCostUsd(
   }
   if (provider === "mimo") {
     return (promptTokens / 1_000_000) * MIMO_INPUT_PER_M + (completionTokens / 1_000_000) * MIMO_OUTPUT_PER_M;
+  }
+  if (provider === "icreat") {
+    return callCount * ICREAT_PER_CALL_FALLBACK;
   }
   return null;
 }
@@ -116,6 +138,7 @@ export async function getAiUsageByProviderForUser(userId: string) {
       totalCompletionTokens: sql<number>`coalesce(sum(${aiUsageLogs.completionTokens}), 0)::int`,
       totalTokens: sql<number>`coalesce(sum(${aiUsageLogs.totalTokens}), 0)::int`,
       totalCallCount: sql<number>`coalesce(sum(${aiUsageLogs.callCount}), 0)::int`,
+      totalActualCostUsd: sql<number | null>`sum(${aiUsageLogs.actualCostUsd})`,
     })
     .from(aiUsageLogs)
     .where(eq(aiUsageLogs.userId, userId))
@@ -132,7 +155,10 @@ export async function getAiUsageByProviderForUser(userId: string) {
         model: r.model,
         calls,
         totalTokens: r.totalTokens,
-        costUsd: estimateCostUsd(r.provider, r.totalPromptTokens, r.totalCompletionTokens, calls),
+        // Real reported cost (e.g. icreat) wins over the token-based
+        // published-pricing estimate when any row in the group has one.
+        costUsd:
+          r.totalActualCostUsd ?? estimateCostUsd(r.provider, r.totalPromptTokens, r.totalCompletionTokens, calls),
       };
     });
 }

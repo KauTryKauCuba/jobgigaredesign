@@ -18,7 +18,7 @@ const YEAR_OPTIONS = Array.from({ length: 61 }, (_, i) => {
 // Lenient — accepts what this field already stores/produces ("Jan 2022")
 // and what AI resume parsing may hand back (a bare year like "2022"),
 // leaving month blank in the latter case so the picker prompts for it.
-function parseValue(value: string): { month: string; year: string } {
+export function parseMonthYearValue(value: string): { month: string; year: string } {
   const trimmed = value.trim();
   const withMonth = /^([A-Za-z]+)\s+(\d{4})$/.exec(trimmed);
   if (withMonth) {
@@ -43,8 +43,8 @@ export default function MonthYearPicker({
   disabledLabel?: string;
   accent?: "teal" | "gold";
 }) {
-  const [month, setMonth] = useState(() => parseValue(value).month);
-  const [year, setYear] = useState(() => parseValue(value).year);
+  const [month, setMonth] = useState(() => parseMonthYearValue(value).month);
+  const [year, setYear] = useState(() => parseMonthYearValue(value).year);
   // Tracks the last prop value seen, so a re-render triggered by the parent
   // actually changing `value` (draft restore, resume parsing, "I currently
   // work here" clearing it) re-syncs local state — but a re-render for any
@@ -53,7 +53,7 @@ export default function MonthYearPicker({
   const [syncedValue, setSyncedValue] = useState(value);
   if (value !== syncedValue) {
     setSyncedValue(value);
-    const parsed = parseValue(value);
+    const parsed = parseMonthYearValue(value);
     setMonth(parsed.month);
     setYear(parsed.year);
   }

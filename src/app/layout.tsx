@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
-// Only regular (400) and semibold (600) are fetched — those are the only
-// two weights used anywhere in the app now (see DESIGN.md's Typography
-// section); no medium/bold/light faces.
+// Inter is a variable font — per next/font/google's docs, `weight` only
+// takes an array for non-variable fonts; a variable font either omits
+// `weight` (full range) or takes a single "min max" range string. The app
+// only uses 400/600 (see DESIGN.md's Typography section), both of which are
+// covered by the default variable range, so `weight` is left unset here.
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "600"],
   display: "swap",
 });
 

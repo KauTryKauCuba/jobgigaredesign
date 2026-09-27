@@ -123,57 +123,59 @@ function InterviewRow({
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`flex flex-col gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] text-left transition-colors hover:bg-[#F1F4F8] sm:flex-row sm:items-start sm:justify-between ${
+      className={`flex flex-col gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] text-left transition-colors hover:bg-[#F1F4F8] ${
         draggable ? "cursor-grab active:cursor-grabbing" : ""
       } ${dragging ? "opacity-40" : ""}`}
     >
-      <div className="flex min-w-0 flex-1 items-start gap-[10px]">
-        <ApplicantAvatar url={applicant.applicantAvatarUrl} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-[#141B2E]">{applicant.applicantName}</p>
-          <p className="mt-[1px] truncate text-xs text-[#4B5468]">
-            {applicant.applicantTargetRole} · {applicant.jobPostingTitle}
-          </p>
-          {details ? (
-            <div className="mt-[8px] flex w-full flex-wrap items-center gap-x-[10px] gap-y-[2px] rounded-[10px] bg-[#F1ECFB] px-[10px] py-[6px]">
-              <p className="flex shrink-0 items-center gap-[6px] text-xs text-[#7C5CD1]">
-                <CalendarIcon className="h-[12px] w-[12px]" />
-                Round {details.round} · {INTERVIEW_MODE_LABEL[details.mode]}
-              </p>
-              <p className="shrink-0 text-xs text-[#4B5468]">
-                {new Date(details.scheduledAt).toLocaleString("en-US", {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                  // Pinned so this renders identically on the server (whose
-                  // process timezone can differ from the deploy region) and
-                  // the client (the browser's local timezone) — otherwise
-                  // this is the same hydration-mismatch class as
-                  // InterviewCountdown's Date.now() bug, just triggered by
-                  // TZ offset instead of elapsed time.
-                  timeZone: "UTC",
-                })}
-                {details.durationMinutes ? ` · ${details.durationMinutes} min` : ""}
-              </p>
-              {applicant.application.status === "interview" && (
-                <InterviewCountdown scheduledAt={details.scheduledAt} className="shrink-0 text-xs text-[#7C5CD1]" />
-              )}
-            </div>
-          ) : (
-            <p className="mt-[8px] text-xs text-[#9AA3B2]">No interview time set yet.</p>
+      <div className="flex items-start justify-between gap-[10px]">
+        <div className="flex min-w-0 flex-1 items-start gap-[10px]">
+          <ApplicantAvatar url={applicant.applicantAvatarUrl} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-[#141B2E]">{applicant.applicantName}</p>
+            <p className="mt-[1px] truncate text-xs text-[#4B5468]">
+              {applicant.applicantTargetRole} · {applicant.jobPostingTitle}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-[6px]">
+          {responseStatus && responseColor && (
+            <span className={`rounded-full px-[10px] py-[3px] text-xs ${responseColor.bg} ${responseColor.text}`}>
+              {INTERVIEW_RESPONSE_STATUS_LABEL[responseStatus]}
+            </span>
           )}
+          <span className="text-xs text-brand-teal-dark">View details →</span>
         </div>
       </div>
-      <div className="flex shrink-0 flex-col items-start gap-[6px] sm:items-end">
-        {responseStatus && responseColor && (
-          <span className={`rounded-full px-[10px] py-[3px] text-xs ${responseColor.bg} ${responseColor.text}`}>
-            {INTERVIEW_RESPONSE_STATUS_LABEL[responseStatus]}
-          </span>
-        )}
-        <span className="text-xs text-brand-teal-dark">View details →</span>
-      </div>
+      {details ? (
+        <div className="flex w-full flex-wrap items-center gap-x-[10px] gap-y-[2px] rounded-[10px] bg-[#F1ECFB] px-[10px] py-[6px]">
+          <p className="flex shrink-0 items-center gap-[6px] text-xs text-[#7C5CD1]">
+            <CalendarIcon className="h-[12px] w-[12px]" />
+            Round {details.round} · {INTERVIEW_MODE_LABEL[details.mode]}
+          </p>
+          <p className="shrink-0 text-xs text-[#4B5468]">
+            {new Date(details.scheduledAt).toLocaleString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              // Pinned so this renders identically on the server (whose
+              // process timezone can differ from the deploy region) and
+              // the client (the browser's local timezone) — otherwise
+              // this is the same hydration-mismatch class as
+              // InterviewCountdown's Date.now() bug, just triggered by
+              // TZ offset instead of elapsed time.
+              timeZone: "UTC",
+            })}
+            {details.durationMinutes ? ` · ${details.durationMinutes} min` : ""}
+          </p>
+          {applicant.application.status === "interview" && (
+            <InterviewCountdown scheduledAt={details.scheduledAt} className="shrink-0 text-xs text-[#7C5CD1]" />
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-[#9AA3B2]">No interview time set yet.</p>
+      )}
     </button>
   );
 }

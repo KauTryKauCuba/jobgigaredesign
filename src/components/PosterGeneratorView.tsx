@@ -21,123 +21,57 @@ export type PosterPosting = {
   posterGeneratingSince: string | null;
 };
 
-const POSTER_WIDTH = 720;
-const POSTER_HEIGHT = 1280;
+type PosterHistoryItem = {
+  id: string;
+  posterUrl: string;
+  style: string;
+  createdAt: string;
+};
 
-// Fixed rather than randomized like the original inline version — a random
-// per-run duration can't be recovered after a page reload without storing it
-// separately, and the whole point of this rewrite is that "is it done yet"
-// has to be computable purely from `posterGeneratingSince` + this constant,
-// whether the tab stayed open or was reopened minutes later.
-const POSTER_TARGET_MS = 90000;
+// Mirrors POSTER_STYLES in @/lib/poster-content — kept as a separate
+// client-side list rather than importing it, since that module pulls in
+// server-only modules (db, session) that can't ship to the browser.
+const POSTER_STYLE_OPTIONS = [
+  {
+    key: "playful",
+    label: "Playful & Approachable",
+    description: "Sticky note, pushpin, warm & friendly",
+    swatch: "linear-gradient(135deg, #BEE3F8, #FFFFFF)",
+  },
+  {
+    key: "photo_corporate",
+    label: "Corporate with Photo",
+    description: "Real photo, your logo, clean & professional",
+    swatch: "linear-gradient(135deg, #141B2E, #1FA6C9)",
+  },
+] as const;
+type PosterStyleKey = (typeof POSTER_STYLE_OPTIONS)[number]["key"];
 
+// Purely cosmetic — real generation time varies with the API, so this only
+// rotates the status message text while polling; it isn't used to decide
+// when the poster is actually done (the /poster/status poll is).
 const POSTER_GENERATING_MESSAGES = [
-  { at: 0, label: "Reading the posting…" },
-  { at: 0.25, label: "Laying out the poster…" },
-  { at: 0.55, label: "Adding your branding…" },
-  { at: 0.8, label: "Polishing the final details…" },
-  { at: 0.95, label: "Almost ready…" },
+  { atSeconds: 0, label: "Reading the posting…" },
+  { atSeconds: 8, label: "Sketching the layout…" },
+  { atSeconds: 20, label: "Generating the poster…" },
+  { atSeconds: 45, label: "Almost ready…" },
 ];
 
-function wrapCanvasText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-) {
-  const words = text.split(" ");
-  let line = "";
-  let cursorY = y;
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (ctx.measureText(candidate).width > maxWidth && line) {
-      ctx.fillText(line, x, cursorY);
-      line = word;
-      cursorY += lineHeight;
-    } else {
-      line = candidate;
-    }
-  }
-  if (line) ctx.fillText(line, x, cursorY);
-  return cursorY;
-}
-
-function renderPosterCanvas(posting: PosterPosting): string | null {
-  const canvas = document.createElement("canvas");
-  canvas.width = POSTER_WIDTH;
-  canvas.height = POSTER_HEIGHT;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
-  bg.addColorStop(0, "#008990");
-  bg.addColorStop(1, "#07BCCA");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#FFE9A6";
-  ctx.font = "700 34px system-ui, sans-serif";
-  ctx.fillText("WE'RE HIRING", POSTER_WIDTH / 2, 130);
-
-  const cardX = 48;
-  const cardY = 200;
-  const cardW = POSTER_WIDTH - cardX * 2;
-  const cardH = POSTER_HEIGHT - cardY - 64;
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  if (typeof ctx.roundRect === "function") {
-    ctx.roundRect(cardX, cardY, cardW, cardH, 28);
-  } else {
-    ctx.rect(cardX, cardY, cardW, cardH);
-  }
-  ctx.fill();
-
-  ctx.fillStyle = "#141B2E";
-  ctx.font = "700 52px system-ui, sans-serif";
-  const titleBottomY = wrapCanvasText(ctx, posting.title, POSTER_WIDTH / 2, cardY + 100, cardW - 80, 60);
-
-  ctx.strokeStyle = "#E6F9FA";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(cardX + 60, titleBottomY + 50);
-  ctx.lineTo(cardX + cardW - 60, titleBottomY + 50);
-  ctx.stroke();
-
-  ctx.font = "600 30px system-ui, sans-serif";
-  ctx.fillStyle = "#008990";
-  const detailLines = [
-    posting.location,
-    `${posting.employmentType} · ${posting.workArrangement}`,
-    `RM${posting.salaryMin.toLocaleString()} – RM${posting.salaryMax.toLocaleString()} / month`,
-    posting.minYearsExperience === 0 ? "No experience required" : `${posting.minYearsExperience}+ years experience`,
-  ];
-  let lineY = titleBottomY + 120;
-  for (const line of detailLines) {
-    ctx.fillText(line, POSTER_WIDTH / 2, lineY);
-    lineY += 52;
-  }
-
-  ctx.fillStyle = "#9AA3B2";
-  ctx.font = "500 26px system-ui, sans-serif";
-  ctx.fillText(`${posting.openings} opening${posting.openings === 1 ? "" : "s"} available`, POSTER_WIDTH / 2, lineY + 20);
-
-  ctx.font = "700 30px system-ui, sans-serif";
-  ctx.fillStyle = "#008990";
-  ctx.fillText("Apply now on JobGiga", POSTER_WIDTH / 2, cardY + cardH - 40);
-
-  return canvas.toDataURL("image/png");
-}
+const POSTER_POLL_INTERVAL_MS = 4000;
 
 function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPosting[] }) {
   const [postings, setPostings] = useState(initialPostings);
   const [selectedId, setSelectedId] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState<PosterStyleKey>("playful");
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [finishingId, setFinishingId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [history, setHistory] = useState<PosterHistoryItem[]>([]);
+  // Which poster is being previewed, scoped to the posting it belongs to —
+  // storing the postingId alongside the url means switching postings (or a
+  // fresh generation replacing the latest url) naturally invalidates it
+  // without needing an effect to reset it back to null.
+  const [viewedPoster, setViewedPoster] = useState<{ postingId: string; url: string } | null>(null);
 
   const selected = postings.find((p) => p.id === selectedId) ?? null;
   // Source of truth for "is anything generating" — a real field on the
@@ -145,56 +79,80 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
   // it's correct even on a fresh page load after navigating away and back.
   const generatingPosting = postings.find((p) => p.posterGeneratingSince) ?? null;
 
-  // Ticks only while something is generating, purely to animate the progress
-  // bar/elapsed counter — the actual "is it done" decision below is driven by
-  // real timestamps, not by this interval having stayed alive.
+  // While a posting is generating: ticks `nowMs` every second (for the
+  // elapsed-time display/status message) and polls the real generation
+  // status every POSTER_POLL_INTERVAL_MS — the image is produced
+  // asynchronously by icreat.ai, so there's no client-side moment to detect
+  // completion other than asking the server. Runs an immediate poll on
+  // mount/id-change too, so a task that already finished while the user was
+  // away resolves right away instead of waiting a full interval.
   useEffect(() => {
     if (!generatingPosting) return;
-    const interval = setInterval(() => setNowMs(Date.now()), 250);
-    return () => clearInterval(interval);
+    const posting = generatingPosting;
+    let cancelled = false;
+
+    function poll() {
+      fetch(`/api/employer/job-postings/${posting.id}/poster/status`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (cancelled) return;
+          if (!data.generating) {
+            setPostings((prev) =>
+              prev.map((p) =>
+                p.id === posting.id ? { ...p, posterUrl: data.posterUrl ?? null, posterGeneratingSince: null } : p,
+              ),
+            );
+            if (!data.posterUrl && data.error) setStartError(data.error);
+          }
+        })
+        .catch(() => {
+          // Transient network error — the next interval tick will retry.
+        });
+    }
+
+    poll();
+    const tickInterval = setInterval(() => setNowMs(Date.now()), 1000);
+    const pollInterval = setInterval(poll, POSTER_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(tickInterval);
+      clearInterval(pollInterval);
+    };
     // Deliberately keyed on the id alone — restarting the interval whenever
     // the postings array gets a new object reference (e.g. after this same
     // posting's fields update) would reset needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatingPosting?.id]);
 
-  // Resolves a generating posting the moment enough wall-clock time has
-  // passed — whether that's because this effect has been ticking the whole
-  // time, or because the page just mounted and the delay already elapsed
-  // while the user was elsewhere entirely.
+  // Loads this posting's poster history whenever the selection changes or a
+  // new poster finishes generating (selected.posterUrl changing is how we
+  // detect that).
   useEffect(() => {
-    if (!generatingPosting?.posterGeneratingSince) return;
-    if (finishingId === generatingPosting.id) return;
-    const startedAt = new Date(generatingPosting.posterGeneratingSince).getTime();
-    if (nowMs - startedAt < POSTER_TARGET_MS) return;
-
-    const dataUrl = renderPosterCanvas(generatingPosting);
-    if (!dataUrl) return;
-    // Guards against this effect firing again (e.g. the next 250ms tick)
-    // before the fetch below resolves — not a reaction to a value changing.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFinishingId(generatingPosting.id);
-    fetch(`/api/employer/job-postings/${generatingPosting.id}/poster/finish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ posterUrl: dataUrl }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
+    if (!selectedId) return;
+    let cancelled = false;
+    fetch(`/api/employer/job-postings/${selectedId}/poster/history`)
+      .then((res) => res.json())
       .then((data) => {
-        if (!data) return;
-        setPostings((prev) =>
-          prev.map((p) => (p.id === generatingPosting.id ? { ...p, posterUrl: dataUrl, posterGeneratingSince: null } : p)),
-        );
+        if (!cancelled) setHistory(data.posters ?? []);
       })
-      .finally(() => setFinishingId(null));
-  }, [nowMs, generatingPosting, finishingId]);
+      .catch(() => {
+        // Leave the last-known history in place on a transient error.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, selected?.posterUrl]);
 
   async function generate() {
     if (!selected || generatingPosting || starting) return;
     setStarting(true);
     setStartError(null);
     try {
-      const res = await fetch(`/api/employer/job-postings/${selected.id}/poster/start`, { method: "POST" });
+      const res = await fetch(`/api/employer/job-postings/${selected.id}/poster/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style: selectedStyle }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setStartError(data.error ?? "Couldn't start generating.");
@@ -213,21 +171,19 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
     }
   }
 
-  function download(posting: PosterPosting) {
-    if (!posting.posterUrl) return;
+  function download(posting: PosterPosting, url: string) {
     const link = document.createElement("a");
-    link.href = posting.posterUrl;
+    link.href = url;
     link.download = `${posting.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-poster.png`;
     link.click();
   }
 
-  const elapsedMs =
+  const elapsedSeconds =
     selected?.posterGeneratingSince && selected.id === generatingPosting?.id
-      ? nowMs - new Date(selected.posterGeneratingSince).getTime()
+      ? Math.floor((nowMs - new Date(selected.posterGeneratingSince).getTime()) / 1000)
       : 0;
-  const progress = Math.min(elapsedMs / POSTER_TARGET_MS, 0.99);
   const message =
-    [...POSTER_GENERATING_MESSAGES].reverse().find((m) => progress >= m.at)?.label ??
+    [...POSTER_GENERATING_MESSAGES].reverse().find((m) => elapsedSeconds >= m.atSeconds)?.label ??
     POSTER_GENERATING_MESSAGES[0].label;
 
   return (
@@ -303,15 +259,49 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
         </div>
       </div>
 
-      <div className={`lg:sticky lg:top-[85px] lg:flex-[1] ${gradientFrameClass("teal")}`}>
+      <div className={`min-w-0 lg:sticky lg:top-[85px] lg:flex-[1] ${gradientFrameClass("teal")}`}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
           <div>
             <p className="text-sm text-[#141B2E]">Poster generator</p>
             <p className="mt-[2px] text-xs text-[#9AA3B2]">
-              Turn the selected posting into a ready-to-share 9:16 poster for Instagram Stories,
-              WhatsApp Status, and more.
+              Turn the selected posting into a ready-to-share 9:16 recruitment flyer for
+              Instagram Stories, WhatsApp Status, and more.
             </p>
           </div>
+
+          {postings.length > 0 && selected && selected.id !== generatingPosting?.id && (
+            <div role="radiogroup" aria-label="Poster style" className="flex flex-col gap-[6px]">
+              {POSTER_STYLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedStyle === opt.key}
+                  onClick={() => setSelectedStyle(opt.key)}
+                  className={`flex items-center gap-[10px] rounded-[12px] border px-[10px] py-[8px] text-left transition-colors ${
+                    selectedStyle === opt.key
+                      ? "border-brand-teal-dark bg-[#E6F9FA]"
+                      : "border-black/[0.1] hover:bg-black/[0.03]"
+                  }`}
+                >
+                  <span
+                    className="h-[28px] w-[28px] shrink-0 rounded-[8px]"
+                    style={{ background: opt.swatch }}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={`block text-xs ${selectedStyle === opt.key ? "text-brand-teal-dark" : "text-[#141B2E]"}`}
+                    >
+                      {opt.label}
+                    </span>
+                    <span className="block truncate text-[11px] text-[#9AA3B2]">{opt.description}</span>
+                  </span>
+                  {selectedStyle === opt.key && <CheckIcon className="h-[11px] w-[11px] shrink-0 text-brand-teal-dark" />}
+                </button>
+              ))}
+            </div>
+          )}
 
           {postings.length === 0 ? null : !selected ? (
             <p className="text-xs text-[#9AA3B2]">Select a job posting to get started.</p>
@@ -319,36 +309,56 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
             <div className="flex flex-col items-center gap-[10px] rounded-[14px] bg-[#F8FAFB] p-[18px] text-center">
               <SiriOrb className="h-[22px] w-[22px]" active />
               <p className="text-xs text-[#141B2E]">{message}</p>
+              {/* Indeterminate — real generation time isn't known in
+                  advance, unlike the old fixed-delay fake progress bar. */}
               <div className="h-[6px] w-full overflow-hidden rounded-full bg-black/[0.06]">
-                <div
-                  className="h-full rounded-full bg-brand-teal-dark transition-[width]"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
-                />
+                <div className="poster-progress-indeterminate h-full w-1/3 rounded-full bg-brand-teal-dark" />
               </div>
-              <p className="text-xs text-[#9AA3B2]">{Math.round(elapsedMs / 1000)}s elapsed</p>
+              <p className="text-xs text-[#9AA3B2]">{elapsedSeconds}s elapsed</p>
               <p className="text-xs text-[#9AA3B2]">
                 Feel free to leave this page — it&rsquo;ll be ready when you come back.
               </p>
             </div>
           ) : selected.posterUrl ? (
             <>
-              <div className="overflow-hidden rounded-[14px] border border-[#EAEDF2]">
-                {/* next/image can't render a generated data: URI without extra config — a plain
-                    <img> is the right tool for a client-only canvas export like this one. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={selected.posterUrl}
-                  alt={`Poster for ${selected.title}`}
-                  className="aspect-[9/16] w-full object-cover"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => download(selected)}
-                className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
-              >
-                Download PNG
-              </button>
+              {(() => {
+                const displayedUrl =
+                  viewedPoster?.postingId === selected.id ? viewedPoster.url : selected.posterUrl;
+                const isLatest = displayedUrl === selected.posterUrl;
+                return (
+                  <>
+                    <div className="overflow-hidden rounded-[14px] border border-[#EAEDF2]">
+                      {/* next/image can't render a generated data: URI without extra config — a plain
+                          <img> is the right tool for a client-only canvas export like this one. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={displayedUrl}
+                        alt={`Poster for ${selected.title}`}
+                        className="aspect-[9/16] w-full object-cover"
+                      />
+                    </div>
+                    {!isLatest && (
+                      <p className="text-xs text-[#9AA3B2]">
+                        Viewing a previous poster.{" "}
+                        <button
+                          type="button"
+                          onClick={() => setViewedPoster(null)}
+                          className="text-brand-teal-dark underline underline-offset-2"
+                        >
+                          Back to latest
+                        </button>
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => download(selected, displayedUrl)}
+                      className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
+                    >
+                      Download PNG
+                    </button>
+                  </>
+                );
+              })()}
               <button
                 type="button"
                 onClick={generate}
@@ -357,6 +367,31 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
               >
                 Generate another
               </button>
+
+              {history.length > 1 && (
+                <div>
+                  <p className="text-xs text-[#9AA3B2]">History</p>
+                  <div className="mt-[6px] flex gap-[8px] overflow-x-auto pb-[2px]">
+                    {history.map((h) => (
+                      <button
+                        key={h.id}
+                        type="button"
+                        onClick={() => setViewedPoster({ postingId: selected.id, url: h.posterUrl })}
+                        className={`shrink-0 overflow-hidden rounded-[8px] border-2 transition-colors ${
+                          (viewedPoster?.postingId === selected.id ? viewedPoster.url : selected.posterUrl) ===
+                          h.posterUrl
+                            ? "border-brand-teal-dark"
+                            : "border-transparent hover:border-black/[0.1]"
+                        }`}
+                        title={new Date(h.createdAt).toLocaleString()}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={h.posterUrl} alt="" className="aspect-[9/16] h-[70px] object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <>

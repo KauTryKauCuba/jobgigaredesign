@@ -14,6 +14,19 @@ import { useRegisterUnsavedChangesGuard, type NavigationGuard } from "./UnsavedC
 // genuine descendant of EmployerDashboardShell's UnsavedChangesGuardBoundary
 // (rendered as one of its `children`, see the usage below for why this can't
 // just be a hook call in EmployerJobsView's own body).
+// Matches MAX_SUGGESTIONS in the suggest-skills API route — manual entry
+// had no cap while AI suggestions did, letting someone paste far more
+// skills than the AI path could ever produce.
+const MAX_MANUAL_SKILLS = 40;
+
+// Skill tags are compared case-insensitively so "JavaScript" and
+// "javascript" can't both end up on the same posting as separate entries —
+// a plain .includes() only catches exact-case duplicates.
+function includesSkillCaseInsensitive(list: string[], value: string): boolean {
+  const target = value.toLowerCase();
+  return list.some((s) => s.toLowerCase() === target);
+}
+
 function GuardRegistrar({ guard }: { guard: NavigationGuard }) {
   useRegisterUnsavedChangesGuard(guard);
   return null;
@@ -32,6 +45,7 @@ import {
   FlagIcon,
   LockIcon,
   PencilIcon,
+  PlusIcon,
   StackIcon,
   TrashIcon,
   XCircleIcon,
@@ -129,6 +143,10 @@ const WORK_ARRANGEMENTS = [
 // OnboardingForm's QUALIFICATION_TIERS) so "minimum education" can be
 // compared directly against a jobseeker's highest completed tier.
 const QUALIFICATION_TIERS = ["SPM", "STPM", "Diploma", "Degree", "Master", "PhD", "Other"] as const;
+// Field ids that only render on the screening step — goToField uses this to
+// switch steps before it tries to scroll to one of them.
+const SCREENING_FIELD_IDS = new Set(["minYearsExperience", "minQualificationTier", "languageInput", "workAuthorizations", "customQuestionInput"]);
+type CustomQuestion = { id: string; question: string; requiredAnswer: boolean };
 // Matches jobseekerProfiles.workAuthorization exactly.
 const WORK_AUTHORIZATIONS = [
   { value: "citizen", label: "Malaysian citizen" },
@@ -171,6 +189,31 @@ function NoMatchHint() {
     <span className="rounded-full bg-[#F1F4F8] px-[8px] py-[2px] text-xs whitespace-nowrap text-[#9AA3B2]">
       No jobseeker match yet
     </span>
+  );
+}
+
+// Per-requirement opt-in for the screening step — lets the employer exclude
+// a specific question (e.g. one the AI filled in) from what applicants are
+// asked, without having to clear its value back out.
+function AskToggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="ml-auto flex items-center gap-[6px] text-xs whitespace-nowrap text-[#4B5468]">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-[13px] w-[13px] accent-brand-teal-dark"
+      />
+      {label}
+    </label>
   );
 }
 
@@ -220,6 +263,42 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
   const [languageLevelInput, setLanguageLevelInput] = useState<LanguageLevel>("conversational");
   const [workAuthorizations, setWorkAuthorizations] = useState<string[]>([]);
   const [drivingLicense, setDrivingLicense] = useState<(typeof DRIVING_LICENSES)[number]["value"] | "">("");
+  // Master switch for the block above — off by default so a new posting
+  // never silently asks applicants anything until the employer explicitly
+  // opts in on the screening step.
+  const [screeningEnabled, setScreeningEnabled] = useState(false);
+  // Per-requirement opt-in — lets the employer pick exactly which of the
+  // structured questions below actually get asked, independent of whether a
+  // value is filled in (so e.g. an AI-filled minimum experience can be
+  // excluded from the applicant-facing questions without having to blank
+  // the field back out). Defaults to true so a freshly filled-in field asks
+  // by default, matching the pre-existing "filled = asked" behavior.
+  const [askMinExperience, setAskMinExperience] = useState(true);
+  const [askMinEducation, setAskMinEducation] = useState(true);
+  const [askDrivingLicense, setAskDrivingLicense] = useState(true);
+  const [askLanguages, setAskLanguages] = useState(true);
+  const [askWorkAuthorizations, setAskWorkAuthorizations] = useState(true);
+  // Free-form yes/no questions beyond the structured fields above — kept
+  // auto-scorable (yes/no, not open text) so they still fit the same
+  // pass/fail screeningEligibilityCheck as the rest of screening.
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
+  const [customQuestionInput, setCustomQuestionInput] = useState("");
+  const [customQuestionRequiredAnswer, setCustomQuestionRequiredAnswer] = useState(true);
+  const [formStep, setFormStep] = useState<"details" | "screening">("details");
+
+  function addCustomQuestion() {
+    const value = customQuestionInput.trim();
+    if (!value) return;
+    setCustomQuestions((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), question: value, requiredAnswer: customQuestionRequiredAnswer },
+    ]);
+    setCustomQuestionInput("");
+  }
+
+  function removeCustomQuestion(id: string) {
+    setCustomQuestions((prev) => prev.filter((q) => q.id !== id));
+  }
 
   const [aiFillLoading, setAiFillLoading] = useState(false);
   const [aiFillError, setAiFillError] = useState<string | null>(null);
@@ -229,6 +308,30 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
   const [aiFillDurationMs, setAiFillDurationMs] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showJobseekerPreview, setShowJobseekerPreview] = useState(false);
+
+  // Same "Suggest skills" flow as the jobseeker onboarding form
+  // (/api/jobseeker/suggest-skills), just driven by the job title instead
+  // of a target role, and with a third niceToHaveSkills bucket to match
+  // this form's three skill fields.
+  // Persisted with the posting itself (jobPostings.skillSuggestions), not
+  // just local browser state — otherwise a refresh, or reopening the draft
+  // from a different browser/device, silently threw away suggestions the
+  // employer hadn't reviewed yet, forcing them to re-run "Suggest skills"
+  // and burn another AI call for the same job title. Loaded from the saved
+  // posting in the edit-mode fetch effect below; stays null for a brand new
+  // posting until the first "Suggest skills" click, same as every other
+  // field on this form that only exists once something's been typed/saved.
+  const [skillSuggestions, setSkillSuggestions] = useState<{
+    professionalSkills: string[];
+    softSkills: string[];
+    niceToHaveSkills: string[];
+  } | null>(null);
+  const [suggestingSkills, setSuggestingSkills] = useState(false);
+  const [suggestSkillsError, setSuggestSkillsError] = useState<string | null>(null);
+  const [suggestSkillsStatus, setSuggestSkillsStatus] = useState<string | null>(null);
+  const [suggestSkillsElapsedMs, setSuggestSkillsElapsedMs] = useState(0);
+  const [suggestSkillsTokens, setSuggestSkillsTokens] = useState<number | null>(null);
+  const [suggestSkillsDurationMs, setSuggestSkillsDurationMs] = useState<number | null>(null);
 
   useEffect(() => {
     if (!showPreview && !showJobseekerPreview) return;
@@ -241,6 +344,78 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [showPreview, showJobseekerPreview]);
+
+  useEffect(() => {
+    if (!suggestingSkills) return;
+    const startedAt = Date.now();
+    const interval = setInterval(() => setSuggestSkillsElapsedMs(Date.now() - startedAt), 100);
+    return () => clearInterval(interval);
+  }, [suggestingSkills]);
+
+  async function suggestSkills() {
+    if (!title.trim()) {
+      setSuggestSkillsError("Enter a job title first.");
+      return;
+    }
+    setSuggestingSkills(true);
+    setSuggestSkillsError(null);
+    setSuggestSkillsStatus(null);
+    setSuggestSkillsElapsedMs(0);
+    setSuggestSkillsTokens(null);
+    setSuggestSkillsDurationMs(null);
+    try {
+      const res = await fetch("/api/employer/suggest-skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobTitle: title.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't suggest skills.");
+      setSkillSuggestions({
+        professionalSkills: (data.suggestions?.professionalSkills ?? []).filter(
+          (s: string) => !includesSkillCaseInsensitive(skills, s),
+        ),
+        softSkills: (data.suggestions?.softSkills ?? []).filter(
+          (s: string) => !includesSkillCaseInsensitive(softSkills, s),
+        ),
+        niceToHaveSkills: (data.suggestions?.niceToHaveSkills ?? []).filter(
+          (s: string) => !includesSkillCaseInsensitive(niceToHaveSkills, s),
+        ),
+      });
+      setSuggestSkillsTokens(typeof data.usage?.total_tokens === "number" ? data.usage.total_tokens : null);
+      setSuggestSkillsDurationMs(typeof data.durationMs === "number" ? data.durationMs : null);
+      setSuggestSkillsStatus("Suggested — review before adding.");
+    } catch (err) {
+      setSuggestSkillsError(err instanceof Error ? err.message : "Couldn't suggest skills.");
+    } finally {
+      setSuggestingSkills(false);
+    }
+  }
+
+  function addSuggestedSkill(skill: string) {
+    setSkills((prev) =>
+      includesSkillCaseInsensitive(prev, skill) || prev.length >= MAX_MANUAL_SKILLS ? prev : [...prev, skill],
+    );
+    setSkillSuggestions((prev) =>
+      prev ? { ...prev, professionalSkills: prev.professionalSkills.filter((s) => s !== skill) } : prev,
+    );
+  }
+
+  function addSuggestedSoftSkill(skill: string) {
+    setSoftSkills((prev) =>
+      includesSkillCaseInsensitive(prev, skill) || prev.length >= MAX_MANUAL_SKILLS ? prev : [...prev, skill],
+    );
+    setSkillSuggestions((prev) => (prev ? { ...prev, softSkills: prev.softSkills.filter((s) => s !== skill) } : prev));
+  }
+
+  function addSuggestedNiceToHaveSkill(skill: string) {
+    setNiceToHaveSkills((prev) =>
+      includesSkillCaseInsensitive(prev, skill) || prev.length >= MAX_MANUAL_SKILLS ? prev : [...prev, skill],
+    );
+    setSkillSuggestions((prev) =>
+      prev ? { ...prev, niceToHaveSkills: prev.niceToHaveSkills.filter((s) => s !== skill) } : prev,
+    );
+  }
 
   useEffect(() => {
     if (!aiFillLoading) return;
@@ -295,6 +470,18 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         setLanguages(posting.languages as RequiredLanguage[]);
         setWorkAuthorizations(posting.workAuthorizations);
         setDrivingLicense((posting.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null) ?? "");
+        setScreeningEnabled(posting.screeningEnabled);
+        // Loaded straight from their own saved flags, not derived from
+        // whether the requirement's own value is set — an employer can
+        // tick "Ask this" before (or without ever) filling the field in,
+        // and that toggle state needs to survive independent of the value.
+        setAskMinExperience(posting.askMinYearsExperience);
+        setAskMinEducation(posting.askMinQualificationTier);
+        setAskDrivingLicense(posting.askDrivingLicense);
+        setAskLanguages(posting.askLanguages);
+        setAskWorkAuthorizations(posting.askWorkAuthorizations);
+        setCustomQuestions(posting.customScreeningQuestions);
+        setSkillSuggestions(posting.skillSuggestions);
       } catch (err) {
         if (!cancelled) setSubmitError(err instanceof Error ? err.message : "Couldn't load this posting.");
       } finally {
@@ -368,19 +555,25 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       if (result.salaryMax !== null && !salaryMax.trim()) setSalaryMax(String(result.salaryMax));
       if (result.skills.length > 0) {
         setSkills((prev) => {
-          const additions = result.skills.filter((s) => !prev.includes(s));
+          const additions = result.skills
+            .filter((s) => !includesSkillCaseInsensitive(prev, s))
+            .slice(0, Math.max(0, MAX_MANUAL_SKILLS - prev.length));
           return additions.length === 0 ? prev : [...prev, ...additions];
         });
       }
       if (result.softSkills.length > 0) {
         setSoftSkills((prev) => {
-          const additions = result.softSkills.filter((s) => !prev.includes(s));
+          const additions = result.softSkills
+            .filter((s) => !includesSkillCaseInsensitive(prev, s))
+            .slice(0, Math.max(0, MAX_MANUAL_SKILLS - prev.length));
           return additions.length === 0 ? prev : [...prev, ...additions];
         });
       }
       if (result.niceToHaveSkills.length > 0) {
         setNiceToHaveSkills((prev) => {
-          const additions = result.niceToHaveSkills.filter((s) => !prev.includes(s));
+          const additions = result.niceToHaveSkills
+            .filter((s) => !includesSkillCaseInsensitive(prev, s))
+            .slice(0, Math.max(0, MAX_MANUAL_SKILLS - prev.length));
           return additions.length === 0 ? prev : [...prev, ...additions];
         });
       }
@@ -419,7 +612,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
 
   function addSkill() {
     const value = skillInput.trim();
-    if (!value || skills.includes(value)) {
+    if (!value || includesSkillCaseInsensitive(skills, value) || skills.length >= MAX_MANUAL_SKILLS) {
       setSkillInput("");
       return;
     }
@@ -429,7 +622,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
 
   function addSoftSkill() {
     const value = softSkillInput.trim();
-    if (!value || softSkills.includes(value)) {
+    if (!value || includesSkillCaseInsensitive(softSkills, value) || softSkills.length >= MAX_MANUAL_SKILLS) {
       setSoftSkillInput("");
       return;
     }
@@ -439,7 +632,11 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
 
   function addNiceToHaveSkill() {
     const value = niceToHaveSkillInput.trim();
-    if (!value || niceToHaveSkills.includes(value)) {
+    if (
+      !value ||
+      includesSkillCaseInsensitive(niceToHaveSkills, value) ||
+      niceToHaveSkills.length >= MAX_MANUAL_SKILLS
+    ) {
       setNiceToHaveSkillInput("");
       return;
     }
@@ -464,10 +661,20 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
   }
 
   function goToField(fieldId: string) {
-    const el = document.getElementById(fieldId);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
+    const focusAndScroll = () => {
+      const el = document.getElementById(fieldId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el instanceof HTMLElement) el.focus({ preventScroll: true });
+    };
+    // Screening fields only exist in the DOM on the screening step — switch
+    // there first and let the new step render before scrolling to it.
+    if (SCREENING_FIELD_IDS.has(fieldId) && formStep !== "screening") {
+      setFormStep("screening");
+      requestAnimationFrame(() => requestAnimationFrame(focusAndScroll));
+      return;
+    }
+    focusAndScroll();
   }
 
   // Tells the employer which required field(s) are blocking the disabled
@@ -477,7 +684,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
     { label: "Description", done: description.trim().length > 0, fieldId: "jobDescription" },
     { label: "Job description", done: responsibilities.trim().length > 0, fieldId: "jobResponsibilities" },
     { label: "Industry", done: industry.trim().length > 0, fieldId: "jobIndustry" },
-    { label: "Location", done: location.trim().length > 0, fieldId: "jobLocation" },
+    { label: "Location", done: location.trim().length > 0, fieldId: "jobAddressLine1" },
     { label: "Skills required", done: skills.length > 0, fieldId: "skillInput" },
   ];
   const formValid = requiredFieldChecklist.every((item) => item.done);
@@ -505,26 +712,34 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       done: salaryMin.trim().length > 0 && salaryMax.trim().length > 0,
       fieldId: "salaryMin",
     },
-    {
-      label: "Set a minimum experience — narrows candidates before AI ranks the rest.",
-      done: minYearsExperience.trim().length > 0,
-      fieldId: "minYearsExperience",
-    },
-    {
-      label: "Set a minimum education level — filters out under-qualified applicants.",
-      done: minQualificationTier.trim().length > 0,
-      fieldId: "minQualificationTier",
-    },
-    {
-      label: "Add required languages — makes sure candidates can communicate on the job.",
-      done: languages.length > 0,
-      fieldId: "languageInput",
-    },
-    {
-      label: "Pick accepted work authorizations — screens out candidates who can't legally work the role.",
-      done: workAuthorizations.length > 0,
-      fieldId: "workAuthorizations",
-    },
+    // The four items below only make sense once screening requirements are
+    // turned on — while it's off they're intentionally blank, not missing,
+    // so they're left out of the nudge list entirely rather than shown as
+    // an unchecked item the employer can't act on from here.
+    ...(screeningEnabled
+      ? [
+          {
+            label: "Set a minimum experience — narrows candidates before AI ranks the rest.",
+            done: askMinExperience && minYearsExperience.trim().length > 0,
+            fieldId: "minYearsExperience",
+          },
+          {
+            label: "Set a minimum education level — filters out under-qualified applicants.",
+            done: askMinEducation && minQualificationTier.trim().length > 0,
+            fieldId: "minQualificationTier",
+          },
+          {
+            label: "Add required languages — makes sure candidates can communicate on the job.",
+            done: askLanguages && languages.length > 0,
+            fieldId: "languageInput",
+          },
+          {
+            label: "Pick accepted work authorizations — screens out candidates who can't legally work the role.",
+            done: askWorkAuthorizations && workAuthorizations.length > 0,
+            fieldId: "workAuthorizations",
+          },
+        ]
+      : []),
   ];
   const boostChecklistRemaining = boostChecklist.filter((item) => !item.done).length;
 
@@ -547,7 +762,9 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
     minQualificationTier.length > 0 ||
     languages.length > 0 ||
     workAuthorizations.length > 0 ||
-    drivingLicense.length > 0;
+    drivingLicense.length > 0 ||
+    customQuestions.length > 0 ||
+    screeningEnabled;
 
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [pendingProceed, setPendingProceed] = useState<(() => void) | null>(null);
@@ -563,7 +780,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
 
   useImperativeHandle(ref, () => ({ guardNavigation }));
 
-  async function submitPosting(status: "draft" | "pending") {
+  async function submitPosting(status: "draft" | "pending", onSuccess: () => void = onClose) {
     setSubmitting(true);
     setSubmitError(null);
     const payload = {
@@ -587,11 +804,24 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       skills,
       softSkills,
       niceToHaveSkills,
-      minYearsExperience: minYearsExperience.trim() ? Number(minYearsExperience) : null,
-      minQualificationTier: minQualificationTier || null,
-      languages,
-      workAuthorizations,
-      drivingLicense: drivingLicense || null,
+      // Cleared, not just hidden, when the master toggle or a requirement's
+      // own "ask this" toggle is off — a posting can't keep asking
+      // applicants about something the employer explicitly excluded, even
+      // if a value is still sitting in the field underneath.
+      minYearsExperience:
+        screeningEnabled && askMinExperience && minYearsExperience.trim() ? Number(minYearsExperience) : null,
+      minQualificationTier: screeningEnabled && askMinEducation ? minQualificationTier || null : null,
+      languages: screeningEnabled && askLanguages ? languages : [],
+      workAuthorizations: screeningEnabled && askWorkAuthorizations ? workAuthorizations : [],
+      drivingLicense: screeningEnabled && askDrivingLicense ? drivingLicense || null : null,
+      customScreeningQuestions: screeningEnabled ? customQuestions : [],
+      screeningEnabled,
+      skillSuggestions,
+      askMinYearsExperience: askMinExperience,
+      askMinQualificationTier: askMinEducation,
+      askDrivingLicense,
+      askLanguages,
+      askWorkAuthorizations,
     };
     try {
       const res = await fetch(
@@ -604,7 +834,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't save this posting.");
-      onClose();
+      onSuccess();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Couldn't save this posting.");
       setSubmitting(false);
@@ -693,6 +923,8 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         </div>
       </div>
 
+      {formStep === "details" && (
+      <>
       <div className={gradientFrameClass("teal")}>
       <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
       <div>
@@ -890,6 +1122,40 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
           )}
         </div>
       </Field>
+      </div>
+      </div>
+
+      <div className={gradientFrameClass("teal")}>
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex flex-wrap items-center justify-between gap-[10px]">
+        <p className="text-lg font-semibold text-[#141B2E]">Skills</p>
+        <button
+          type="button"
+          onClick={suggestSkills}
+          disabled={suggestingSkills || !title.trim()}
+          className={`flex h-[38px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+            suggestingSkills ? "ai-fill-pulse" : ""
+          }`}
+        >
+          <SiriOrb className="h-[14px] w-[14px]" active={suggestingSkills} />
+          {suggestingSkills ? `Suggesting… ${(suggestSkillsElapsedMs / 1000).toFixed(1)}s` : "Suggest skills for this role"}
+        </button>
+      </div>
+      {(suggestSkillsStatus || suggestSkillsError) && (
+        <p className={`text-xs ${suggestSkillsError ? "text-red-500" : "text-[#008990]"}`}>
+          {suggestSkillsError ??
+            `${suggestSkillsStatus}${
+              suggestSkillsTokens || suggestSkillsDurationMs
+                ? ` (${[
+                    suggestSkillsTokens ? `${suggestSkillsTokens} tokens` : null,
+                    suggestSkillsDurationMs ? `${(suggestSkillsDurationMs / 1000).toFixed(1)}s` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")})`
+                : ""
+            }`}
+        </p>
+      )}
 
       <Field label="Skills required" htmlFor="skillInput" hint={<MatchHint field="professionalSkills" />}>
         <input
@@ -927,6 +1193,21 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
             ))}
           </div>
         )}
+        {skillSuggestions && skillSuggestions.professionalSkills.length > 0 && (
+          <div className="mt-[10px] flex flex-wrap gap-[6px]">
+            {skillSuggestions.professionalSkills.map((skill) => (
+              <button
+                key={skill}
+                type="button"
+                onClick={() => addSuggestedSkill(skill)}
+                className="flex items-center gap-[4px] rounded-full border border-dashed border-black/[0.15] py-[6px] pl-[12px] pr-[10px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+              >
+                <PlusIcon className="h-[8px] w-[8px]" />
+                {skill}
+              </button>
+            ))}
+          </div>
+        )}
       </Field>
 
       <Field label="Soft skills (optional)" htmlFor="softSkillInput" hint={<MatchHint field="softSkills" />}>
@@ -950,18 +1231,33 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
             {softSkills.map((skill) => (
               <span
                 key={skill}
-                className="flex items-center gap-[6px] rounded-full bg-[#F1F4F8] py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
+                className="flex items-center gap-[6px] rounded-full bg-brand-teal-dark py-[6px] pl-[12px] pr-[8px] text-xs text-white"
               >
                 {skill}
                 <button
                   type="button"
                   onClick={() => setSoftSkills((prev) => prev.filter((s) => s !== skill))}
                   aria-label={`Remove ${skill}`}
-                  className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.08] hover:text-[#141B2E]"
+                  className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-white/70 hover:bg-white/20 hover:text-white"
                 >
                   <XIcon className="h-[9px] w-[9px]" />
                 </button>
               </span>
+            ))}
+          </div>
+        )}
+        {skillSuggestions && skillSuggestions.softSkills.length > 0 && (
+          <div className="mt-[10px] flex flex-wrap gap-[6px]">
+            {skillSuggestions.softSkills.map((skill) => (
+              <button
+                key={skill}
+                type="button"
+                onClick={() => addSuggestedSoftSkill(skill)}
+                className="flex items-center gap-[4px] rounded-full border border-dashed border-black/[0.15] py-[6px] pl-[12px] pr-[10px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+              >
+                <PlusIcon className="h-[8px] w-[8px]" />
+                {skill}
+              </button>
             ))}
           </div>
         )}
@@ -992,14 +1288,14 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
             {niceToHaveSkills.map((skill) => (
               <span
                 key={skill}
-                className="flex items-center gap-[6px] rounded-full bg-[#F1F4F8] py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
+                className="flex items-center gap-[6px] rounded-full bg-brand-teal-dark py-[6px] pl-[12px] pr-[8px] text-xs text-white"
               >
                 {skill}
                 <button
                   type="button"
                   onClick={() => setNiceToHaveSkills((prev) => prev.filter((s) => s !== skill))}
                   aria-label={`Remove ${skill}`}
-                  className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.08] hover:text-[#141B2E]"
+                  className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-white/70 hover:bg-white/20 hover:text-white"
                 >
                   <XIcon className="h-[9px] w-[9px]" />
                 </button>
@@ -1007,33 +1303,110 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
             ))}
           </div>
         )}
+        {skillSuggestions && skillSuggestions.niceToHaveSkills.length > 0 && (
+          <div className="mt-[10px] flex flex-wrap gap-[6px]">
+            {skillSuggestions.niceToHaveSkills.map((skill) => (
+              <button
+                key={skill}
+                type="button"
+                onClick={() => addSuggestedNiceToHaveSkill(skill)}
+                className="flex items-center gap-[4px] rounded-full border border-dashed border-black/[0.15] py-[6px] pl-[12px] pr-[10px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+              >
+                <PlusIcon className="h-[8px] w-[8px]" />
+                {skill}
+              </button>
+            ))}
+          </div>
+        )}
       </Field>
+      </div>
+      </div>
 
-      <div className="border-t border-black/[0.06] pt-[16px]">
+      <div className={gradientFrameClass("teal")}>
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      {submitError && <p className="text-xs text-red-500">{submitError}</p>}
+      <div className="flex flex-col gap-[8px] sm:flex-row">
+        <button
+          type="button"
+          disabled={!formValid}
+          onClick={() => setFormStep("screening")}
+          className="flex h-[38px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Continue
+        </button>
+        <button
+          type="button"
+          disabled={submitting || !title.trim()}
+          onClick={() => submitPosting("draft")}
+          className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[22px] text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {submitting ? "Saving…" : "Save as draft"}
+        </button>
+        <button
+          type="button"
+          onClick={() => guardNavigation(onClose)}
+          className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[22px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+        >
+          Cancel
+        </button>
+      </div>
+      </div>
+      </div>
+      </>
+      )}
+
+      {formStep === "screening" && (
+      <>
+      <div className={gradientFrameClass("teal")}>
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex flex-col gap-[10px]">
         <p className="text-sm text-[#141B2E]">Screening requirements</p>
-        <p className="mt-[2px] text-xs text-[#9AA3B2]">
-          Hard filters — narrows candidates to an exact match before AI ranks the rest.
+        <label className="flex items-start gap-[8px] text-sm text-[#141B2E]">
+          <input
+            type="checkbox"
+            checked={screeningEnabled}
+            onChange={(e) => setScreeningEnabled(e.target.checked)}
+            className="mt-[2px] h-[15px] w-[15px] shrink-0 accent-brand-teal-dark"
+          />
+          Add screening requirements for this posting
+        </label>
+        <p className="text-xs text-[#9AA3B2]">
+          {screeningEnabled
+            ? "When a jobseeker applies, they'll be asked to answer the requirements you set below. Answers that meet what you're looking for get a strong match score — answers that don't are marked as not eligible. Only the requirements you actually fill in are asked about."
+            : "Off by default — leave this unchecked and applying stays a single click, with no questions asked. Turn it on to ask applicants to answer the requirements below before they can apply."}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Minimum experience (years)" htmlFor="minYearsExperience" hint={<MatchHint field="yearsExperience" />}>
+      {screeningEnabled && (
+      <>
+      <div className="flex flex-col gap-[12px]">
+        <Field
+          label="Minimum experience (years)"
+          htmlFor="minYearsExperience"
+          hint={<><MatchHint field="yearsExperience" /><AskToggle checked={askMinExperience} onChange={setAskMinExperience} label="Ask this" /></>}
+        >
           <input
             id="minYearsExperience"
             type="number"
             min={0}
+            disabled={!askMinExperience}
             value={minYearsExperience}
             onChange={(e) => setMinYearsExperience(e.target.value)}
             placeholder="e.g. 2"
-            className={inputClass}
+            className={`${inputClass} disabled:cursor-not-allowed disabled:bg-[#F8FAFB] disabled:text-[#9AA3B2]`}
           />
         </Field>
 
-        <Field label="Minimum education" htmlFor="minQualificationTier" hint={<MatchHint field="qualificationTier" />}>
+        <Field
+          label="Minimum education"
+          htmlFor="minQualificationTier"
+          hint={<><MatchHint field="qualificationTier" /><AskToggle checked={askMinEducation} onChange={setAskMinEducation} label="Ask this" /></>}
+        >
           <Dropdown
             id="minQualificationTier"
             label="Minimum education"
             value={minQualificationTier}
+            disabled={!askMinEducation}
             options={[
               { value: "" as const, label: "No requirement" },
               ...QUALIFICATION_TIERS.map((t) => ({ value: t, label: t })),
@@ -1042,11 +1415,16 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
           />
         </Field>
 
-        <Field label="Driving license (optional)" htmlFor="drivingLicense" hint={<MatchHint field="drivingLicense" />}>
+        <Field
+          label="Driving license (optional)"
+          htmlFor="drivingLicense"
+          hint={<><MatchHint field="drivingLicense" /><AskToggle checked={askDrivingLicense} onChange={setAskDrivingLicense} label="Ask this" /></>}
+        >
           <Dropdown
             id="drivingLicense"
             label="Driving license"
             value={drivingLicense}
+            disabled={!askDrivingLicense}
             options={[
               { value: "" as const, label: "Not required" },
               ...DRIVING_LICENSES.map((d) => ({ value: d.value, label: d.label })),
@@ -1056,11 +1434,16 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         </Field>
       </div>
 
-      <Field label="Languages required" htmlFor="languageInput" hint={<MatchHint field="jobseekerLanguages" />}>
+      <Field
+        label="Languages required"
+        htmlFor="languageInput"
+        hint={<><MatchHint field="jobseekerLanguages" /><AskToggle checked={askLanguages} onChange={setAskLanguages} label="Ask this" /></>}
+      >
         <div className="flex gap-[8px]">
           <input
             id="languageInput"
             type="text"
+            disabled={!askLanguages}
             value={languageInput}
             onChange={(e) => setLanguageInput(e.target.value)}
             onKeyDown={(e) => {
@@ -1070,21 +1453,23 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
               }
             }}
             placeholder="e.g. English"
-            className={`${inputClass} flex-1`}
+            className={`${inputClass} flex-1 disabled:cursor-not-allowed disabled:bg-[#F8FAFB] disabled:text-[#9AA3B2]`}
           />
           <div className="w-[150px] shrink-0">
             <Dropdown
               id="languageLevel"
               label="Minimum level"
               value={languageLevelInput}
+              disabled={!askLanguages}
               options={LANGUAGE_LEVELS.map((l) => ({ value: l.value, label: l.label }))}
               onChange={(value) => setLanguageLevelInput(value)}
             />
           </div>
           <button
             type="button"
+            disabled={!askLanguages}
             onClick={addLanguage}
-            className="h-[38px] shrink-0 whitespace-nowrap rounded-[12px] bg-[#E6F9FA] px-[14px] text-sm text-[#008990] hover:bg-[#CFF4F6]"
+            className="h-[38px] shrink-0 whitespace-nowrap rounded-[12px] bg-[#E6F9FA] px-[14px] text-sm text-[#008990] hover:bg-[#CFF4F6] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add
           </button>
@@ -1111,18 +1496,23 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         )}
       </Field>
 
-      <Field label="Accepted work authorization" htmlFor="workAuthorizations" hint={<MatchHint field="workAuthorization" />}>
+      <Field
+        label="Accepted work authorization"
+        htmlFor="workAuthorizations"
+        hint={<><MatchHint field="workAuthorization" /><AskToggle checked={askWorkAuthorizations} onChange={setAskWorkAuthorizations} label="Ask this" /></>}
+      >
         <div id="workAuthorizations" className="flex flex-col gap-[8px]">
           {WORK_AUTHORIZATIONS.map((option) => (
             <label
               key={option.value}
-              className="flex items-center gap-[8px] text-sm text-[#141B2E]"
+              className={`flex items-center gap-[8px] text-sm text-[#141B2E] ${!askWorkAuthorizations ? "opacity-40" : ""}`}
             >
               <input
                 type="checkbox"
+                disabled={!askWorkAuthorizations}
                 checked={workAuthorizations.includes(option.value)}
                 onChange={() => toggleWorkAuthorization(option.value)}
-                className="h-[15px] w-[15px] accent-brand-teal-dark"
+                className="h-[15px] w-[15px] accent-brand-teal-dark disabled:cursor-not-allowed"
               />
               {option.label}
             </label>
@@ -1130,11 +1520,81 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         </div>
       </Field>
 
+      <Field label="Custom yes/no questions (optional)" htmlFor="customQuestionInput">
+        <div className="flex gap-[8px]">
+          <input
+            id="customQuestionInput"
+            type="text"
+            value={customQuestionInput}
+            onChange={(e) => setCustomQuestionInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addCustomQuestion();
+              }
+            }}
+            placeholder="e.g. Willing to work weekends?"
+            className={`${inputClass} flex-1`}
+          />
+          <div className="w-[130px] shrink-0">
+            <Dropdown
+              id="customQuestionRequiredAnswer"
+              label="Correct answer"
+              value={customQuestionRequiredAnswer ? "yes" : "no"}
+              options={[
+                { value: "yes" as const, label: "Yes required" },
+                { value: "no" as const, label: "No required" },
+              ]}
+              onChange={(value) => setCustomQuestionRequiredAnswer(value === "yes")}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={addCustomQuestion}
+            className="h-[38px] shrink-0 whitespace-nowrap rounded-[12px] bg-[#E6F9FA] px-[14px] text-sm text-[#008990] hover:bg-[#CFF4F6]"
+          >
+            Add
+          </button>
+        </div>
+        {customQuestions.length > 0 && (
+          <div className="mt-[10px] flex flex-col gap-[6px]">
+            {customQuestions.map((q) => (
+              <div
+                key={q.id}
+                className="flex items-center justify-between gap-[8px] rounded-[10px] bg-[#F1F4F8] px-[12px] py-[8px] text-xs text-[#141B2E]"
+              >
+                <span>
+                  {q.question} <span className="text-[#9AA3B2]">— must answer {q.requiredAnswer ? "Yes" : "No"}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeCustomQuestion(q.id)}
+                  aria-label={`Remove ${q.question}`}
+                  className="flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.08] hover:text-[#141B2E]"
+                >
+                  <XIcon className="h-[9px] w-[9px]" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Field>
+      </>
+      )}
+
       <p className="text-xs text-[#9AA3B2]">
         This form isn&rsquo;t connected to a real listing yet — it&rsquo;s a preview of the flow.
       </p>
 
+      {submitError && <p className="text-xs text-red-500">{submitError}</p>}
       <div className="flex flex-col gap-[8px] sm:flex-row">
+        <button
+          type="button"
+          onClick={() => setFormStep("details")}
+          className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[22px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+        >
+          Back
+        </button>
         <button
           type="button"
           disabled={!formValid}
@@ -1142,6 +1602,14 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
           className="flex h-[38px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Preview as jobseeker
+        </button>
+        <button
+          type="button"
+          disabled={submitting || !title.trim()}
+          onClick={() => submitPosting("draft")}
+          className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[22px] text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {submitting ? "Saving…" : "Save as draft"}
         </button>
         <button
           type="button"
@@ -1153,73 +1621,81 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       </div>
       </div>
       </div>
+      </>
+      )}
     </form>
 
     <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
       <div
-        className={`flex flex-col gap-[6px] rounded-[12px] border p-[12px] ${
-          formValid ? "border-[#D9E5DD] bg-[#F3F9F5]" : "border-[#EAD9D6] bg-[#FBF3F1]"
-        }`}
+        className={
+          formValid
+            ? gradientFrameClass("teal")
+            : "rounded-[20px] bg-gradient-to-br from-[#A66A61] via-white to-[#A66A61] p-px shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-24px_rgba(20,27,46,0.2)]"
+        }
       >
-        <p className={`text-xs ${formValid ? "text-[#6E9C7C]" : "text-[#A66A61]"}`}>
-          {formValid ? "All required fields are complete." : "Complete these required fields to continue:"}
-        </p>
-        <ul className="flex flex-col gap-[4px]">
-          {requiredFieldChecklist.map(({ label, done, fieldId }) => (
-            <li key={label}>
-              <button
-                type="button"
-                disabled={done}
-                onClick={() => goToField(fieldId)}
-                className={`flex w-full items-center gap-[8px] text-left text-sm ${
-                  done ? "cursor-default text-[#6E9C7C]" : "text-[#A66A61] hover:underline"
-                }`}
-              >
-                <span
-                  className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full border ${
-                    done ? "border-[#6E9C7C] bg-[#6E9C7C]" : "border-[#C99089]"
+        <div className="rounded-[19px] bg-white p-[22px]">
+          <p className="text-left text-lg font-semibold text-[#141B2E]">
+            {formValid ? "All required fields are complete." : "Complete these required fields to continue:"}
+          </p>
+          <ul className="mt-[16px] flex flex-col gap-[4px]">
+            {requiredFieldChecklist.map(({ label, done, fieldId }) => (
+              <li key={label}>
+                <button
+                  type="button"
+                  disabled={done}
+                  onClick={() => goToField(fieldId)}
+                  className={`flex w-full items-center gap-[8px] text-left text-sm ${
+                    done ? "cursor-default text-[#1F7A3F]" : "text-[#A66A61] hover:underline"
                   }`}
                 >
-                  {done && <CheckIcon className="h-[8px] w-[8px] text-white" />}
-                </span>
-                {label}
-              </button>
-            </li>
-          ))}
-        </ul>
+                  <span
+                    className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full border ${
+                      done ? "border-[#1F7A3F] bg-[#1F7A3F]" : "border-[#C99089]"
+                    }`}
+                  >
+                    {done && <CheckIcon className="h-[8px] w-[8px] text-white" />}
+                  </span>
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-[6px] rounded-[12px] border border-[#CFF4F6] bg-[#E6F9FA] p-[12px]">
-        <p className="text-xs text-brand-teal-dark">
-          {boostChecklistRemaining > 0
-            ? "✨ Not compulsory, but these help narrow your candidate pool and attract better applicants:"
-            : "✨ Nice — this posting is fully boosted and ready to attract candidates."}
-        </p>
-        <ul className="flex flex-col gap-[4px]">
-          {boostChecklist.map(({ label, done, fieldId }) => (
-            <li key={label}>
-              <button
-                type="button"
-                disabled={done}
-                onClick={() => goToField(fieldId)}
-                className={`flex w-full items-center gap-[8px] text-left text-sm ${
-                  done
-                    ? "cursor-default text-[#6E9C7C]"
-                    : "text-[#4B5468] hover:text-brand-teal-dark hover:underline"
-                }`}
-              >
-                <span
-                  className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full border ${
-                    done ? "border-[#6E9C7C] bg-[#6E9C7C]" : "border-black/[0.15]"
+      <div className={gradientFrameClass("teal")}>
+        <div className="rounded-[19px] bg-white p-[22px]">
+          <p className="text-left text-lg font-semibold text-[#141B2E]">
+            {boostChecklistRemaining > 0
+              ? "Not compulsory, but these help narrow your candidate pool and attract better applicants:"
+              : "✨ Nice — this posting is fully boosted and ready to attract candidates."}
+          </p>
+          <ul className="mt-[16px] flex flex-col gap-[4px]">
+            {boostChecklist.map(({ label, done, fieldId }) => (
+              <li key={label}>
+                <button
+                  type="button"
+                  disabled={done}
+                  onClick={() => goToField(fieldId)}
+                  className={`flex w-full items-center gap-[8px] text-left text-sm ${
+                    done
+                      ? "cursor-default text-[#1F7A3F]"
+                      : "text-[#4B5468] hover:text-brand-teal-dark hover:underline"
                   }`}
                 >
-                  {done && <CheckIcon className="h-[8px] w-[8px] text-white" />}
-                </span>
-                {label}
-              </button>
-            </li>
-          ))}
-        </ul>
+                  <span
+                    className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full border ${
+                      done ? "border-[#1F7A3F] bg-[#1F7A3F]" : "border-black/[0.15]"
+                    }`}
+                  >
+                    {done && <CheckIcon className="h-[8px] w-[8px] text-white" />}
+                  </span>
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
     </div>
@@ -1446,14 +1922,20 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         <div className="mt-[18px] flex flex-col gap-[8px]">
           <button
             type="button"
-            onClick={() => {
+            disabled={submitting || !title.trim()}
+            onClick={async () => {
               setShowLeaveConfirm(false);
-              pendingProceed?.();
+              const proceed = pendingProceed;
               setPendingProceed(null);
+              // submitPosting only calls onSuccess once the save actually
+              // succeeds — a failed save leaves the form open (with
+              // submitError shown) instead of navigating away and losing
+              // what was typed, same as a direct "Save as draft" click.
+              await submitPosting("draft", () => proceed?.());
             }}
-            className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
+            className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Save as draft
+            {submitting ? "Saving…" : "Save as draft"}
           </button>
           <button
             type="button"
@@ -1466,6 +1948,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
           >
             Discard posting
           </button>
+          {submitError && <p className="text-xs text-red-500">{submitError}</p>}
           <button
             type="button"
             onClick={() => {
@@ -1634,6 +2117,14 @@ export type DbJobPosting = {
   languages: { language: string; level: string }[];
   workAuthorizations: string[];
   drivingLicense: string | null;
+  screeningEnabled: boolean;
+  customScreeningQuestions: { id: string; question: string; requiredAnswer: boolean }[];
+  skillSuggestions: { professionalSkills: string[]; softSkills: string[]; niceToHaveSkills: string[] } | null;
+  askMinYearsExperience: boolean;
+  askMinQualificationTier: boolean;
+  askDrivingLicense: boolean;
+  askLanguages: boolean;
+  askWorkAuthorizations: boolean;
   status: string;
   rejectionReason: string | null;
   flagReason: string | null;
@@ -2029,6 +2520,14 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
           languages: original.languages,
           workAuthorizations: original.workAuthorizations,
           drivingLicense: original.drivingLicense,
+          screeningEnabled: original.screeningEnabled,
+          customScreeningQuestions: original.customScreeningQuestions,
+          skillSuggestions: original.skillSuggestions,
+          askMinYearsExperience: original.askMinYearsExperience,
+          askMinQualificationTier: original.askMinQualificationTier,
+          askDrivingLicense: original.askDrivingLicense,
+          askLanguages: original.askLanguages,
+          askWorkAuthorizations: original.askWorkAuthorizations,
         }),
       });
       const data = await res.json();

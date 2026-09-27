@@ -1,0 +1,1 @@
+ALTER TABLE "job_postings" ADD COLUMN "skill_suggestions" jsonb;

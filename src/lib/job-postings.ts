@@ -11,6 +11,20 @@ import {
   jobseekerProfiles,
 } from "./db/schema";
 
+// Custom screening questions carry a `requiredAnswer` ("correct" yes/no)
+// that must never reach a jobseeker's browser — a posting handed to a
+// client component as page props is visible in the page source, so this
+// strips it at the server boundary rather than relying on the client only
+// choosing not to render it.
+export function stripCustomQuestionAnswers<T extends { customScreeningQuestions: { id: string; question: string; requiredAnswer: boolean }[] }>(
+  posting: T,
+): Omit<T, "customScreeningQuestions"> & { customScreeningQuestions: { id: string; question: string }[] } {
+  return {
+    ...posting,
+    customScreeningQuestions: posting.customScreeningQuestions.map((q) => ({ id: q.id, question: q.question })),
+  };
+}
+
 // "Acme Corp — Frontend Engineer!" -> "acme-corp-frontend-engineer"
 function slugify(text: string): string {
   return text

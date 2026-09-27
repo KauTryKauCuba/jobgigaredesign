@@ -171,6 +171,41 @@ export default function EmployerApplicantsView({
   const [howStagesWorkOpen, setHowStagesWorkOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [nameQuery, setNameQuery] = useState("");
+  const [matchScores, setMatchScores] = useState<
+    Record<string, { score: number; eligible: boolean; ineligibleReasons: string[] }>
+  >({});
+
+  // Reuses the same 0-100 weighted match score shown on "Top Matches" —
+  // computed from skills/experience/etc. fit against each application's
+  // posting — so employers can gauge fit at a glance without opening every
+  // applicant's details. Ineligible candidates are always zeroed there
+  // (src/app/api/employer/applicants/matches/route.ts), so we keep
+  // ineligibleReasons alongside the score to explain a 0% match that isn't
+  // actually about skills overlap.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/employer/applicants/matches");
+        const data = await res.json();
+        if (cancelled || !res.ok) return;
+        const scores: Record<string, { score: number; eligible: boolean; ineligibleReasons: string[] }> = {};
+        for (const result of data.results ?? []) {
+          scores[result.applicationId] = {
+            score: result.score,
+            eligible: result.eligible,
+            ineligibleReasons: result.ineligibleReasons ?? [],
+          };
+        }
+        setMatchScores(scores);
+      } catch {
+        // Non-critical — cards just render without a score badge.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function togglePostingCollapsed(postingId: string) {
     setCollapsedPostings((prev) => {
@@ -629,6 +664,22 @@ export default function EmployerApplicantsView({
                               <span className="text-xs text-[#9AA3B2]">
                                 Applied {relativeTimeAgo(applicant.application.appliedAt)}
                               </span>
+                              {matchScores[applicant.application.id] !== undefined && (
+                                <div className="flex max-w-[220px] flex-col items-end gap-[4px]">
+                                  <span className="shrink-0 rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">
+                                    {matchScores[applicant.application.id].score}% job match
+                                  </span>
+                                  {matchScores[applicant.application.id].eligible ? (
+                                    <span className="shrink-0 rounded-full bg-[#E7F6EC] px-[10px] py-[3px] text-xs text-[#2F9E56]">
+                                      Passed screening
+                                    </span>
+                                  ) : (
+                                    <span className="shrink-0 rounded-full bg-[#FDEDE8] px-[10px] py-[3px] text-xs text-[#C2410C]">
+                                      Failed screening
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               {(() => {
                                 const color =
                                   APPLICATION_STATUS_COLOR[applicant.application.status] ??
@@ -660,7 +711,7 @@ export default function EmployerApplicantsView({
       </div>
       </div>
 
-      <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
+      <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:max-h-[calc(100svh-105px)] lg:flex-[1] lg:overflow-y-auto">
         <div className={gradientFrameClass("teal")}>
           <div className="rounded-[19px] bg-white p-[22px]">
             <TopMatchesCard initialEnabled={initialSmartMatchEnabled} initialCriteria={initialCriteria} />

@@ -74,6 +74,7 @@ type MatchResult = {
   jobPostingId: string;
   score: number;
   eligible: boolean;
+  ineligibleReasons: string[];
 };
 
 // Same bands as TopMatchesCard.tsx/EmployerJobPostingView.tsx's own "Top
@@ -801,7 +802,15 @@ export default function EmployerDashboardOverview({
                     </div>
                     {band && match && (
                       <span className={`shrink-0 rounded-full px-[9px] py-[3px] text-xs ${band.bg} ${band.text}`}>
-                        {match.score}% match
+                        {match.score}% job match
+                      </span>
+                    )}
+                    {match && !match.eligible && (
+                      <span
+                        className="shrink-0 rounded-full bg-[#FDEDE8] px-[9px] py-[3px] text-xs text-[#C2410C]"
+                        title={match.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
+                      >
+                        Failed screening
                       </span>
                     )}
                     <span

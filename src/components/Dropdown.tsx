@@ -12,6 +12,7 @@ export default function Dropdown<T extends string>({
   accent = "teal",
   searchable = false,
   searchPlaceholder = "Search...",
+  disabled = false,
 }: {
   id?: string;
   label: string;
@@ -25,6 +26,7 @@ export default function Dropdown<T extends string>({
   // grow an unnecessary input.
   searchable?: boolean;
   searchPlaceholder?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -77,21 +79,25 @@ export default function Dropdown<T extends string>({
       <button
         id={id}
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
-        className={`flex h-[38px] w-full items-center justify-between rounded-[12px] border border-black/[0.1] px-[14px] text-sm text-[#141B2E] outline-none ${
+        className={`flex h-[38px] w-full items-center justify-between rounded-[12px] border border-black/[0.1] px-[14px] text-sm text-[#141B2E] outline-none disabled:cursor-not-allowed disabled:bg-[#F8FAFB] disabled:text-[#9AA3B2] ${
           accent === "gold" ? "focus:border-brand-gold-dark" : "focus:border-brand-teal-dark"
         }`}
       >
-        {selected?.label}
+        {/* Falls back to the raw stored value (rather than rendering blank)
+            when it doesn't match any current option — e.g. a legacy
+            free-text value saved before this field became a fixed list. */}
+        <span className="min-w-0 truncate">{selected?.label ?? value}</span>
         <ChevronDownIcon
           className={`h-[11px] w-[11px] text-[#9AA3B2] transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
 
-      {open && (
+      {!disabled && open && (
         <div className="absolute z-10 mt-[6px] w-full rounded-[12px] border border-black/[0.1] bg-white p-[6px] shadow-[0_8px_24px_-8px_rgba(20,27,46,0.2)]">
           {searchable && (
             <div className="mb-[4px] flex items-center gap-[8px] rounded-[8px] border border-black/[0.08] px-[10px]">
@@ -107,7 +113,13 @@ export default function Dropdown<T extends string>({
               />
             </div>
           )}
-          <ul role="listbox" aria-label={label} className="flex max-h-[260px] flex-col gap-[2px] overflow-y-auto">
+          <ul
+            role="listbox"
+            aria-label={label}
+            className={`flex max-h-[260px] flex-col gap-[2px] overflow-y-auto ${
+              accent === "gold" ? "scrollbar-thin-gold" : "scrollbar-thin-teal"
+            }`}
+          >
             {filteredOptions.length === 0 ? (
               <li className="px-[10px] py-[10px] text-sm text-[#9AA3B2]">No matches found</li>
             ) : (

@@ -34,6 +34,7 @@ type Posting = {
   languages: { language: string; level: string }[];
   workAuthorizations: string[];
   drivingLicense: string | null;
+  screeningEnabled: boolean;
   createdAt: string;
 };
 
@@ -264,43 +265,45 @@ export default function JobPostingDetailView({
             </div>
           )}
 
-          <div className="mt-[24px] border-t border-black/[0.06] pt-[16px]">
-            <p className="text-sm text-[#141B2E]">Screening requirements</p>
-            <div className="mt-[12px] grid grid-cols-1 gap-x-[20px] gap-y-[12px] sm:grid-cols-2">
-              <div>
-                <p className="text-xs text-[#4B5468]">Minimum experience</p>
-                <p className="mt-[2px] text-sm text-[#141B2E]">
-                  {!posting.minYearsExperience
-                    ? "No requirement"
-                    : `${posting.minYearsExperience} year${posting.minYearsExperience === 1 ? "" : "s"}`}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[#4B5468]">Minimum education</p>
-                <p className="mt-[2px] text-sm text-[#141B2E]">{posting.minQualificationTier ?? "No requirement"}</p>
-              </div>
-              {posting.drivingLicense && (
+          {posting.screeningEnabled && (
+            <div className="mt-[24px] border-t border-black/[0.06] pt-[16px]">
+              <p className="text-sm text-[#141B2E]">Screening requirements</p>
+              <div className="mt-[12px] grid grid-cols-1 gap-x-[20px] gap-y-[12px] sm:grid-cols-2">
                 <div>
-                  <p className="text-xs text-[#4B5468]">Driving license</p>
-                  <p className="mt-[2px] text-sm text-[#141B2E]">{posting.drivingLicense}</p>
-                </div>
-              )}
-              {posting.languages.length > 0 && (
-                <div>
-                  <p className="text-xs text-[#4B5468]">Languages required</p>
+                  <p className="text-xs text-[#4B5468]">Minimum experience</p>
                   <p className="mt-[2px] text-sm text-[#141B2E]">
-                    {posting.languages.map((l) => `${l.language} (${l.level})`).join(", ")}
+                    {posting.minYearsExperience == null
+                      ? "No requirement"
+                      : `${posting.minYearsExperience} year${posting.minYearsExperience === 1 ? "" : "s"}`}
                   </p>
                 </div>
-              )}
-              {posting.workAuthorizations.length > 0 && (
-                <div className="sm:col-span-2">
-                  <p className="text-xs text-[#4B5468]">Accepted work authorization</p>
-                  <p className="mt-[2px] text-sm text-[#141B2E]">{posting.workAuthorizations.join(", ")}</p>
+                <div>
+                  <p className="text-xs text-[#4B5468]">Minimum education</p>
+                  <p className="mt-[2px] text-sm text-[#141B2E]">{posting.minQualificationTier ?? "No requirement"}</p>
                 </div>
-              )}
+                {posting.drivingLicense && (
+                  <div>
+                    <p className="text-xs text-[#4B5468]">Driving license</p>
+                    <p className="mt-[2px] text-sm text-[#141B2E]">{posting.drivingLicense}</p>
+                  </div>
+                )}
+                {posting.languages.length > 0 && (
+                  <div>
+                    <p className="text-xs text-[#4B5468]">Languages required</p>
+                    <p className="mt-[2px] text-sm text-[#141B2E]">
+                      {posting.languages.map((l) => `${l.language} (${l.level})`).join(", ")}
+                    </p>
+                  </div>
+                )}
+                {posting.workAuthorizations.length > 0 && (
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-[#4B5468]">Accepted work authorization</p>
+                    <p className="mt-[2px] text-sm text-[#141B2E]">{posting.workAuthorizations.join(", ")}</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </JobseekerDashboardShell>

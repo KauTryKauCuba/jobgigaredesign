@@ -12,7 +12,12 @@ import SiriOrb from "./SiriOrb";
 const JOB_POSTING_INTENT_PATTERNS = [
   /\bpost(?:ing)? (?:a |an |)?job (?:for|as) (?:a |an |)(.+)/i,
   /\bcreate(?:ing)? (?:a |an |)job (?:posting |listing |)(?:for|as) (?:a |an |)(.+)/i,
-  /\b(?:hire|hiring for|looking for) (?:a |an |)(.+)/i,
+  // Unlike the two patterns above (which already contain the explicit word
+  // "job"), these generic verbs need the article required, not optional —
+  // otherwise "I'm looking for the poster generator" (a navigation request)
+  // also matches this pattern and gets misparsed into "create a job posting
+  // titled 'The Poster Generator'".
+  /\b(?:hire|hiring for|looking for) (?:a |an )(.+)/i,
 ];
 
 function extractJobPostingIntent(text: string): string | null {
@@ -84,7 +89,14 @@ type ApplicantStatsIntent =
   | { type: "applicants_by_location"; location: string }
   | { type: "applicants_this_posting" }
   | { type: "applicants_today" }
-  | { type: "applicants_total" };
+  | { type: "applicants_total" }
+  | { type: "rejected_count" }
+  | { type: "busiest_posting" }
+  | { type: "avg_time_to_hire" }
+  | { type: "kiv_count" }
+  | { type: "evaluation_pending_count" }
+  | { type: "interview_no_show_count" }
+  | { type: "interview_declined_count" };
 
 function extractApplicantStatsIntent(text: string): ApplicantStatsIntent | null {
   const c = text.trim().toLowerCase();
@@ -94,6 +106,37 @@ function extractApplicantStatsIntent(text: string): ApplicantStatsIntent | null 
   if (c.includes("applicant") && c.includes("shortlist")) return { type: "to_shortlist" };
   if (c.includes("hired") && (c.includes("how many") || c.includes("how much"))) return { type: "hired_count" };
   if (c.includes("offer") && (c.includes("pending") || c.includes("how many"))) return { type: "offers_pending" };
+  // Requires "applicant"/"candidate" (unlike a bare "reject" check) so this
+  // doesn't also swallow "how many rejected job postings do I have" — a
+  // different, posting-status question answered by extractJobStatsIntent.
+  if (
+    c.includes("reject") &&
+    (c.includes("applicant") || c.includes("candidate")) &&
+    (c.includes("how many") || c.includes("how much"))
+  ) {
+    return { type: "rejected_count" };
+  }
+  if (
+    (c.includes("most applicants") || c.includes("busiest") || c.includes("popular posting") || c.includes("popular job")) &&
+    (c.includes("which") || c.includes("what"))
+  ) {
+    return { type: "busiest_posting" };
+  }
+  if (c.includes("time to hire") || (c.includes("how long") && c.includes("hire"))) {
+    return { type: "avg_time_to_hire" };
+  }
+  if (c.includes("kiv") || (c.includes("keep in view") && (c.includes("how many") || c.includes("applicant")))) {
+    return { type: "kiv_count" };
+  }
+  if (c.includes("evaluat") && (c.includes("pending") || c.includes("how many") || c.includes("waiting"))) {
+    return { type: "evaluation_pending_count" };
+  }
+  if (c.includes("no-show") || c.includes("no show") || (c.includes("didn't show") && c.includes("interview"))) {
+    return { type: "interview_no_show_count" };
+  }
+  if (c.includes("declined") && c.includes("interview")) {
+    return { type: "interview_declined_count" };
+  }
   if (
     c.includes("top applicant") ||
     c.includes("best applicant") ||
@@ -127,11 +170,86 @@ function extractApplicantStatsIntent(text: string): ApplicantStatsIntent | null 
   return null;
 }
 
+// Employer questions that aren't about a specific applicant/posting count —
+// team management, AI usage, and posting housekeeping (expiring soon,
+// openings remaining on the currently-open posting).
+type EmployerMetaIntent =
+  | { type: "team_count" }
+  | { type: "team_pending_invites" }
+  | { type: "ai_usage" }
+  | { type: "expiring_soon" }
+  | { type: "openings_remaining" };
+
+function extractEmployerMetaIntent(text: string): EmployerMetaIntent | null {
+  const c = text.trim().toLowerCase();
+  const mentionsThisPosting = c.includes("this job posting") || c.includes("this posting") || c.includes("this job");
+
+  if (c.includes("team") && (c.includes("pending") || c.includes("invite"))) return { type: "team_pending_invites" };
+  if (c.includes("team") && (c.includes("how many") || c.includes("members"))) return { type: "team_count" };
+  if (c.includes("ai") && (c.includes("usage") || c.includes("cost") || c.includes("spend") || c.includes("used"))) {
+    return { type: "ai_usage" };
+  }
+  if (c.includes("expir") && (c.includes("posting") || c.includes("job") || c.includes("soon"))) {
+    return { type: "expiring_soon" };
+  }
+  if (
+    mentionsThisPosting &&
+    (c.includes("opening") || c.includes("position") || c.includes("spot")) &&
+    (c.includes("left") || c.includes("remaining") || c.includes("how many"))
+  ) {
+    return { type: "openings_remaining" };
+  }
+  if (mentionsThisPosting && c.includes("full") && (c.startsWith("is") || c.includes("is it"))) {
+    return { type: "openings_remaining" };
+  }
+  return null;
+}
+
 // Broad enough to catch a question that's clearly about postings/applicants
 // but didn't match a specific intent above — used only to pick an honest
 // "didn't understand" fallback over the generic demo reply, not to answer
 // anything itself.
-const EMPLOYER_QUESTION_HINT = /\b(applicant|interview|job posting|hire|hiring|screen|shortlist|offer)\b/i;
+const EMPLOYER_QUESTION_HINT =
+  /\b(applicant|interview|job posting|hire|hiring|screen|shortlist|offer|team|expir|opening|kiv|evaluat|no-show|no show|declined|ai usage)\b/i;
+
+// Same idea as the employer side, but for a jobseeker's own status
+// questions ("how many jobs have I applied to", "do I have any interviews").
+type JobseekerStatsIntent =
+  | { type: "applications_total" }
+  | { type: "interviews_upcoming" }
+  | { type: "offers_count" }
+  | { type: "hired_status" }
+  | { type: "rejected_count" };
+
+function extractJobseekerStatsIntent(text: string): JobseekerStatsIntent | null {
+  const c = text.trim().toLowerCase();
+  if (c.includes("interview") && (c.includes("how many") || c.includes("do i have") || c.includes("upcoming"))) {
+    return { type: "interviews_upcoming" };
+  }
+  if (c.includes("offer") && (c.includes("how many") || c.includes("do i have"))) {
+    return { type: "offers_count" };
+  }
+  // Qualified like every sibling check here — a bare "hired" would also
+  // match unrelated phrasing like "tips to get hired faster".
+  if (
+    c.includes("got the job") ||
+    (c.includes("hired") && (c.includes("am i") || c.includes("was i") || c.includes("have i") || c.includes("did i")))
+  ) {
+    return { type: "hired_status" };
+  }
+  if (c.includes("reject") && (c.includes("how many") || c.includes("do i have"))) {
+    return { type: "rejected_count" };
+  }
+  if (
+    (c.includes("application") || c.includes("applied")) &&
+    (c.includes("how many") || c.includes("do i have") || c.includes("status"))
+  ) {
+    return { type: "applications_total" };
+  }
+  return null;
+}
+
+const JOBSEEKER_QUESTION_HINT = /\b(application|applied|interview|offer|hired|rejected|profile|cover letter)\b/i;
 
 const SCREENABLE_STATUS = "applied"; // awaiting a screening decision
 const SHORTLISTABLE_STATUS = "screened"; // screened, awaiting shortlist decision
@@ -156,6 +274,71 @@ function currentJobPostingSlug(pathname: string | null): string | null {
   const match = pathname.match(/^\/employer\/jobs\/([^/]+)\/?$/);
   if (!match || match[1] === "postajob") return null;
   return match[1];
+}
+
+// "Take me to my applicants", "open the poster generator", etc. — checked
+// against a per-context destination list (order matters: more specific
+// phrases like "poster generator" must be checked before a generic "jobs"
+// match would otherwise win). Deliberately excludes "show me" as a trigger
+// verb since that phrasing is already used by existing stat questions
+// ("show me applicants from Kuala Lumpur") and would collide with them.
+// Anchored to the start of the message (allowing a short polite prefix) —
+// unanchored, "open" alone would also match mid-sentence in an unrelated
+// question like "how many open job postings do I have?", hijacking it into
+// a navigation action instead of answering the count.
+const NAVIGATION_TRIGGER = /^(?:please |can you |could you )?(?:take me to|go to|navigate to|open)\b/i;
+
+type NavigationDestination = { keywords: string[]; path: string; label: string };
+
+const EMPLOYER_NAV_DESTINATIONS: NavigationDestination[] = [
+  { keywords: ["poster generator", "poster"], path: "/employer/jobs/poster-generator", label: "the poster generator" },
+  { keywords: ["post a job", "post job"], path: "/employer/jobs/postajob", label: "post a job" },
+  { keywords: ["job posting", "job postings", "manage job", "my jobs"], path: "/employer/jobs", label: "your job postings" },
+  { keywords: ["applicant", "candidate"], path: "/employer/applicants", label: "your applicants" },
+  { keywords: ["interview"], path: "/employer/interviews", label: "your interviews" },
+  { keywords: ["team"], path: "/employer/team", label: "your team" },
+  { keywords: ["company profile", "company page", "company"], path: "/employer/company", label: "your company profile" },
+  { keywords: ["dashboard", "home", "overview"], path: "/employer/dashboard", label: "your dashboard" },
+];
+
+const JOBSEEKER_NAV_DESTINATIONS: NavigationDestination[] = [
+  { keywords: ["cover letter"], path: "/jobseeker/cover-letters", label: "your cover letters" },
+  { keywords: ["my application", "applications"], path: "/jobseeker/applications", label: "your applications" },
+  { keywords: ["my profile", "profile"], path: "/jobseeker/profile", label: "your profile" },
+  { keywords: ["browse jobs", "job postings", "search jobs", "jobs page", "jobs"], path: "/jobseeker/jobs", label: "job postings" },
+  { keywords: ["dashboard", "home"], path: "/jobseeker/dashboard", label: "your dashboard" },
+];
+
+function extractNavigationIntent(text: string, destinations: NavigationDestination[]): NavigationDestination | null {
+  const cleaned = text.trim().toLowerCase();
+  if (!NAVIGATION_TRIGGER.test(cleaned)) return null;
+  for (const destination of destinations) {
+    if (destination.keywords.some((k) => cleaned.includes(k))) return destination;
+  }
+  return null;
+}
+
+// "Close the graphic designer posting", "pause applications for X" — an
+// actual mutating action (unlike the read-only stats questions above), so
+// the caller confirms which posting it resolved to in the reply rather than
+// acting silently.
+const CLOSE_POSTING_PATTERNS = [
+  /\bclose (?:the |)(?:job |)(?:posting |listing |)(?:for |called |named |titled |)(.+)/i,
+  /\bpause applications? for (?:the |)(.+)/i,
+  /\bstop accepting applications? for (?:the |)(.+)/i,
+];
+
+function extractClosePostingIntent(text: string): string | null {
+  const cleaned = text.trim().replace(/[.!?]+$/, "");
+  for (const pattern of CLOSE_POSTING_PATTERNS) {
+    const match = cleaned.match(pattern);
+    if (match?.[1]?.trim()) {
+      // Strip a trailing "posting"/"job"/"listing" the user tacked onto the
+      // title itself (e.g. "close the frontend engineer job posting").
+      return match[1].trim().replace(/\s+(?:job posting|posting|job listing|listing|job)$/i, "");
+    }
+  }
+  return null;
 }
 
 type Message = { id: number; role: "user" | "assistant"; text: string };
@@ -381,16 +564,53 @@ export default function FloatingDemoWidget() {
     setOpen(true);
     setThinking(true);
 
-    // Only act on employer-only intents from the employer dashboard — the
-    // same phrasing said from the jobseeker side has nothing to route to or
+    // Only act on employer/jobseeker-only intents from their own dashboard —
+    // the same phrasing said from the other side has nothing to route to or
     // query, so it falls through to the normal demo reply below.
-    const isEmployerContext = pathname?.startsWith("/employer") ?? false;
-    const jobTitle = isEmployerContext ? extractJobPostingIntent(text) : null;
-    const applicantIntent = isEmployerContext && !jobTitle ? extractApplicantStatsIntent(text) : null;
-    const statsIntent = isEmployerContext && !jobTitle && !applicantIntent ? extractJobStatsIntent(text) : null;
+    // "/employer" and "/jobseeker" (exactly, no further path) are the public
+    // marketing landing pages — this same widget renders there for a signed-
+    // out visitor, who has no data for any of these intents to query. Every
+    // real dashboard route is a sub-path (/employer/dashboard, /employer/
+    // jobs, etc.), so excluding the bare root keeps those intents from
+    // firing there and surfacing a raw "Not signed in" API error instead of
+    // the normal marketing-page demo reply.
+    const isEmployerContext = (pathname?.startsWith("/employer") ?? false) && pathname !== "/employer";
+    const isJobseekerContext = (pathname?.startsWith("/jobseeker") ?? false) && pathname !== "/jobseeker";
+    const navigationIntent = isEmployerContext
+      ? extractNavigationIntent(text, EMPLOYER_NAV_DESTINATIONS)
+      : isJobseekerContext
+        ? extractNavigationIntent(text, JOBSEEKER_NAV_DESTINATIONS)
+        : null;
+    const jobTitle = isEmployerContext && !navigationIntent ? extractJobPostingIntent(text) : null;
+    const closePostingTitle =
+      isEmployerContext && !navigationIntent && !jobTitle ? extractClosePostingIntent(text) : null;
+    const applicantIntent =
+      isEmployerContext && !navigationIntent && !jobTitle && !closePostingTitle
+        ? extractApplicantStatsIntent(text)
+        : null;
+    const statsIntent =
+      isEmployerContext && !navigationIntent && !jobTitle && !closePostingTitle && !applicantIntent
+        ? extractJobStatsIntent(text)
+        : null;
+    const metaIntent =
+      isEmployerContext && !navigationIntent && !jobTitle && !closePostingTitle && !applicantIntent && !statsIntent
+        ? extractEmployerMetaIntent(text)
+        : null;
+    const jobseekerStatsIntent =
+      isJobseekerContext && !navigationIntent ? extractJobseekerStatsIntent(text) : null;
     const postingSlug = currentJobPostingSlug(pathname);
 
     replyTimer.current = setTimeout(async () => {
+      if (navigationIntent) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId++, role: "assistant", text: `Taking you to ${navigationIntent.label}.` },
+        ]);
+        setThinking(false);
+        router.push(navigationIntent.path);
+        return;
+      }
+
       if (jobTitle) {
         setMessages((prev) => [
           ...prev,
@@ -402,6 +622,42 @@ export default function FloatingDemoWidget() {
         ]);
         setThinking(false);
         router.push(`/employer/jobs/postajob?title=${encodeURIComponent(jobTitle)}&autofill=1`);
+        return;
+      }
+
+      if (closePostingTitle) {
+        let replyText: string;
+        try {
+          const res = await fetch("/api/employer/job-postings");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Couldn't fetch your job postings.");
+          const postings = (data.postings as { id: string; title: string; status: string }[]) ?? [];
+          const needle = closePostingTitle.toLowerCase();
+          const matches = postings.filter((p) => p.status !== "closed" && p.title.toLowerCase().includes(needle));
+          if (matches.length === 0) {
+            replyText = `I couldn't find an open posting matching "${closePostingTitle}".`;
+          } else if (matches.length > 1) {
+            // Silently closing whichever one array order finds first would
+            // risk closing the wrong posting when the title is ambiguous
+            // (e.g. "close the engineer posting" with both "Frontend
+            // Engineer" and "Backend Engineer" open) — ask instead.
+            replyText = `That matches more than one posting: ${matches.map((p) => `"${p.title}"`).join(", ")}. Which one did you mean? Try naming it more specifically.`;
+          } else {
+            const match = matches[0];
+            const patchRes = await fetch(`/api/employer/job-postings/${match.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "closed" }),
+            });
+            const patchData = await patchRes.json();
+            if (!patchRes.ok) throw new Error(patchData.error ?? "Couldn't close that posting.");
+            replyText = `Closed "${match.title}" — it'll stop accepting new applications.`;
+          }
+        } catch (err) {
+          replyText = err instanceof Error ? err.message : "Couldn't close that posting right now.";
+        }
+        setMessages((prev) => [...prev, { id: nextId++, role: "assistant", text: replyText }]);
+        setThinking(false);
         return;
       }
 
@@ -426,7 +682,9 @@ export default function FloatingDemoWidget() {
               applicantLocation: string;
               status: string;
               appliedAt: string;
+              hiredAt: string | null;
               interviewDetails: { scheduledAt: string } | null;
+              interviewResponseStatus: string | null;
             }[]) ?? [];
 
           const currentPosting = postingSlug ? postings.find((p) => p.slug === postingSlug) : null;
@@ -569,6 +827,79 @@ export default function FloatingDemoWidget() {
                   : `You have ${count} applicant${count === 1 ? "" : "s"}${scope} overall.`;
               break;
             }
+            case "rejected_count": {
+              const count = scoped.filter((a) => a.status === "rejected").length;
+              const scope = currentPosting ? ` for "${currentPosting.title}"` : "";
+              replyText =
+                count === 0
+                  ? `No rejected applicants${scope}.`
+                  : `You've rejected ${count} applicant${count === 1 ? "" : "s"}${scope}.`;
+              break;
+            }
+            case "busiest_posting": {
+              // Always across every posting — "which posting" only makes
+              // sense globally, so this ignores `scoped`/currentPosting even
+              // when the employer is looking at one specific posting.
+              const counts = new Map<string, number>();
+              for (const a of applications) counts.set(a.jobPostingId, (counts.get(a.jobPostingId) ?? 0) + 1);
+              const [topId, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+              const topPosting = postings.find((p) => p.id === topId);
+              replyText = topPosting
+                ? `"${topPosting.title}" has the most applicants, with ${topCount}.`
+                : "You don't have any applicants yet.";
+              break;
+            }
+            case "avg_time_to_hire": {
+              const hires = scoped.filter((a) => a.status === "hired" && a.hiredAt);
+              const scope = currentPosting ? ` for "${currentPosting.title}"` : "";
+              if (hires.length === 0) {
+                replyText = `No hires${scope} yet to calculate time-to-hire from.`;
+                break;
+              }
+              const avgDays =
+                hires.reduce((sum, a) => {
+                  const days = (new Date(a.hiredAt!).getTime() - new Date(a.appliedAt).getTime()) / (1000 * 60 * 60 * 24);
+                  return sum + days;
+                }, 0) / hires.length;
+              replyText = `Average time to hire${scope} is ${Math.round(avgDays)} day${Math.round(avgDays) === 1 ? "" : "s"}, based on ${hires.length} hire${hires.length === 1 ? "" : "s"}.`;
+              break;
+            }
+            case "kiv_count": {
+              const count = scoped.filter((a) => a.status === "kiv").length;
+              const scope = currentPosting ? ` for "${currentPosting.title}"` : "";
+              replyText =
+                count === 0
+                  ? `No applicants in KIV (keep-in-view)${scope} right now.`
+                  : `You have ${count} applicant${count === 1 ? "" : "s"} in KIV${scope}.`;
+              break;
+            }
+            case "evaluation_pending_count": {
+              const count = scoped.filter((a) => a.status === "evaluation").length;
+              const scope = currentPosting ? ` for "${currentPosting.title}"` : "";
+              replyText =
+                count === 0
+                  ? `No applicants awaiting evaluation${scope}.`
+                  : `You have ${count} applicant${count === 1 ? "" : "s"} awaiting evaluation${scope}.`;
+              break;
+            }
+            case "interview_no_show_count": {
+              const count = scoped.filter((a) => a.interviewResponseStatus === "no_show").length;
+              const scope = currentPosting ? ` for "${currentPosting.title}"` : "";
+              replyText =
+                count === 0
+                  ? `No interview no-shows${scope}.`
+                  : `${count} applicant${count === 1 ? "" : "s"} didn't show up for their interview${scope}.`;
+              break;
+            }
+            case "interview_declined_count": {
+              const count = scoped.filter((a) => a.interviewResponseStatus === "declined").length;
+              const scope = currentPosting ? ` for "${currentPosting.title}"` : "";
+              replyText =
+                count === 0
+                  ? `No declined interviews${scope}.`
+                  : `${count} applicant${count === 1 ? "" : "s"} declined an interview${scope}.`;
+              break;
+            }
           }
         } catch (err) {
           replyText = err instanceof Error ? err.message : "Couldn't fetch that right now.";
@@ -613,6 +944,142 @@ export default function FloatingDemoWidget() {
         return;
       }
 
+      if (metaIntent) {
+        let replyText: string;
+        try {
+          if (metaIntent.type === "team_count" || metaIntent.type === "team_pending_invites") {
+            const res = await fetch("/api/employer/team");
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Couldn't fetch your team.");
+            const members = (data.members as { status: string }[]) ?? [];
+            if (metaIntent.type === "team_pending_invites") {
+              const count = members.filter((m) => m.status === "pending").length;
+              replyText =
+                count === 0 ? "No pending team invites." : `You have ${count} pending team invite${count === 1 ? "" : "s"}.`;
+            } else {
+              const count = members.filter((m) => m.status === "active").length;
+              replyText = `You have ${count} team member${count === 1 ? "" : "s"}.`;
+            }
+          } else if (metaIntent.type === "ai_usage") {
+            const res = await fetch("/api/ai-usage");
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Couldn't fetch your AI usage.");
+            const { totalCalls, totalTokens } = data as { totalCalls: number; totalTokens: number };
+            replyText =
+              totalCalls === 0
+                ? "You haven't used any AI features yet."
+                : `You've made ${totalCalls} AI call${totalCalls === 1 ? "" : "s"}, using ${totalTokens.toLocaleString()} tokens total.`;
+          } else if (metaIntent.type === "expiring_soon") {
+            const res = await fetch("/api/employer/job-postings");
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Couldn't fetch your job postings.");
+            const postings = (data.postings as { title: string; status: string; expiryDate: string | null }[]) ?? [];
+            const now = Date.now();
+            const soon = postings.filter(
+              (p) =>
+                p.status === "active" &&
+                p.expiryDate &&
+                new Date(p.expiryDate).getTime() >= now &&
+                new Date(p.expiryDate).getTime() - now <= 7 * 24 * 60 * 60 * 1000,
+            );
+            replyText =
+              soon.length === 0
+                ? "No postings are expiring in the next 7 days."
+                : `${soon.length} posting${soon.length === 1 ? " is" : "s are"} expiring within 7 days: ${soon.map((p) => `"${p.title}"`).join(", ")}.`;
+          } else {
+            // openings_remaining — needs the posting currently open, which
+            // only exists when the employer is on a specific posting's page.
+            if (!postingSlug) {
+              replyText = "Open a specific job posting first, then ask about its openings.";
+            } else {
+              const res = await fetch("/api/employer/job-postings");
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error ?? "Couldn't fetch your job postings.");
+              const postings =
+                (data.postings as {
+                  slug: string;
+                  title: string;
+                  openingsTotal: number;
+                  hiresConfirmed: number;
+                  offersOutstanding: number;
+                }[]) ?? [];
+              const posting = postings.find((p) => p.slug === postingSlug);
+              if (!posting) {
+                replyText = "Couldn't find that job posting.";
+              } else {
+                const remaining = posting.openingsTotal - posting.hiresConfirmed - posting.offersOutstanding;
+                replyText =
+                  remaining <= 0
+                    ? `"${posting.title}" is full — all ${posting.openingsTotal} opening${posting.openingsTotal === 1 ? "" : "s"} are filled or have an offer out.`
+                    : `"${posting.title}" has ${remaining} opening${remaining === 1 ? "" : "s"} left out of ${posting.openingsTotal}.`;
+              }
+            }
+          }
+        } catch (err) {
+          replyText = err instanceof Error ? err.message : "Couldn't fetch that right now.";
+        }
+        setMessages((prev) => [...prev, { id: nextId++, role: "assistant", text: replyText }]);
+        setThinking(false);
+        return;
+      }
+
+      if (jobseekerStatsIntent) {
+        let replyText: string;
+        try {
+          const res = await fetch("/api/jobseeker/applications");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Couldn't fetch your applications.");
+          const applications =
+            (data.applications as { status: string; interviewDetails: { scheduledAt: string } | null }[]) ?? [];
+
+          switch (jobseekerStatsIntent.type) {
+            case "applications_total": {
+              const count = applications.length;
+              replyText =
+                count === 0
+                  ? "You haven't applied to any jobs yet."
+                  : `You've applied to ${count} job${count === 1 ? "" : "s"}.`;
+              break;
+            }
+            case "interviews_upcoming": {
+              const now = Date.now();
+              const count = applications.filter(
+                (a) => a.interviewDetails?.scheduledAt && new Date(a.interviewDetails.scheduledAt).getTime() >= now,
+              ).length;
+              replyText =
+                count === 0
+                  ? "You don't have any upcoming interviews."
+                  : `You have ${count} upcoming interview${count === 1 ? "" : "s"}.`;
+              break;
+            }
+            case "offers_count": {
+              const count = applications.filter((a) => a.status === "offer").length;
+              replyText =
+                count === 0 ? "You don't have any pending offers." : `You have ${count} pending offer${count === 1 ? "" : "s"}.`;
+              break;
+            }
+            case "hired_status": {
+              const hired = applications.filter((a) => a.status === "hired");
+              replyText =
+                hired.length === 0
+                  ? "You haven't been hired anywhere yet — keep going!"
+                  : `Congrats — you've been hired! (${hired.length} offer${hired.length === 1 ? "" : "s"} accepted.)`;
+              break;
+            }
+            case "rejected_count": {
+              const count = applications.filter((a) => a.status === "rejected").length;
+              replyText = count === 0 ? "None of your applications have been rejected." : `${count} of your applications ${count === 1 ? "was" : "were"} not successful this time.`;
+              break;
+            }
+          }
+        } catch (err) {
+          replyText = err instanceof Error ? err.message : "Couldn't fetch your applications right now.";
+        }
+        setMessages((prev) => [...prev, { id: nextId++, role: "assistant", text: replyText }]);
+        setThinking(false);
+        return;
+      }
+
       // A message that's clearly asking about postings/applicants but didn't
       // match a known intent — an honest "I couldn't quite parse that" beats
       // a generic canned demo reply that implies it understood.
@@ -623,6 +1090,19 @@ export default function FloatingDemoWidget() {
             id: nextId++,
             role: "assistant",
             text: "I couldn't quite understand that one. Try something like \"how many active job postings do I have?\", \"how many applicants do I have to screen?\", or \"how many interviews do I have today?\".",
+          },
+        ]);
+        setThinking(false);
+        return;
+      }
+
+      if (isJobseekerContext && JOBSEEKER_QUESTION_HINT.test(text)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId++,
+            role: "assistant",
+            text: "I couldn't quite understand that one. Try something like \"how many jobs have I applied to?\", \"do I have any interviews?\", or \"take me to my profile\".",
           },
         ]);
         setThinking(false);

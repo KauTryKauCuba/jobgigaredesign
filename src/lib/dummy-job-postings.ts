@@ -36,6 +36,14 @@ export const DUMMY_JOB_POSTINGS = [
     languages: [lang("English", "fluent"), lang("Malay", "conversational")],
     workAuthorizations: wa("citizen", "permanent_resident"),
     status: "active" as const,
+    // Only this dummy posting has screening on, so the "Get dummy data"
+    // button also demos screeningEligible-based matching (see
+    // src/app/api/employer/applicants/matches/route.ts) instead of every
+    // dummy application falling through to the profile-derived hard filter.
+    screeningEnabled: true,
+    customScreeningQuestions: [
+      { id: "hybrid-ok", question: "Comfortable with a hybrid schedule (3 days in office)?", requiredAnswer: true },
+    ],
   },
   {
     title: "Backend Engineer",

@@ -10,7 +10,7 @@ import Navbar from "@/components/Navbar";
 import ResumeUpload from "@/components/ResumeUpload";
 import { getAuthUser, getJobseekerResumeInfo } from "@/lib/auth-user";
 import { getAppliedJobPostingIds, getJobseekerProfileId } from "@/lib/job-applications";
-import { getJobPostingsByStatus } from "@/lib/job-postings";
+import { getJobPostingsByStatus, stripCustomQuestionAnswers } from "@/lib/job-postings";
 import { getOnboardingRedirect } from "@/lib/onboarding";
 import { getSession } from "@/lib/session";
 
@@ -53,7 +53,9 @@ export default async function JobseekerPage() {
       <JobseekerHowItWorks />
       <AnimatedRibbon accent="gold" />
       <JobPostingHighlights
-        postings={JSON.parse(JSON.stringify(activePostings))}
+        postings={JSON.parse(
+          JSON.stringify(activePostings.map((row) => ({ ...row, posting: stripCustomQuestionAnswers(row.posting) }))),
+        )}
         canApply={authUser?.role === "jobseeker"}
         appliedJobPostingIds={appliedJobPostingIds}
       />

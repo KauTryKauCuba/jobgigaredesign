@@ -66,6 +66,12 @@ export default function TopMatchesCard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPostingId, setSelectedPostingId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  // Off by default — Top Matches is meant to rank by job fit (skills/
+  // experience/etc.), which is a separate question from whether someone
+  // cleared this posting's screening requirements. Ineligible candidates
+  // are hidden unless the employer explicitly asks to see them too.
+  const [includeScreeningFails, setIncludeScreeningFails] = useState(false);
 
   useEffect(() => {
     if (!smartMatchOn || results !== null) return;
@@ -140,9 +146,10 @@ export default function TopMatchesCard({
   // nothing to actually choose.
   const effectivePostingId = selectedPostingId ?? (postings.length === 1 ? postings[0].jobPostingId : null);
 
-  const ranked = (results ?? [])
-    .filter((r) => r.eligible && r.jobPostingId === effectivePostingId)
-    .slice(0, 5);
+  const rankedAll = (results ?? [])
+    .filter((r) => r.jobPostingId === effectivePostingId && (includeScreeningFails || r.eligible))
+    .sort((a, b) => b.score - a.score);
+  const ranked = showAll ? rankedAll : rankedAll.slice(0, 5);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -198,7 +205,10 @@ export default function TopMatchesCard({
             <button
               key={posting.jobPostingId}
               type="button"
-              onClick={() => setSelectedPostingId(posting.jobPostingId)}
+              onClick={() => {
+                setSelectedPostingId(posting.jobPostingId);
+                setShowAll(false);
+              }}
               className="flex items-center justify-between gap-[8px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px] text-left hover:border-brand-teal-dark"
             >
               <span>
@@ -245,6 +255,26 @@ export default function TopMatchesCard({
 
           {showSettings && <MatchSettingsModal criteria={criteria} onChange={handleCriteriaChange} />}
 
+          <label className="flex items-center gap-[8px] text-xs text-[#4B5468]">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={includeScreeningFails}
+              aria-label="Include candidates who failed screening"
+              onClick={() => setIncludeScreeningFails((v) => !v)}
+              className={`relative h-[18px] w-[32px] shrink-0 rounded-full transition-colors ${
+                includeScreeningFails ? "bg-brand-teal-dark" : "bg-black/[0.15]"
+              }`}
+            >
+              <span
+                className={`absolute top-[2px] left-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform ${
+                  includeScreeningFails ? "translate-x-[14px]" : "translate-x-0"
+                }`}
+              />
+            </button>
+            Include candidates who failed screening
+          </label>
+
           {showBreakdown && (
             <div className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px] text-xs text-[#4B5468]">
               <p>
@@ -284,11 +314,21 @@ export default function TopMatchesCard({
                         </p>
                       </div>
                     </div>
-                    <span
-                      className={`self-start rounded-full px-[9px] py-[3px] text-xs ${band.bg} ${band.text}`}
-                    >
-                      {result.score}% · {band.label}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-[6px]">
+                      <span
+                        className={`self-start rounded-full px-[9px] py-[3px] text-xs ${band.bg} ${band.text}`}
+                      >
+                        {result.score}% · {band.label}
+                      </span>
+                      {!result.eligible && (
+                        <span
+                          className="self-start rounded-full bg-[#FDEDE8] px-[9px] py-[3px] text-xs text-[#C2410C]"
+                          title={result.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
+                        >
+                          Failed screening
+                        </span>
+                      )}
+                    </div>
 
                     {showBreakdown && (
                       <div className="flex flex-wrap items-center gap-[8px] text-xs text-[#4B5468]">
@@ -312,6 +352,15 @@ export default function TopMatchesCard({
                   </div>
                 );
               })}
+              {!showAll && rankedAll.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="self-start text-left text-sm text-brand-teal-dark hover:underline"
+                >
+                  Show all {rankedAll.length} applicants
+                </button>
+              )}
             </div>
           )}
         </>

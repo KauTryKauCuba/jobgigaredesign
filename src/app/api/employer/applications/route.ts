@@ -24,7 +24,9 @@ export async function GET() {
     applicantLocation: r.applicantLocation,
     status: r.application.status,
     appliedAt: r.application.appliedAt,
+    hiredAt: r.application.hiredAt,
     interviewDetails: r.application.interviewDetails,
+    interviewResponseStatus: r.application.interviewResponseStatus,
   }));
 
   return NextResponse.json({ applications });

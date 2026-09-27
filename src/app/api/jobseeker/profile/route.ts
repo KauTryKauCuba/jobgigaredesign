@@ -11,6 +11,7 @@ import {
   jobseekerOnboardingDrafts,
 } from "@/lib/db/schema";
 import { INDUSTRIES } from "@/lib/industries";
+import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import { getSession } from "@/lib/session";
 
@@ -211,12 +212,14 @@ export async function POST(request: Request) {
     nationality,
     phone,
     drivingLicense,
-    location,
+    city,
+    state,
     targetRole,
     preferredIndustry,
     yearsExperience,
     professionalSkills,
     softSkills,
+    otherSkills,
     employmentType,
     expectedSalaryMin,
     expectedSalaryMax,
@@ -251,7 +254,10 @@ export async function POST(request: Request) {
   if (!isNonEmptyString(fullName)) {
     return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
   }
-  if (isNonEmptyString(dateOfBirth) && !DATE_OF_BIRTH_RE.test(dateOfBirth.trim())) {
+  if (!isNonEmptyString(dateOfBirth)) {
+    return NextResponse.json({ error: "Enter your date of birth." }, { status: 400 });
+  }
+  if (!DATE_OF_BIRTH_RE.test(dateOfBirth.trim())) {
     return NextResponse.json({ error: "Enter a valid date of birth." }, { status: 400 });
   }
   if (gender !== undefined && gender !== null && !isOneOf(gender, GENDERS)) {
@@ -274,8 +280,11 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json({ error: "Invalid driving license." }, { status: 400 });
   }
-  if (!isNonEmptyString(location)) {
-    return NextResponse.json({ error: "Enter your location." }, { status: 400 });
+  if (!isNonEmptyString(city)) {
+    return NextResponse.json({ error: "Enter your city." }, { status: 400 });
+  }
+  if (!isNonEmptyString(state) || !(MALAYSIA_STATES as readonly string[]).includes(state)) {
+    return NextResponse.json({ error: "Choose your state." }, { status: 400 });
   }
   if (!isNonEmptyString(targetRole)) {
     return NextResponse.json({ error: "Enter the role you're targeting." }, { status: 400 });
@@ -295,6 +304,9 @@ export async function POST(request: Request) {
   }
   if (!Array.isArray(softSkills) || !softSkills.every(isNonEmptyString)) {
     return NextResponse.json({ error: "Invalid soft skills." }, { status: 400 });
+  }
+  if (!Array.isArray(otherSkills) || !otherSkills.every(isNonEmptyString)) {
+    return NextResponse.json({ error: "Invalid other skills." }, { status: 400 });
   }
   if (!isOneOf(employmentType, EMPLOYMENT_TYPES)) {
     return NextResponse.json({ error: "Choose an employment type." }, { status: 400 });
@@ -352,18 +364,21 @@ export async function POST(request: Request) {
     userId: session.userId,
     avatarUrl: isNonEmptyString(avatarUrl) ? avatarUrl.trim() : null,
     fullName: fullName.trim(),
-    dateOfBirth: isNonEmptyString(dateOfBirth) ? dateOfBirth.trim() : null,
+    dateOfBirth: dateOfBirth.trim(),
     gender: isNonEmptyString(gender) ? gender : null,
     maritalStatus: isNonEmptyString(maritalStatus) ? maritalStatus : null,
     nationality: isNonEmptyString(nationality) ? nationality.trim() : null,
     phone: isNonEmptyString(phone) ? phone.trim() : null,
     drivingLicense: isNonEmptyString(drivingLicense) ? drivingLicense : null,
-    location: location.trim(),
+    location: `${city.trim()}, ${state}`,
+    city: city.trim(),
+    state,
     targetRole: targetRole.trim(),
     preferredIndustry,
     yearsExperience,
     professionalSkills: professionalSkills.map((s) => s.trim()),
     softSkills: softSkills.map((s) => s.trim()),
+    otherSkills: otherSkills.map((s) => s.trim()),
     employmentType,
     expectedSalaryMin,
     expectedSalaryMax,

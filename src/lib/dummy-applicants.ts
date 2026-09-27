@@ -5,6 +5,30 @@
 // touches real accounts or the general fake-data seed.
 export const DUMMY_APPLICANT_EMAIL_DOMAIN = "dummy-applicant.jobgiga.test";
 
+// Every distinct `location` value used below, mapped to its real state —
+// `location` here is a plain city string (or "City, State" for the one that
+// already spells it out), never structured, so this fills in the state
+// jobseekerProfiles.state now requires without hand-editing every entry above.
+const DUMMY_LOCATION_STATE: Record<string, string> = {
+  "Alor Setar": "Kedah",
+  Cyberjaya: "Selangor",
+  Ipoh: "Perak",
+  "Johor Bahru": "Johor",
+  "Kuala Lumpur": "Kuala Lumpur",
+  Kuching: "Sarawak",
+  "Malacca City": "Melaka",
+  Miri: "Sarawak",
+  "Petaling Jaya": "Selangor",
+  Seremban: "Negeri Sembilan",
+  "Shah Alam": "Selangor",
+  "Subang Jaya": "Selangor",
+};
+
+export function cityStateForDummyLocation(location: string): { city: string; state: string } {
+  const [city, explicitState] = location.split(",").map((s) => s.trim());
+  return { city, state: explicitState || DUMMY_LOCATION_STATE[city] || "Selangor" };
+}
+
 export type DummyApplicantDefinition = {
   fullName: string;
   targetRole: string;
@@ -247,7 +271,12 @@ export const ROLE_INDUSTRY: Record<string, string> = {
   "Marketing Intern": "Marketing & Advertising",
 };
 
-const QUALIFICATION_TIERS = ["Diploma", "Bachelor's Degree", "Bachelor's Degree", "Master's Degree"];
+// Must match the canonical tiers in EmployerJobsView/OnboardingForm's
+// QUALIFICATION_TIERS ("SPM"/"STPM"/"Diploma"/"Degree"/"Master"/"PhD"/
+// "Other") — "Bachelor's Degree"/"Master's Degree" aren't real values here,
+// so they silently ranked as the lowest tier (0) in screeningEligibilityCheck
+// / QUALIFICATION_TIER_RANK instead of where they actually belong.
+const QUALIFICATION_TIERS = ["Diploma", "Degree", "Degree", "Master"];
 
 const COMPANIES = [
   "Tigapuluh Solutions",
@@ -313,7 +342,12 @@ export function buildDummyApplicantProfile(applicant: DummyApplicantDefinition, 
         : null,
     languages: [
       { language: "English", spokenLevel: "fluent" as const, writtenLevel: "fluent" as const },
-      { language: "Bahasa Malaysia", spokenLevel: "native" as const, writtenLevel: "native" as const },
+      // "Malay" (not "Bahasa Malaysia") to match the name every dummy job
+      // posting's language requirement uses (src/lib/dummy-job-postings.ts)
+      // — screeningEligibilityCheck matches languages by exact name, so a
+      // mismatched name here silently failed every dummy applicant's
+      // screening against any posting that requires Malay.
+      { language: "Malay", spokenLevel: "native" as const, writtenLevel: "native" as const },
     ],
   };
 }

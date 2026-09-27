@@ -13,12 +13,14 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
+import { screeningEligibilityCheck } from "@/lib/matching";
 import { getSession } from "@/lib/session";
 import {
   DUMMY_APPLICANTS,
   DUMMY_APPLICANT_EMAIL_DOMAIN,
   ROLE_INDUSTRY,
   buildDummyApplicantProfile,
+  cityStateForDummyLocation,
 } from "@/lib/dummy-applicants";
 import { INDUSTRIES } from "@/lib/industries";
 import type { InterviewDetails } from "@/lib/applicationStatus";
@@ -115,7 +117,18 @@ export async function POST() {
   if (!employerProfileId) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const allPostings = await db
-    .select({ id: jobPostings.id, title: jobPostings.title, status: jobPostings.status })
+    .select({
+      id: jobPostings.id,
+      title: jobPostings.title,
+      status: jobPostings.status,
+      screeningEnabled: jobPostings.screeningEnabled,
+      minYearsExperience: jobPostings.minYearsExperience,
+      minQualificationTier: jobPostings.minQualificationTier,
+      drivingLicense: jobPostings.drivingLicense,
+      languages: jobPostings.languages,
+      workAuthorizations: jobPostings.workAuthorizations,
+      customScreeningQuestions: jobPostings.customScreeningQuestions,
+    })
     .from(jobPostings)
     .where(eq(jobPostings.employerProfileId, employerProfileId));
   if (allPostings.length === 0) {
@@ -183,6 +196,7 @@ export async function POST() {
         nationality: extras.nationality,
         drivingLicense: extras.drivingLicense,
         location: applicant.location,
+        ...cityStateForDummyLocation(applicant.location),
         targetRole: applicant.targetRole,
         // Aligned to the same industry as the dummy posting for this role
         // (ROLE_INDUSTRY), so industry-match scoring has real signal to
@@ -261,6 +275,47 @@ export async function POST() {
       ? fakeInterviewDetails(applicant.interviewRound ?? 1, interviewScheduleIndex++)
       : null;
 
+    // Only the one dummy posting with screeningEnabled on (Frontend
+    // Engineer) demos screeningEligible-based matching — every other
+    // posting leaves both fields null, same as a real application to a
+    // non-screened posting.
+    let screeningAnswers: {
+      yearsExperience: number | null;
+      qualificationTier: string | null;
+      drivingLicense: string | null;
+      languages: { language: string; level: string }[];
+      workAuthorization: string | null;
+      customAnswers: { questionId: string; answer: boolean }[];
+    } | null = null;
+    let screeningEligible: boolean | null = null;
+    if (posting.screeningEnabled) {
+      screeningAnswers = {
+        yearsExperience: applicant.yearsExperience,
+        qualificationTier: extras.education.qualificationTier,
+        drivingLicense: extras.drivingLicense,
+        languages: extras.languages.map((l) => ({ language: l.language, level: l.spokenLevel })),
+        workAuthorization: applicant.workAuthorization,
+        customAnswers: posting.customScreeningQuestions.map((q) => ({
+          questionId: q.id,
+          // Answered honestly against the applicant's own profile rather
+          // than always "yes" — e.g. the hybrid-schedule question only
+          // comes back true for applicants who actually said "hybrid".
+          answer: q.id === "hybrid-ok" ? applicant.workArrangement === "hybrid" : true,
+        })),
+      };
+      screeningEligible = screeningEligibilityCheck(
+        {
+          minYearsExperience: posting.minYearsExperience,
+          minQualificationTier: posting.minQualificationTier,
+          drivingLicense: posting.drivingLicense,
+          languages: posting.languages,
+          workAuthorizations: posting.workAuthorizations,
+          customQuestions: posting.customScreeningQuestions,
+        },
+        screeningAnswers,
+      ).eligible;
+    }
+
     const appliedAt = appliedAtFor(applicant.status, i);
     // updatedAt otherwise defaults to insert time — for an "offer" this
     // would make the Overview page's "Stale offers" tile always read 0 right
@@ -280,6 +335,8 @@ export async function POST() {
         jobseekerConfirmedAttendance:
           (applicant.status === "interviewed" || applicant.status === "evaluation" || applicant.status === "evaluated") &&
           attendedInterview,
+        screeningAnswers,
+        screeningEligible,
         appliedAt,
         updatedAt,
         hiredAt: applicant.status === "hired" ? hiredAtFor(appliedAt, i) : null,

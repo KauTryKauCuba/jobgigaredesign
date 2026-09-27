@@ -803,14 +803,17 @@ export default function EmployerOnboardingForm({
       if (result.addressLine1 || result.city || result.state || result.postcode) {
         setAddresses((prev) =>
           prev.map((a, i) =>
-            i === 0
+            // Filled as one unit, not field-by-field — mixing the AI's city
+            // with a state (or address line) the user already typed for a
+            // different place would silently produce a mismatched address
+            // (e.g. a Petaling Jaya city paired with a Kelantan state).
+            i === 0 && !a.addressLine1.trim() && !a.city.trim() && !a.state && !a.postcode.trim()
               ? {
                   ...a,
-                  addressLine1:
-                    result.addressLine1 && !a.addressLine1.trim() ? result.addressLine1 : a.addressLine1,
-                  city: result.city && !a.city.trim() ? result.city : a.city,
-                  state: result.state && !a.state ? result.state : a.state,
-                  postcode: result.postcode && !a.postcode.trim() ? result.postcode : a.postcode,
+                  addressLine1: result.addressLine1 ?? a.addressLine1,
+                  city: result.city ?? a.city,
+                  state: result.state ?? a.state,
+                  postcode: result.postcode ?? a.postcode,
                 }
               : a,
           ),
@@ -1767,6 +1770,16 @@ export default function EmployerOnboardingForm({
                         }
                         placeholder="e.g. 47300"
                         className={inputClass}
+                      />
+                    </Field>
+                    <Field label="Country" htmlFor={`${address.key}-country`}>
+                      <input
+                        id={`${address.key}-country`}
+                        type="text"
+                        value="Malaysia"
+                        disabled
+                        readOnly
+                        className={`${inputClass} cursor-not-allowed bg-[#F8FAFB] text-[#9AA3B2]`}
                       />
                     </Field>
                   </div>
