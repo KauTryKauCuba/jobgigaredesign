@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { readFile } from "fs/promises";
+import path from "path";
 import sharp from "sharp";
 import { db } from "@/lib/db";
 import { employerProfiles, jobPostings } from "@/lib/db/schema";
@@ -29,13 +31,26 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "No logo." }, { status: 404 });
   }
 
+  // `logoUrl` is normally a `/uploads/logos/<file>` disk path now (see
+  // src/lib/uploads.ts); the `data:` branch only still matters for a row
+  // that predates the base64-to-disk backfill (scripts/migrate-base64-to-disk.ts)
+  // or was written before this endpoint's write path was updated.
+  let sourceBytes: Buffer;
   const match = /^data:([^;]+);base64,(.+)$/.exec(row.logoUrl);
-  if (!match) {
+  if (match) {
+    sourceBytes = Buffer.from(match[2], "base64");
+  } else if (row.logoUrl.startsWith("/uploads/")) {
+    try {
+      sourceBytes = await readFile(path.join(process.cwd(), "public", row.logoUrl));
+    } catch {
+      return NextResponse.json({ error: "No logo." }, { status: 404 });
+    }
+  } else {
     return NextResponse.json({ error: "No logo." }, { status: 404 });
   }
 
   try {
-    const png = await sharp(Buffer.from(match[2], "base64")).png().toBuffer();
+    const png = await sharp(sourceBytes).png().toBuffer();
     return new NextResponse(new Uint8Array(png), {
       headers: {
         "Content-Type": "image/png",

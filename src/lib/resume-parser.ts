@@ -563,7 +563,3 @@ export async function parseResumeFile(file: File): Promise<ResumeParseResult> {
     photoUrl,
   };
 }
-
-export function fileToDataUrl(file: File, buffer: Buffer): string {
-  return `data:${file.type || "application/octet-stream"};base64,${buffer.toString("base64")}`;
-}

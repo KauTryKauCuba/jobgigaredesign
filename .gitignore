@@ -43,3 +43,7 @@ next-env.d.ts
 
 # personal files not meant for the repo
 Irfan Muhaimin.pdf
+
+# user-uploaded files (logos, posters, resumes, avatars) — written at
+# runtime to a persistent Docker volume on the VPS, never committed
+/public/uploads/

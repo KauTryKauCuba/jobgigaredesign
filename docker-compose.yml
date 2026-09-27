@@ -58,6 +58,13 @@ services:
       # (jg-ai-cal-app, jejaku-project-jejaku) — the public-facing nginx
       # reverse proxy is what actually terminates TLS and forwards here.
       - "127.0.0.1:4100:4100"
+    volumes:
+      # User-uploaded files (logos, posters, resumes, avatars — see
+      # src/lib/uploads.ts) live under public/uploads inside the app, which
+      # Next serves directly from disk. Without this volume, every redeploy
+      # rebuilds the image from scratch and wipes anything written there.
+      - jobgiga-uploads-data:/app/public/uploads
 
 volumes:
   jobgiga-db-data:
+  jobgiga-uploads-data:

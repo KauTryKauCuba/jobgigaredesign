@@ -7,6 +7,7 @@ import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import { getSession } from "@/lib/session";
+import { isBase64DataUrl, saveBase64Upload } from "@/lib/uploads";
 
 const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"] as const;
 const COMPANY_TYPES = ["Startup", "SME", "MNC", "GLC", "Government"] as const;
@@ -196,9 +197,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Choose a company size." }, { status: 400 });
   }
 
+  // Every image field above arrives as either a `data:...;base64,...`
+  // string (freshly picked by the browser) or an existing `/uploads/...`
+  // URL (unchanged from a previous save) — only the former needs writing to
+  // disk. Storing the base64 string itself in Postgres is what caused the
+  // Manage Jobs/Applicants/poster-status bloat found earlier this session.
+  const resolvedAvatarUrl = isBase64DataUrl(avatarUrl) ? await saveBase64Upload(avatarUrl, "avatars") : avatarUrl;
+  const resolvedLogoUrl = isBase64DataUrl(logoUrl) ? await saveBase64Upload(logoUrl, "logos") : logoUrl;
+  const resolvedOfficePhotoUrl = isBase64DataUrl(officePhotoUrl)
+    ? await saveBase64Upload(officePhotoUrl, "office-photos")
+    : officePhotoUrl;
+
   const values = {
     userId: session.userId,
-    avatarUrl: isNonEmptyString(avatarUrl) ? avatarUrl.trim() : null,
+    avatarUrl: isNonEmptyString(resolvedAvatarUrl) ? resolvedAvatarUrl.trim() : null,
     contactName: contactName.trim(),
     contactRole: contactRole.trim(),
     contactPhone: contactPhone.trim(),
@@ -211,7 +223,7 @@ export async function POST(request: Request) {
     companyDescription: isNonEmptyString(companyDescription)
       ? sanitizeDescriptionHtml(companyDescription.trim())
       : null,
-    logoUrl: isNonEmptyString(logoUrl) ? logoUrl.trim() : null,
+    logoUrl: isNonEmptyString(resolvedLogoUrl) ? resolvedLogoUrl.trim() : null,
     benefits: benefits.map((b) => b.trim()),
     websiteUrl: isNonEmptyString(websiteUrl) ? websiteUrl.trim() : null,
     companyEmail: isNonEmptyString(companyEmail) ? companyEmail.trim().toLowerCase() : null,
@@ -221,7 +233,7 @@ export async function POST(request: Request) {
     companyInstagram: isNonEmptyString(companyInstagram) ? companyInstagram.trim() : null,
     foundedYear: typeof foundedYear === "number" ? foundedYear : null,
     companyType: isNonEmptyString(companyType) ? companyType : null,
-    officePhotoUrl: isNonEmptyString(officePhotoUrl) ? officePhotoUrl.trim() : null,
+    officePhotoUrl: isNonEmptyString(resolvedOfficePhotoUrl) ? resolvedOfficePhotoUrl.trim() : null,
     recentNews: isNewsItemArray(recentNews)
       ? recentNews.map((item) => ({ title: item.title.trim(), url: item.url.trim() }))
       : [],

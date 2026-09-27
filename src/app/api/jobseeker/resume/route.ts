@@ -15,12 +15,12 @@ import { plainTextToHtml } from "@/lib/richText";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import {
   RESUME_MAX_BYTES,
-  fileToDataUrl,
   isSupportedResumeFile,
   parseResumeFile,
   type ParsedProfile,
 } from "@/lib/resume-parser";
 import { getSession } from "@/lib/session";
+import { isBase64DataUrl, saveBase64Upload, saveBufferUpload } from "@/lib/uploads";
 
 // Fills only fields the profile doesn't already have, never overwrites
 // something the jobseeker already filled in — same rule the onboarding
@@ -184,13 +184,20 @@ export async function POST(request: Request) {
   ];
   if (parsed.references.length > 0) mark(true);
 
-  const resumeUrl = fileToDataUrl(file, buffer);
+  // Already has the raw bytes here, so this writes straight to disk instead
+  // of going through a base64 data URL at all.
+  const resumeUrl = await saveBufferUpload(buffer, file.type || "application/octet-stream", "resumes");
+  // `extractHeadshot` returns a fresh photo as a data URL when it found one
+  // in the resume; `avatarUrl.value` falls back to the profile's existing
+  // (already-migrated) `/uploads/...` URL otherwise — only the former needs
+  // writing to disk.
+  const resolvedAvatarUrl = isBase64DataUrl(avatarUrl.value) ? await saveBase64Upload(avatarUrl.value, "avatars") : avatarUrl.value;
 
   await db.transaction(async (tx) => {
     await tx
       .update(jobseekerProfiles)
       .set({
-        avatarUrl: avatarUrl.value ?? null,
+        avatarUrl: resolvedAvatarUrl ?? null,
         fullName: fullName.value ?? profile.fullName,
         dateOfBirth: dateOfBirth.value ?? profile.dateOfBirth,
         gender: gender.value ?? null,

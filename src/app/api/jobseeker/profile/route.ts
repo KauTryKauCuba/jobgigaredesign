@@ -14,6 +14,7 @@ import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import { getSession } from "@/lib/session";
+import { isBase64DataUrl, saveBase64Upload } from "@/lib/uploads";
 
 const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"] as const;
 const WORK_ARRANGEMENTS = ["remote", "hybrid", "onsite"] as const;
@@ -354,15 +355,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Check your reference entries." }, { status: 400 });
   }
 
+  // Both arrive as either a `data:...;base64,...` string (freshly picked by
+  // the browser) or an existing `/uploads/...` URL (unchanged from a
+  // previous save) — only the former needs writing to disk. Storing the
+  // base64 string itself in Postgres is what caused the Applicants/
+  // Interviews page bloat found earlier this session.
+  const resolvedAvatarUrl = isBase64DataUrl(avatarUrl) ? await saveBase64Upload(avatarUrl, "avatars") : avatarUrl;
+  const resolvedResumeUrl = isBase64DataUrl(resumeUrl) ? await saveBase64Upload(resumeUrl, "resumes") : resumeUrl;
+
   // A freshly-picked resume has real bytes to save; an edit save where the
   // user didn't touch the resume sends none — in that case the existing
   // stored resume (referenced via the table's own column, not overwritten)
   // must survive rather than being nulled out.
-  const hasNewResume = isNonEmptyString(resumeUrl);
+  const hasNewResume = isNonEmptyString(resolvedResumeUrl);
 
   const baseValues = {
     userId: session.userId,
-    avatarUrl: isNonEmptyString(avatarUrl) ? avatarUrl.trim() : null,
+    avatarUrl: isNonEmptyString(resolvedAvatarUrl) ? resolvedAvatarUrl.trim() : null,
     fullName: fullName.trim(),
     dateOfBirth: dateOfBirth.trim(),
     gender: isNonEmptyString(gender) ? gender : null,
@@ -393,7 +402,7 @@ export async function POST(request: Request) {
 
   const insertValues = {
     ...baseValues,
-    resumeUrl: hasNewResume ? (resumeUrl as string).trim() : null,
+    resumeUrl: hasNewResume ? (resolvedResumeUrl as string).trim() : null,
     resumeFileName: isNonEmptyString(resumeFileName) ? resumeFileName.trim() : null,
     resumeFileSize: isNonNegativeInt(resumeFileSize) ? resumeFileSize : null,
   };
@@ -401,7 +410,7 @@ export async function POST(request: Request) {
   const updateValues = {
     ...baseValues,
     updatedAt: new Date(),
-    resumeUrl: hasNewResume ? (resumeUrl as string).trim() : sql`${jobseekerProfiles.resumeUrl}`,
+    resumeUrl: hasNewResume ? (resolvedResumeUrl as string).trim() : sql`${jobseekerProfiles.resumeUrl}`,
     resumeFileName: hasNewResume
       ? isNonEmptyString(resumeFileName)
         ? resumeFileName.trim()

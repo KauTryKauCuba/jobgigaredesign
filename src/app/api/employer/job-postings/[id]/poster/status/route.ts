@@ -7,6 +7,7 @@ import { getEmployerAccess } from "@/lib/employer-profile";
 import { POSTER_GENERATION_STALE_MS, getPosterImageTaskResult } from "@/lib/icreat";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { getSession } from "@/lib/session";
+import { saveBufferUpload } from "@/lib/uploads";
 
 // Polled by the client (PosterGeneratorView) every few seconds while a
 // posting has posterGeneratingSince/posterTaskId set. Downloads the finished
@@ -55,13 +56,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ generating: false, posterUrl: null, error: result.error }, { status: 502 });
   }
 
-  let dataUrl: string;
+  let posterUrl: string;
   try {
     const imageRes = await fetch(result.imageUrl, { signal: AbortSignal.timeout(30_000) });
     if (!imageRes.ok) throw new Error(`fetch failed: ${imageRes.status}`);
     const buffer = Buffer.from(await imageRes.arrayBuffer());
     const contentType = imageRes.headers.get("content-type") ?? "image/png";
-    dataUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
+    // Written straight to disk instead of base64-encoded into Postgres —
+    // that base64 step (previously stored as a `data:` URL, sometimes
+    // several MB) was what made this endpoint take 27-33s per poll.
+    posterUrl = await saveBufferUpload(buffer, contentType, "posters");
   } catch (err) {
     console.error("Failed to download generated poster:", err);
     return NextResponse.json({ generating: true, posterUrl: null });
@@ -76,7 +80,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const [updated] = await db
     .update(jobPostings)
     .set({
-      posterUrl: dataUrl,
+      posterUrl,
       posterGeneratingSince: null,
       posterTaskId: null,
       posterPendingStyle: null,
@@ -92,12 +96,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .returning({ posterUrl: jobPostings.posterUrl });
 
   if (!updated) {
-    return NextResponse.json({ generating: false, posterUrl: dataUrl });
+    return NextResponse.json({ generating: false, posterUrl });
   }
 
   await db.insert(jobPostingPosters).values({
     jobPostingId: id,
-    posterUrl: dataUrl,
+    posterUrl,
     style: posting.posterPendingStyle ?? "playful",
   });
 
@@ -112,5 +116,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     actualCostUsd: result.costUsd,
   });
 
-  return NextResponse.json({ generating: false, posterUrl: updated.posterUrl ?? dataUrl });
+  return NextResponse.json({ generating: false, posterUrl: updated.posterUrl ?? posterUrl });
 }

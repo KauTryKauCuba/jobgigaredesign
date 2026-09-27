@@ -3,6 +3,17 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobseekerOnboardingDrafts } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { isBase64DataUrl, saveBase64Upload } from "@/lib/uploads";
+
+// This draft is a free-form JSON blob of the whole in-progress onboarding
+// form, autosaved on every field change — including `avatarUrl` if one's
+// been picked so far (the resume itself is only converted at final submit,
+// not autosaved as part of this draft). Converting it here matters because
+// autosave fires far more often than submit.
+async function resolveImageFields(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!isBase64DataUrl(data.avatarUrl)) return data;
+  return { ...data, avatarUrl: await saveBase64Upload(data.avatarUrl, "avatars") };
+}
 
 export async function GET() {
   const session = await getSession();
@@ -36,12 +47,14 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid draft data." }, { status: 400 });
   }
 
+  const resolvedData = await resolveImageFields(data as Record<string, unknown>);
+
   await db
     .insert(jobseekerOnboardingDrafts)
-    .values({ userId: session.userId, data, updatedAt: new Date() })
+    .values({ userId: session.userId, data: resolvedData, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: jobseekerOnboardingDrafts.userId,
-      set: { data, updatedAt: new Date() },
+      set: { data: resolvedData, updatedAt: new Date() },
     });
 
   return NextResponse.json({ ok: true });
