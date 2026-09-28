@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactElement } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AnimatedRibbon from "./AnimatedRibbon";
 import ApplicantDetailModal from "./ApplicantDetailModal";
 import type { EmployerAddress } from "@/lib/employer-profile";
 import { COMPANIES_CHANGED_EVENT } from "./CompanySwitcher";
@@ -402,12 +403,26 @@ export default function EmployerApplicantsView({
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
       <div className="min-w-0 lg:flex-[3] flex flex-col gap-[20px]">
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px]">
+          {!howStagesWorkOpen && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-[70px] overflow-hidden rounded-b-[19px] sm:h-[95px] lg:h-[130px]"
+            >
+              {/* AnimatedRibbon renders a much taller graphic (160/220/300px) than
+                  this crop window — the negative margin shifts it up so the
+                  visible slice lands on the ribbon's actual colour ("belly")
+                  pools instead of the mostly-empty top of its viewBox. */}
+              <div className="-mt-[67px] sm:-mt-[92px] lg:-mt-[125px]">
+                <AnimatedRibbon />
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setHowStagesWorkOpen((o) => !o)}
             aria-expanded={howStagesWorkOpen}
-            className="flex w-full items-center gap-[8px] text-left"
+            className="relative flex w-full items-center gap-[8px] text-left"
           >
             <p className="text-sm text-[#141B2E]">How the hiring stages work</p>
             <ChevronDownIcon

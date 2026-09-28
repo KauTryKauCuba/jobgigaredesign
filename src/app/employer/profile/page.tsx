@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import AiUsageCard from "@/components/AiUsageCard";
+import DeleteAccountCard from "@/components/DeleteAccountCard";
 import EmployerDashboardShell from "@/components/EmployerDashboardShell";
 import EmployerOnboardingForm from "@/components/EmployerOnboardingForm";
 import { getAiUsageByProviderForUser } from "@/lib/ai-usage";
@@ -35,7 +36,12 @@ export default async function EmployerProfilePage() {
         mode="edit"
         initialProfile={profile}
         only="contact"
-        sidebarSlot={<AiUsageCard aiUsage={aiUsage} />}
+        sidebarSlot={
+          <div className="flex flex-col gap-[20px]">
+            <AiUsageCard aiUsage={aiUsage} />
+            <DeleteAccountCard email={authUser.email} />
+          </div>
+        }
       />
     </EmployerDashboardShell>
   );

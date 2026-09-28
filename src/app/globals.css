@@ -133,6 +133,29 @@ body {
   animation: fade-in-up 0.4s ease-out both;
 }
 
+/* Earned achievement medals (CompanyBadgesCard/BadgeMedal) — a soft light
+   band sweeps across the disc on a loop, like light catching glossy enamel,
+   to make earned badges read as "alive" rather than a static image. */
+@keyframes badge-shine {
+  0% {
+    transform: translateX(-120%) rotate(20deg);
+  }
+  55%,
+  100% {
+    transform: translateX(140%) rotate(20deg);
+  }
+}
+
+.badge-shine {
+  animation: badge-shine 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge-shine {
+    animation: none;
+  }
+}
+
 @keyframes siri-orb-blob-a {
   0%,
   100% {

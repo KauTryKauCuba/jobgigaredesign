@@ -161,6 +161,35 @@ export function UsersIcon({
   );
 }
 
+export function UserCheckIcon({
+  className = "",
+  strokeWidth = 1.4,
+  style,
+}: {
+  className?: string;
+  strokeWidth?: number;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      style={style}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <circle cx="6.4" cy="5.2" r="2.4" />
+      <path d="M1.6 13.6a4.8 4.8 0 0 1 9.6 0" />
+      <path d="M10.8 9.2l1.6 1.6 2.4-2.8" />
+    </svg>
+  );
+}
+
 export function FileIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -340,14 +369,23 @@ export function SearchIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export function BuildingIcon({ className = "" }: { className?: string }) {
+export function BuildingIcon({
+  className = "",
+  strokeWidth = 1.4,
+  style,
+}: {
+  className?: string;
+  strokeWidth?: number;
+  style?: React.CSSProperties;
+}) {
   return (
     <svg
       viewBox="0 0 16 16"
       className={className}
+      style={style}
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.4"
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
@@ -678,6 +716,62 @@ export function DotsIcon({ className = "" }: { className?: string }) {
       <circle cx="3" cy="7" r="1.3" />
       <circle cx="7" cy="7" r="1.3" />
       <circle cx="11" cy="7" r="1.3" />
+    </svg>
+  );
+}
+
+export function StarIcon({
+  className = "",
+  strokeWidth = 1.4,
+  style,
+}: {
+  className?: string;
+  strokeWidth?: number;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className={className}
+      style={style}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M7 1.6 8.68 5.1l3.72.55-2.7 2.68.64 3.7L7 10.28 3.66 12.03l.64-3.7L1.6 5.65l3.72-.55Z" />
+    </svg>
+  );
+}
+
+export function ImageIcon({
+  className = "",
+  strokeWidth = 1.4,
+  style,
+}: {
+  className?: string;
+  strokeWidth?: number;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className={className}
+      style={style}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <rect x="1.8" y="2.6" width="10.4" height="8.8" rx="1.4" />
+      <circle cx="4.8" cy="5.6" r="1.1" />
+      <path d="m2.4 10 3-3.2 2 2 2.2-2.6 2 2.6" />
     </svg>
   );
 }

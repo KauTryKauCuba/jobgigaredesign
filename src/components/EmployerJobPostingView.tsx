@@ -371,7 +371,7 @@ function PostingAnalytics({
   const peakDay = dayBuckets.reduce((best, d) => (d.count > best.count ? d : best), dayBuckets[0]);
 
   return (
-    <div className={gradientFrameClass("teal")}>
+    <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
       <div className="rounded-[19px] bg-white p-[22px]">
         <p className="text-sm text-[#141B2E]">Analytics</p>
 
@@ -785,7 +785,7 @@ export default function EmployerJobPostingView({
 
       <div className="mt-[16px] flex flex-col gap-[16px] lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-col gap-[16px] lg:flex-[3]">
-          <div className={gradientFrameClass("teal")}>
+          <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
             <div className="rounded-[19px] bg-white p-[22px]">
               <p className="text-sm text-[#141B2E]">Job posting</p>
 
@@ -902,7 +902,7 @@ export default function EmployerJobPostingView({
             </div>
           </div>
 
-          <div className={gradientFrameClass("teal")}>
+          <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
             <div className="rounded-[19px] bg-white p-[22px]">
               <div className="flex items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">Applicants</p>
@@ -940,7 +940,7 @@ export default function EmployerJobPostingView({
         <div className="flex flex-col gap-[16px] lg:flex-[2]">
           <PostingAnalytics postingCreatedAt={posting.createdAt} rows={rows} matchByApplicationId={matchByApplicationId} />
 
-          <div className={gradientFrameClass("teal")}>
+          <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
             <div className="rounded-[19px] bg-white p-[22px]">
               <div className="flex items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">Interviews</p>

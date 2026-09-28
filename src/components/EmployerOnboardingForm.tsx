@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import CompanyBadgesCard from "./CompanyBadgesCard";
 import Dropdown from "./Dropdown";
 import { useDraftName } from "./DraftNameContext";
 import Field from "./Field";
@@ -13,6 +14,7 @@ import PhoneInput from "./PhoneInput";
 import RichTextEditor from "./RichTextEditor";
 import SiriOrb from "./SiriOrb";
 import { useRegisterUnsavedChangesGuard } from "./UnsavedChangesGuard";
+import type { BadgeKey } from "@/lib/badge-definitions";
 import type { EmployerAddress, EmployerProfile } from "@/lib/employer-profile";
 import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
@@ -168,6 +170,7 @@ export default function EmployerOnboardingForm({
   initialAddresses,
   only,
   sidebarSlot,
+  earnedBadges,
 }: {
   mode?: "onboarding" | "edit";
   initialProfile?: EmployerProfile;
@@ -179,6 +182,12 @@ export default function EmployerOnboardingForm({
   // keeping the required-fields checklist (flex-[1], rendered further down
   // unconditionally) the same width it has on the Company Profile page.
   sidebarSlot?: React.ReactNode;
+  // Company Profile page only — rendered as the first card in the company
+  // column, above "Company name", so it sits in the same flex row as the
+  // required-fields checklist sidebar and both start at the same height
+  // instead of the checklist starting lower than a badges card rendered
+  // separately above this whole form.
+  earnedBadges?: Record<BadgeKey, Date | undefined>;
 } = {}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -1219,7 +1228,8 @@ export default function EmployerOnboardingForm({
 
       {showCompany && (
       <div className={`flex min-w-0 flex-col gap-[20px] ${bothShown ? "lg:flex-[2]" : "lg:flex-[3]"}`}>
-      <div className={`animate-fade-in-up ${cardClass}`}>
+      {earnedBadges && <CompanyBadgesCard earnedBadges={earnedBadges} />}
+      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "60ms" }}>
         <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px] text-left">
           <InlineIllustration
             src="/illustrations/company-name-web-search.svg"
@@ -1402,7 +1412,7 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "60ms" }}>
+      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "120ms" }}>
         <div className="rounded-[19px] bg-white p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Company profile</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
@@ -1631,7 +1641,7 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "120ms" }}>
+      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "180ms" }}>
         <div className="rounded-[19px] bg-white p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">About your company</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">

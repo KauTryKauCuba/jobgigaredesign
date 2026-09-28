@@ -38,7 +38,7 @@ export default function JobTitleIllustration({
       className={className}
       style={
         {
-          "--job-lamp-color": lit ? "#FFE9A6" : "#7ac1c5",
+          "--job-lamp-color": lit ? "#FFE9A6" : "url(#jt-teal)",
           "--job-lit-glow": lit ? 1 : 0,
         } as CSSProperties
       }

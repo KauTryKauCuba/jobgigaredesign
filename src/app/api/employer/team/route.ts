@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
 import { employerTeamMembers } from "@/lib/db/schema";
 import {
@@ -73,6 +74,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "That email is already invited or on the team." }, { status: 409 });
   }
+
+  await awardBadge(auth.profile.id, "team_builder");
 
   const actorLabel = await getActorLabel(auth.userId);
   await logTeamActivity({

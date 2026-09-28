@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
 import { jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
@@ -250,6 +251,9 @@ export async function POST(request: Request) {
       skillSuggestions: isSkillSuggestions(skillSuggestions) ? skillSuggestions : null,
     })
     .returning();
+
+  await awardBadge(profile.id, "first_job_posted");
+  if (screening) await awardBadge(profile.id, "screening_enabled");
 
   return NextResponse.json({ posting: inserted });
 }

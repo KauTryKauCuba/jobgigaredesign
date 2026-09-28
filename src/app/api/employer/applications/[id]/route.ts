@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
 import { jobApplications, jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
@@ -158,6 +159,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const [updated] = await db.update(jobApplications).set(updates).where(eq(jobApplications.id, id)).returning();
+
+  if (updates.status === "screened") await awardBadge(profile.id, "first_candidate_screened");
+  if (updates.status === "hired" && existing.status !== "hired") await awardBadge(profile.id, "first_hire");
 
   return NextResponse.json({ application: updated });
 }

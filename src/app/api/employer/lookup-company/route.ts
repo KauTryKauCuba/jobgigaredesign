@@ -209,14 +209,28 @@ async function downloadAsDataUrl(imageUrl: string, maxBytes: number): Promise<st
  * the company's real logo or nothing at all. fallback=404 disables their
  * default generic-monogram fallback so a missing logo doesn't get stored
  * as if it were the real one.
+ *
+ * Logo.dev doesn't have every company indexed, especially smaller/local
+ * businesses — when it misses, fall back to the site's own favicon
+ * (fetched directly from the domain, not through a proxy that would
+ * substitute its own generic "no favicon" placeholder image, which would
+ * reintroduce exactly the fake-logo risk fallback=404 above avoids). Lower
+ * quality than a real logo, but still the company's own icon rather than
+ * nothing.
  */
 async function fetchLogo(websiteUrl: string | null, logoDevKey: string | null): Promise<string | null> {
   const domain = websiteUrl ? extractDomain(websiteUrl) : null;
-  if (!domain || !logoDevKey) return null;
-  return downloadAsDataUrl(
-    `https://img.logo.dev/${domain}?token=${logoDevKey}&size=256&format=png&fallback=404`,
-    2 * 1024 * 1024,
-  );
+  if (!domain) return null;
+
+  if (logoDevKey) {
+    const logoDevResult = await downloadAsDataUrl(
+      `https://img.logo.dev/${domain}?token=${logoDevKey}&size=256&format=png&fallback=404`,
+      2 * 1024 * 1024,
+    );
+    if (logoDevResult) return logoDevResult;
+  }
+
+  return downloadAsDataUrl(`https://${domain}/favicon.ico`, 512 * 1024);
 }
 
 // Deterministic, not LLM-extracted — confirmed Perplexity's own result URLs

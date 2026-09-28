@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { employerAddresses, employerOnboardingDrafts, employerProfiles } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
+import { awardBadge, isProfileBoosted } from "@/lib/badges";
 import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
@@ -245,7 +246,7 @@ export async function POST(request: Request) {
   // resolved before the transaction since it decides insert vs. update.
   const access = await getEmployerAccess(session.userId);
 
-  await db.transaction(async (tx) => {
+  const profileId = await db.transaction(async (tx) => {
     let profileId: string;
     if (access) {
       // Update the shared row in place. `values.userId` must NOT be written
@@ -283,7 +284,16 @@ export async function POST(request: Request) {
     );
 
     await tx.delete(employerOnboardingDrafts).where(eq(employerOnboardingDrafts.userId, session.userId));
+    return profileId;
   });
+
+  // Best-effort, after the main save succeeds — badges are supplementary,
+  // never something that should fail the actual profile save. Required
+  // fields are already validated above before the transaction even starts,
+  // so reaching this point always means the profile is complete.
+  await awardBadge(profileId, "profile_completed");
+  if (values.logoUrl) await awardBadge(profileId, "logo_added");
+  if (isProfileBoosted(values)) await awardBadge(profileId, "profile_boosted");
 
   return NextResponse.json({ ok: true });
 }

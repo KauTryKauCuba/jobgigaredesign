@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
 import { jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
@@ -235,6 +236,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .set(updates)
     .where(and(eq(jobPostings.id, id), eq(jobPostings.employerProfileId, profile.id)))
     .returning();
+
+  if (screeningEnabledAfterUpdate) await awardBadge(profile.id, "screening_enabled");
 
   return NextResponse.json({ posting: updated });
 }

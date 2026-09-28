@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactElement } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AnimatedRibbon from "./AnimatedRibbon";
 import { COMPANIES_CHANGED_EVENT } from "./CompanySwitcher";
 import Dropdown from "./Dropdown";
 import EmployerDashboardShell from "./EmployerDashboardShell";
@@ -2649,12 +2650,26 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
     </div>
 
     <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-      <div className="rounded-[19px] bg-white p-[22px]">
+      <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px]">
+        {!howItWorksOpen && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[70px] overflow-hidden rounded-b-[19px] sm:h-[95px] lg:h-[130px]"
+          >
+            {/* AnimatedRibbon renders a much taller graphic (160/220/300px) than
+                this crop window — the negative margin shifts it up so the
+                visible slice lands on the ribbon's actual colour ("belly")
+                pools instead of the mostly-empty top of its viewBox. */}
+            <div className="-mt-[67px] sm:-mt-[92px] lg:-mt-[125px]">
+              <AnimatedRibbon />
+            </div>
+          </div>
+        )}
         <button
           type="button"
           onClick={() => setHowItWorksOpen((o) => !o)}
           aria-expanded={howItWorksOpen}
-          className="flex w-full items-center gap-[8px] text-left"
+          className="relative flex w-full items-center gap-[8px] text-left"
         >
           <p className="text-sm text-[#141B2E]">How posting a job works</p>
           <ChevronDownIcon

@@ -183,6 +183,43 @@ export const employerTeamActivity = pgTable(
   (table) => [index("employer_team_activity_employer_profile_id_idx").on(table.employerProfileId)],
 );
 
+// employer_badges — one permanent row per milestone a company has reached
+// (see src/lib/badges.ts for the full set and award logic). Deliberately a
+// logged, one-time event rather than something derived live from current
+// state — same "keep history, don't just recompute" convention as
+// employerTeamActivity/jobPostingPosters above, so a badge never quietly
+// disappears just because the data that first earned it later changes
+// (e.g. deleting your only job posting shouldn't revoke "Posted your first
+// job"). The unique constraint below is what makes awarding idempotent —
+// callers just try to insert every time the qualifying condition is true,
+// and only the very first attempt actually writes a row.
+export const employerBadgeKeyEnum = pgEnum("employer_badge_key", [
+  "profile_completed",
+  "logo_added",
+  "profile_boosted",
+  "first_job_posted",
+  "screening_enabled",
+  "first_candidate_screened",
+  "first_hire",
+  "team_builder",
+]);
+
+export const employerBadges = pgTable(
+  "employer_badges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    employerProfileId: uuid("employer_profile_id")
+      .notNull()
+      .references(() => employerProfiles.id, { onDelete: "cascade" }),
+    badgeKey: employerBadgeKeyEnum("badge_key").notNull(),
+    earnedAt: timestamp("earned_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("employer_badges_profile_key_unique").on(table.employerProfileId, table.badgeKey),
+    index("employer_badges_employer_profile_id_idx").on(table.employerProfileId),
+  ],
+);
+
 export const employerOnboardingDrafts = pgTable("employer_onboarding_drafts", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
