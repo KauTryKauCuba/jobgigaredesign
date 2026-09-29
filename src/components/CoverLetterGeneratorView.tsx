@@ -3,7 +3,7 @@
 import { useState } from "react";
 import JobseekerDashboardShell from "./JobseekerDashboardShell";
 import RichTextEditor from "./RichTextEditor";
-import { inputClass, textareaClass, MOCKUP_CARD_CLASS } from "./formStyles";
+import { gradientFrameClass, inputClass, textareaClass } from "./formStyles";
 import { TrashIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
@@ -115,43 +115,45 @@ export default function CoverLetterGeneratorView({
     >
       <div className="grid gap-[20px] lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <div className="flex flex-col gap-[16px]">
-          <div className={`${MOCKUP_CARD_CLASS} flex flex-col gap-[12px]`}>
-            <div>
-              <label className="mb-[6px] block text-xs text-[#4B5468]">Company name</label>
-              <input
-                className={inputClass("gold")}
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="e.g. Acme Sdn Bhd"
-              />
+          <div className={gradientFrameClass("gold")}>
+            <div className="flex flex-col gap-[12px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+              <div>
+                <label className="mb-[6px] block text-xs text-[#4B5468]">Company name</label>
+                <input
+                  className={inputClass("gold")}
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="e.g. Maju Jaya Sdn Bhd"
+                />
+              </div>
+              <div>
+                <label className="mb-[6px] block text-xs text-[#4B5468]">Job title</label>
+                <input
+                  className={inputClass("gold")}
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  placeholder="e.g. Marketing Executive"
+                />
+              </div>
+              <div>
+                <label className="mb-[6px] block text-xs text-[#4B5468]">Job posting description</label>
+                <textarea
+                  className={`${textareaClass("gold")} min-h-[160px]`}
+                  value={jobPostingText}
+                  onChange={(e) => setJobPostingText(e.target.value)}
+                  placeholder="Paste the job description here"
+                />
+              </div>
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={generating}
+                className="h-[40px] rounded-full bg-brand-gold-dark text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {generating ? "Generating…" : "Generate cover letter"}
+              </button>
             </div>
-            <div>
-              <label className="mb-[6px] block text-xs text-[#4B5468]">Job title</label>
-              <input
-                className={inputClass("gold")}
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="e.g. Marketing Executive"
-              />
-            </div>
-            <div>
-              <label className="mb-[6px] block text-xs text-[#4B5468]">Job posting description</label>
-              <textarea
-                className={`${textareaClass("gold")} min-h-[160px]`}
-                value={jobPostingText}
-                onChange={(e) => setJobPostingText(e.target.value)}
-                placeholder="Paste the job description here"
-              />
-            </div>
-            {error && <p className="text-xs text-red-600">{error}</p>}
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={generating}
-              className="h-[40px] rounded-full bg-brand-gold-dark text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            >
-              {generating ? "Generating…" : "Generate cover letter"}
-            </button>
           </div>
 
           {letters.length > 0 && (
@@ -183,32 +185,34 @@ export default function CoverLetterGeneratorView({
           )}
         </div>
 
-        <div className={`${MOCKUP_CARD_CLASS} flex min-h-[400px] flex-col gap-[12px]`}>
-          {selected ? (
-            <>
-              <div className="flex items-center justify-between gap-[12px]">
-                <div>
-                  <p className="text-sm text-[#141B2E]">
-                    {selected.jobTitle} · {selected.companyName}
-                  </p>
-                  <p className="text-xs text-[#9AA3B2]">Edit freely — changes save to this letter only.</p>
+        <div className={`animate-fade-in-up h-full ${gradientFrameClass("gold")}`} style={{ animationDelay: "60ms" }}>
+          <div className="flex h-full min-h-[400px] flex-col gap-[12px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+            {selected ? (
+              <>
+                <div className="flex items-center justify-between gap-[12px]">
+                  <div>
+                    <p className="text-sm text-[#141B2E]">
+                      {selected.jobTitle} · {selected.companyName}
+                    </p>
+                    <p className="text-xs text-[#9AA3B2]">Edit freely — changes save to this letter only.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving || draftContent === selected.content}
+                    className="h-[36px] shrink-0 rounded-full border border-brand-gold-dark px-[16px] text-sm text-brand-gold-dark transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    {saving ? "Saving…" : "Save changes"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving || draftContent === selected.content}
-                  className="h-[36px] shrink-0 rounded-full border border-brand-gold-dark px-[16px] text-sm text-brand-gold-dark transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  {saving ? "Saving…" : "Save changes"}
-                </button>
+                <RichTextEditor accent="gold" value={draftContent} onChange={setDraftContent} />
+              </>
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-center text-sm text-[#9AA3B2]">
+                Generate a cover letter to see it here.
               </div>
-              <RichTextEditor accent="gold" value={draftContent} onChange={setDraftContent} />
-            </>
-          ) : (
-            <div className="flex flex-1 items-center justify-center text-center text-sm text-[#9AA3B2]">
-              Generate a cover letter to see it here.
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </JobseekerDashboardShell>

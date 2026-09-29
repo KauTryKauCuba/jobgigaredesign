@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import AnimatedRibbon from "@/components/AnimatedRibbon";
-import FloatingDemoWidget from "@/components/FloatingDemoWidget";
+import FloatingAssistant from "@/components/FloatingAssistant";
 import Footer from "@/components/Footer";
 import Hero from "@/components/Hero";
 import JobPostingBadges from "@/components/JobPostingBadges";
@@ -67,9 +67,9 @@ export default async function JobseekerPage() {
       <div className="-mb-[92px] h-[80px] overflow-hidden bg-white sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon accent="gold" />
       </div>
-      {/* FloatingDemoWidget is fixed to the viewport bottom, like the navbar
+      {/* FloatingAssistant is fixed to the viewport bottom, like the navbar
           pinned to the top — it renders here for source order, not layout. */}
-      <FloatingDemoWidget />
+      <FloatingAssistant />
     </main>
   );
 }

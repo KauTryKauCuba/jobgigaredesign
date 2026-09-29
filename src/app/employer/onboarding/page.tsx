@@ -1,5 +1,8 @@
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getAuthUser } from "@/lib/auth-user";
+import { db } from "@/lib/db";
+import { employerOnboardingDrafts } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
 import { getSession } from "@/lib/session";
 import { DraftNameProvider } from "@/components/DraftNameContext";
@@ -16,7 +19,16 @@ export default async function EmployerOnboardingPage() {
   // owner, for an invited team member — they already belong to a company
   // too, just not one they created themselves, and should never see the
   // "set up your company" onboarding flow.
-  const [access, authUser] = await Promise.all([getEmployerAccess(session.userId), getAuthUser()]);
+  const [access, authUser, draftRow] = await Promise.all([
+    getEmployerAccess(session.userId),
+    getAuthUser(),
+    db
+      .select({ data: employerOnboardingDrafts.data })
+      .from(employerOnboardingDrafts)
+      .where(eq(employerOnboardingDrafts.userId, session.userId))
+      .limit(1)
+      .then(([row]) => row),
+  ]);
   if (access) redirect("/employer");
 
   return (
@@ -26,7 +38,13 @@ export default async function EmployerOnboardingPage() {
         <div className="relative">
           <EmployerOnboardingBadges />
           <Hero
-            belowNav={<EmployerOnboardingForm />}
+            belowNav={
+              <EmployerOnboardingForm
+                initialAvatarUrl={authUser?.avatarUrl}
+                initialContactEmail={authUser?.email}
+                initialDraft={draftRow?.data ?? null}
+              />
+            }
             showRoleToggle={false}
             heading={
               <>

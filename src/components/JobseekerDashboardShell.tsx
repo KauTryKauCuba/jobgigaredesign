@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AnimatedRibbon from "./AnimatedRibbon";
-import FloatingDemoWidget from "./FloatingDemoWidget";
+import FloatingAssistant from "./FloatingAssistant";
 import Navbar from "./Navbar";
 import SidebarResumeCard from "./SidebarResumeCard";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
+import { useCenterActiveTab } from "./useCenterActiveTab";
 import { BriefcaseIcon, FileIcon, HomeIcon, UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
@@ -27,9 +28,12 @@ const NAV_ITEMS = [
 function Sidebar({ active, resume }: { active: JobseekerNavKey; resume: { fileName: string; fileSize: number | null } | null }) {
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
+  const barRef = useCenterActiveTab<HTMLElement>();
   return (
-    <div className="flex shrink-0 flex-col gap-[16px] lg:sticky lg:top-[85px] lg:w-[220px]">
-      <aside className="flex shrink-0 flex-row gap-[4px] overflow-x-auto rounded-full bg-[#F1F4F8] p-[4px] lg:flex-col lg:gap-[2px] lg:rounded-[14px] lg:border lg:border-[#EAEDF2] lg:bg-white lg:p-[10px]">
+    // `contents` below xl lets the resume card drop under the page content
+    // on phones and tablets instead of pushing it below the fold.
+    <div className="contents xl:sticky xl:top-[85px] xl:flex xl:w-[220px] xl:shrink-0 xl:flex-col xl:gap-[16px]">
+      <aside ref={barRef} className="scrollbar-hide flex shrink-0 flex-row gap-[4px] overflow-x-auto rounded-full bg-[#F1F4F8] p-[4px] xl:flex-col xl:gap-[2px] xl:rounded-[14px] xl:border xl:border-[#EAEDF2] xl:bg-white xl:p-[10px]">
         {NAV_ITEMS.map((item) => (
           <Link
             key={item.key}
@@ -40,7 +44,9 @@ function Sidebar({ active, resume }: { active: JobseekerNavKey; resume: { fileNa
               e.preventDefault();
               guardNavigation(() => router.push(item.href));
             }}
-            className="flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] lg:rounded-[10px] lg:aria-[current=page]:bg-[#FFF3D6] lg:aria-[current=page]:text-brand-gold-dark lg:aria-[current=page]:shadow-none"
+            className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-[#FFF3D6] xl:aria-[current=page]:text-brand-gold-dark xl:aria-[current=page]:shadow-none ${
+              item.key === active ? "animate-fade-in-up" : ""
+            }`}
           >
             <item.icon className="h-[16px] w-[16px] shrink-0" />
             {item.label}
@@ -48,7 +54,9 @@ function Sidebar({ active, resume }: { active: JobseekerNavKey; resume: { fileNa
         ))}
       </aside>
 
-      <SidebarResumeCard initialResume={resume} />
+      <div className="order-last xl:order-none">
+        <SidebarResumeCard initialResume={resume} />
+      </div>
     </div>
   );
 }
@@ -78,11 +86,11 @@ export default function JobseekerDashboardShell({
     <UnsavedChangesGuardBoundary>
     <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-[#FDFAF0] pb-[92px]">
       <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-[#FDFAF0]">
-        <Navbar initialUser={authUser} pageRole="jobseeker" hideProfileLinks />
+        <Navbar initialUser={authUser} pageRole="jobseeker" hideProfileLinks appShell />
       </div>
 
-      <div className="shell pt-[20px]">
-        <div className="flex flex-col gap-[24px] lg:flex-row lg:items-start">
+      <div className="app-shell pt-[20px]">
+        <div className="flex flex-col gap-[24px] xl:flex-row xl:items-start">
           <Sidebar active={active} resume={resume} />
 
           <div className="min-w-0 flex-1">
@@ -112,9 +120,9 @@ export default function JobseekerDashboardShell({
       <div className="-mb-[92px] h-[80px] overflow-hidden sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon accent="gold" />
       </div>
-      {/* FloatingDemoWidget is fixed to the viewport bottom, like the navbar
+      {/* FloatingAssistant is fixed to the viewport bottom, like the navbar
           pinned to the top — it renders here for source order, not layout. */}
-      <FloatingDemoWidget />
+      <FloatingAssistant />
     </main>
     </UnsavedChangesGuardBoundary>
   );

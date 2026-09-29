@@ -70,8 +70,8 @@ export default function JobseekerDashboard({
       resume={resume}
     >
       <div className="flex flex-col gap-[20px]">
-        <div className={gradientFrameClass("gold")}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+        <div className={`${gradientFrameClass("gold")} animate-fade-in-up`}>
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <div className="flex items-center justify-between gap-[8px]">
               <div className="flex items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">My applications</p>
@@ -126,8 +126,8 @@ export default function JobseekerDashboard({
           </div>
         </div>
 
-        <div className={gradientFrameClass("gold")}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+        <div className={`${gradientFrameClass("gold")} animate-fade-in-up`} style={{ animationDelay: "60ms" }}>
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <div className="flex items-center gap-[8px]">
               <p className="text-sm text-[#141B2E]">Jobs hiring now</p>
               <span className="rounded-full bg-[#FFF3D6] px-[10px] py-[3px] text-xs text-brand-gold-dark">

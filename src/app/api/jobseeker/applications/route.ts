@@ -2,37 +2,9 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobApplications, jobPostings, jobseekerProfiles } from "@/lib/db/schema";
-import { getApplicationsForJobseeker, getJobseekerProfileId } from "@/lib/job-applications";
 import { isLanguageArray, isOptionalInt, isOptionalString } from "@/lib/job-posting-validation";
 import { screeningEligibilityCheck } from "@/lib/matching";
 import { getSession } from "@/lib/session";
-
-// Powers the FloatingDemoWidget's jobseeker-side stat questions ("how many
-// jobs have I applied to", "do I have any interviews") — the jobseeker
-// applications page itself reads getApplicationsForJobseeker directly as a
-// server component, so this GET only exists for that client-side widget.
-export async function GET() {
-  const session = await getSession();
-  if (!session || session.role !== "jobseeker") {
-    return NextResponse.json({ error: "Not signed in as a jobseeker." }, { status: 401 });
-  }
-
-  const profileId = await getJobseekerProfileId(session.userId);
-  if (!profileId) return NextResponse.json({ applications: [] });
-
-  const rows = await getApplicationsForJobseeker(profileId);
-  const applications = rows.map((r) => ({
-    jobPostingId: r.posting.id,
-    jobPostingTitle: r.posting.title,
-    jobPostingSlug: r.posting.slug,
-    companyName: r.companyName,
-    status: r.application.status,
-    appliedAt: r.application.appliedAt,
-    interviewDetails: r.application.interviewDetails,
-  }));
-
-  return NextResponse.json({ applications });
-}
 
 function isCustomAnswerArray(value: unknown): value is { questionId: string; answer: boolean }[] {
   return (

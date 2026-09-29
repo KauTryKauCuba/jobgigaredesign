@@ -401,9 +401,9 @@ export default function EmployerApplicantsView({
       subheading="See who's applied, and where they stand, across every job posting."
     >
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
-      <div className="min-w-0 lg:flex-[3] flex flex-col gap-[20px]">
+      <div className="flex min-w-0 flex-col gap-[20px] lg:flex-1">
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-        <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px]">
+        <div className="relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           {!howStagesWorkOpen && (
             <div
               aria-hidden
@@ -429,29 +429,35 @@ export default function EmployerApplicantsView({
               className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${howStagesWorkOpen ? "" : "-rotate-90"}`}
             />
           </button>
-          {howStagesWorkOpen && (
-            <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { step: 1, title: "Applied → Screened → Shortlisted", detail: "Click through an applicant's Hiring stage list to move them forward one step at a time." },
-                { step: 2, title: "Schedule an interview", detail: "Clicking Interview opens the scheduling form — round, mode, date, time." },
-                { step: 3, title: "Attend, then evaluate", detail: "Mark attended/no-show after the interview, then score the candidate to reach Evaluated." },
-                { step: 4, title: "Decide", detail: "Move to Offer → Hired, keep them on hold (KIV), or Reject — available at any stage." },
-              ].map((s) => (
-                <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
-                  <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
-                    {s.step}
-                  </span>
-                  <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
-                  <p className="text-xs text-[#4B5468]">{s.detail}</p>
-                </div>
-              ))}
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+              howStagesWorkOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { step: 1, title: "Applied → Screened → Shortlisted", detail: "Click through an applicant's Hiring stage list to move them forward one step at a time." },
+                  { step: 2, title: "Schedule an interview", detail: "Clicking Interview opens the scheduling form — round, mode, date, time." },
+                  { step: 3, title: "Attend, then evaluate", detail: "Mark attended/no-show after the interview, then score the candidate to reach Evaluated." },
+                  { step: 4, title: "Decide", detail: "Move to Offer → Hired, keep them on hold (KIV), or Reject — available at any stage." },
+                ].map((s) => (
+                  <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
+                    <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
+                      {s.step}
+                    </span>
+                    <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
+                    <p className="text-xs text-[#4B5468]">{s.detail}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Applicants at a glance</p>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
             <button
@@ -594,7 +600,7 @@ export default function EmployerApplicantsView({
                     className={`animate-fade-in-up ${gradientFrameClass("teal")}`}
                     style={{ animationDelay: `${120 + index * 40}ms` }}
                   >
-                  <div className="rounded-[19px] bg-white p-[22px]">
+                  <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
                     <button
                       type="button"
                       onClick={() => togglePostingCollapsed(posting.id)}
@@ -609,7 +615,12 @@ export default function EmployerApplicantsView({
                         className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${collapsed ? "-rotate-90" : ""}`}
                       />
                     </button>
-                    {!collapsed && (
+                    <div
+                      className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+                        collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+                      }`}
+                    >
+                    <div className="overflow-hidden">
                     <div className="mt-[10px] flex flex-col gap-[10px]">
                       {posting.applicants.map((applicant) => {
                         return (
@@ -626,8 +637,9 @@ export default function EmployerApplicantsView({
                                 updateStatus(applicant.application.id, "screened");
                               }
                             }}
-                            className="flex flex-col gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] text-left transition-colors hover:bg-[#F1F4F8] sm:flex-row sm:items-start sm:justify-between"
+                            className="@container rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] text-left transition-colors hover:bg-[#F1F4F8]"
                           >
+                            <div className="flex flex-col gap-[10px] @[34rem]:flex-row @[34rem]:items-start @[34rem]:justify-between">
                             <div className="flex min-w-0 flex-1 items-start gap-[10px]">
                               <ApplicantAvatar url={applicant.applicantAvatarUrl} />
                               <div className="min-w-0 flex-1">
@@ -679,12 +691,12 @@ export default function EmployerApplicantsView({
                                 )}
                               </div>
                             </div>
-                            <div className="flex shrink-0 flex-col items-end gap-[6px]">
+                            <div className="flex flex-wrap items-center gap-[6px] border-t border-[#EAEDF2] pt-[10px] @[34rem]:shrink-0 @[34rem]:flex-col @[34rem]:items-end @[34rem]:border-t-0 @[34rem]:pt-0">
                               <span className="text-xs text-[#9AA3B2]">
                                 Applied {relativeTimeAgo(applicant.application.appliedAt)}
                               </span>
                               {matchScores[applicant.application.id] !== undefined && (
-                                <div className="flex max-w-[220px] flex-col items-end gap-[4px]">
+                                <div className="flex flex-wrap items-center gap-[6px] @[34rem]:max-w-[220px] @[34rem]:flex-col @[34rem]:items-end @[34rem]:gap-[4px]">
                                   <span className="shrink-0 rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">
                                     {matchScores[applicant.application.id].score}% job match
                                   </span>
@@ -712,13 +724,15 @@ export default function EmployerApplicantsView({
                                   </span>
                                 );
                               })()}
-                              <span className="text-xs text-brand-teal-dark">View details →</span>
+                              <span className="ml-auto text-xs text-brand-teal-dark @[34rem]:ml-0">View details →</span>
+                            </div>
                             </div>
                           </button>
                         );
                       })}
                     </div>
-                    )}
+                    </div>
+                    </div>
                   </div>
                   </div>
                   );
@@ -730,9 +744,9 @@ export default function EmployerApplicantsView({
       </div>
       </div>
 
-      <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:max-h-[calc(100svh-105px)] lg:flex-[1] lg:overflow-y-auto">
+      <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:max-h-[calc(100svh-105px)] lg:w-[300px] lg:shrink-0 lg:overflow-y-auto">
         <div className={gradientFrameClass("teal")}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <TopMatchesCard initialEnabled={initialSmartMatchEnabled} initialCriteria={initialCriteria} />
           </div>
         </div>

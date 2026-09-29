@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { jobseekerProfiles } from "@/lib/db/schema";
+import { jobseekerOnboardingDrafts, jobseekerProfiles } from "@/lib/db/schema";
 import { getAuthUser } from "@/lib/auth-user";
 import { getSession } from "@/lib/session";
 import { DraftNameProvider } from "@/components/DraftNameContext";
@@ -14,7 +14,7 @@ export default async function JobseekerOnboardingPage() {
   const session = await getSession();
   if (!session || session.role !== "jobseeker") redirect("/jobseeker");
 
-  const [profile, authUser] = await Promise.all([
+  const [profile, authUser, draftRow] = await Promise.all([
     db
       .select({ id: jobseekerProfiles.id })
       .from(jobseekerProfiles)
@@ -22,6 +22,12 @@ export default async function JobseekerOnboardingPage() {
       .limit(1)
       .then(([row]) => row),
     getAuthUser(),
+    db
+      .select({ data: jobseekerOnboardingDrafts.data })
+      .from(jobseekerOnboardingDrafts)
+      .where(eq(jobseekerOnboardingDrafts.userId, session.userId))
+      .limit(1)
+      .then(([row]) => row),
   ]);
   if (profile) redirect("/jobseeker");
 
@@ -32,7 +38,13 @@ export default async function JobseekerOnboardingPage() {
         <div className="relative">
           <JobseekerOnboardingBadges />
           <Hero
-            belowNav={<OnboardingForm />}
+            belowNav={
+              <OnboardingForm
+                accountEmail={authUser?.email}
+                initialAvatarUrl={authUser?.avatarUrl}
+                initialDraft={draftRow?.data ?? null}
+              />
+            }
             showRoleToggle={false}
             heading={
               <>

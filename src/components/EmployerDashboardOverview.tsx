@@ -114,7 +114,7 @@ function SectionCard({
       className={`h-full animate-fade-in-up ${gradientFrameClass("teal")}`}
       style={{ animationDelay: `${animationDelayMs}ms` }}
     >
-      <div className="flex h-full flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex h-full flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
         <div className="flex items-center justify-between gap-[8px]">
           <p className="text-sm text-[#141B2E]">{title}</p>
           {viewAllHref && (
@@ -612,7 +612,7 @@ export default function EmployerDashboardOverview({
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px]">
       {!data.hasPostings && (
         <div className={gradientFrameClass("teal")}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-sm text-[#141B2E]">Get started</p>
             <p className="mt-[6px] text-xs text-[#4B5468]">
               You haven&rsquo;t posted a job yet — once you do, everything below fills in with real applicants,
@@ -623,7 +623,7 @@ export default function EmployerDashboardOverview({
       )}
 
       <div className={`${gradientFrameClass("teal")} animate-fade-in-up`}>
-        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
+        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <div className="flex items-center justify-between gap-[8px]">
             <p className="text-sm text-[#141B2E]">Overview</p>
             <div className="flex items-center gap-[8px]">
@@ -794,35 +794,39 @@ export default function EmployerDashboardOverview({
                 return (
                   <div
                     key={applicant.applicationId}
-                    className="flex items-center gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
+                    className="@container rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
                   >
-                    <ApplicantAvatar url={applicant.applicantAvatarUrl} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs text-[#141B2E]">{applicant.applicantName}</p>
-                      <p className="mt-[1px] flex flex-wrap items-center gap-x-[6px] truncate text-xs text-[#9AA3B2]">
-                        <span>{applicant.jobPostingTitle}</span>
-                        <span className="text-[#C7CDD7]">·</span>
-                        <span>{relativeTimeAgo(applicant.appliedAt)}</span>
-                      </p>
+                    <div className="flex items-start gap-[10px] @[30rem]:items-center">
+                      <ApplicantAvatar url={applicant.applicantAvatarUrl} />
+                      <div className="flex min-w-0 flex-1 flex-col gap-[6px] @[30rem]:flex-row @[30rem]:items-center @[30rem]:gap-[10px]">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-[#141B2E]">{applicant.applicantName}</p>
+                          <p className="mt-[1px] truncate text-xs text-[#9AA3B2]">
+                            {applicant.jobPostingTitle}
+                            <span className="mx-[6px] text-[#C7CDD7]">·</span>
+                            {relativeTimeAgo(applicant.appliedAt)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-[6px] @[30rem]:shrink-0 @[30rem]:justify-end">
+                          {band && match && (
+                            <span className={`rounded-full px-[9px] py-[3px] text-xs ${band.bg} ${band.text}`}>
+                              {match.score}% job match
+                            </span>
+                          )}
+                          {match && !match.eligible && (
+                            <span
+                              className="rounded-full bg-[#FDEDE8] px-[9px] py-[3px] text-xs text-[#C2410C]"
+                              title={match.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
+                            >
+                              Failed screening
+                            </span>
+                          )}
+                          <span className={`rounded-full px-[9px] py-[3px] text-xs ${color.bg} ${color.text}`}>
+                            {APPLICATION_STATUS_LABEL[applicant.status] ?? applicant.status}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    {band && match && (
-                      <span className={`shrink-0 rounded-full px-[9px] py-[3px] text-xs ${band.bg} ${band.text}`}>
-                        {match.score}% job match
-                      </span>
-                    )}
-                    {match && !match.eligible && (
-                      <span
-                        className="shrink-0 rounded-full bg-[#FDEDE8] px-[9px] py-[3px] text-xs text-[#C2410C]"
-                        title={match.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
-                      >
-                        Failed screening
-                      </span>
-                    )}
-                    <span
-                      className={`shrink-0 rounded-full px-[9px] py-[3px] text-xs ${color.bg} ${color.text}`}
-                    >
-                      {APPLICATION_STATUS_LABEL[applicant.status] ?? applicant.status}
-                    </span>
                   </div>
                 );
               })}

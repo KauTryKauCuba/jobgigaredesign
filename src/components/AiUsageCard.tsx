@@ -73,7 +73,7 @@ export default function AiUsageCard({ aiUsage }: { aiUsage: AiUsageRow[] }) {
 
   return (
     <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-      <div className="flex h-full flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex h-full flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
         <div className="flex items-center justify-between gap-[8px]">
           <p className="text-sm text-[#141B2E]">AI usage</p>
           {aiUsage.length > 0 && (

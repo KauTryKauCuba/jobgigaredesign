@@ -203,7 +203,7 @@ export default function SuperadminJobPostingsView({
       <div
         role="radiogroup"
         aria-label="Job posting status"
-        className="grid h-[38px] grid-cols-4 gap-[4px] rounded-full border border-black/[0.1] p-[3px]"
+        className="scrollbar-hide flex h-[38px] max-w-full gap-[4px] overflow-x-auto rounded-full border border-black/[0.1] p-[3px]"
       >
         {TABS.map((t) => {
           const count =
@@ -221,7 +221,7 @@ export default function SuperadminJobPostingsView({
               role="radio"
               onClick={() => setTab(t.key)}
               aria-checked={tab === t.key}
-              className="flex h-[30px] items-center justify-center rounded-full text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
+              className="flex h-[30px] flex-1 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-[14px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
             >
               {t.label} ({count})
             </button>
@@ -230,7 +230,7 @@ export default function SuperadminJobPostingsView({
       </div>
 
       <div className={`mt-[16px] ${gradientFrameClass("teal")}`}>
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           {error && <p className="text-xs text-red-500">{error}</p>}
 
           {tab === "reports" ? (

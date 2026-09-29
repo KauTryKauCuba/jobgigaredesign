@@ -547,6 +547,20 @@
       "when": 1790587262818,
       "tag": "0077_daffy_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1790642107599,
+      "tag": "0078_black_gideon",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1790642998005,
+      "tag": "0079_sparkling_nocturne",
+      "breakpoints": true
     }
   ]
 }

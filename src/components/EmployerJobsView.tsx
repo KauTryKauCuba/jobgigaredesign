@@ -845,7 +845,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
   if (loadingExisting) {
     return (
       <div className={gradientFrameClass("teal")}>
-        <div className="rounded-[19px] bg-white p-[22px] text-xs text-[#9AA3B2]">Loading posting…</div>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-xs text-[#9AA3B2]">Loading posting…</div>
       </div>
     );
   }
@@ -859,16 +859,16 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
         if (!formValid) return;
         setShowPreview(true);
       }}
-      className="flex min-w-0 flex-col gap-[20px] lg:flex-[3]"
+      className="flex min-w-0 flex-col gap-[20px] lg:flex-1"
     >
       <div className={gradientFrameClass("teal")}>
-        <div className="relative flex flex-col gap-[16px] overflow-hidden rounded-[19px] bg-white p-[22px]">
+        <div className="@container relative flex flex-col gap-[16px] overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <JobTitleIllustration
             lit={title.trim().length > 0}
-            className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto sm:block"
+            className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto @[40rem]:block"
           />
 
-          <div className="relative sm:max-w-[calc(100%-300px)]">
+          <div className="relative @[40rem]:max-w-[calc(100%-300px)]">
             <p className="text-sm text-[#141B2E]">Start with your job title</p>
             <p className="mt-[2px] text-xs text-[#9AA3B2]">
               It&rsquo;s the first thing candidates see and how they&rsquo;ll find you, so a clear,
@@ -881,9 +881,9 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
             label="Job title"
             htmlFor="jobTitle"
             hint={<MatchHint field="targetRole" />}
-            className="relative sm:max-w-[calc(100%-300px)]"
+            className="relative @[40rem]:max-w-[calc(100%-300px)]"
           >
-            <div className="flex gap-[8px]">
+            <div className="flex flex-wrap gap-[8px]">
               <input
                 id="jobTitle"
                 type="text"
@@ -891,7 +891,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
                 onChange={(e) => setTitle(e.target.value)}
                 disabled={aiFillLoading}
                 placeholder="e.g. Sales Executive"
-                className={`${inputClass} flex-1`}
+                className={`${inputClass} min-w-[180px] flex-1`}
               />
               <button
                 type="button"
@@ -927,7 +927,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       {formStep === "details" && (
       <>
       <div className={gradientFrameClass("teal")}>
-      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
       <div>
         <p className="text-sm text-[#141B2E]">Role details</p>
         <p className="mt-[2px] text-xs text-[#9AA3B2]">
@@ -1127,7 +1127,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       </div>
 
       <div className={gradientFrameClass("teal")}>
-      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
       <div className="flex flex-wrap items-center justify-between gap-[10px]">
         <p className="text-lg font-semibold text-[#141B2E]">Skills</p>
         <button
@@ -1324,14 +1324,14 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       </div>
 
       <div className={gradientFrameClass("teal")}>
-      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
       {submitError && <p className="text-xs text-red-500">{submitError}</p>}
       <div className="flex flex-col gap-[8px] sm:flex-row">
         <button
           type="button"
           disabled={!formValid}
           onClick={() => setFormStep("screening")}
-          className="flex h-[38px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-[38px] shrink-0 items-center sm:flex-1 justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Continue
         </button>
@@ -1359,7 +1359,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       {formStep === "screening" && (
       <>
       <div className={gradientFrameClass("teal")}>
-      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[22px]">
+      <div className="flex flex-col gap-[16px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
       <div className="flex flex-col gap-[10px]">
         <p className="text-sm text-[#141B2E]">Screening requirements</p>
         <label className="flex items-start gap-[8px] text-sm text-[#141B2E]">
@@ -1600,7 +1600,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
           type="button"
           disabled={!formValid}
           onClick={() => setShowJobseekerPreview(true)}
-          className="flex h-[38px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-[38px] shrink-0 items-center sm:flex-1 justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Preview as jobseeker
         </button>
@@ -1626,7 +1626,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       )}
     </form>
 
-    <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
+    <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:w-[300px] lg:shrink-0">
       <div
         className={
           formValid
@@ -1634,7 +1634,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
             : "rounded-[20px] bg-gradient-to-br from-[#A66A61] via-white to-[#A66A61] p-px shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-24px_rgba(20,27,46,0.2)]"
         }
       >
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="text-left text-lg font-semibold text-[#141B2E]">
             {formValid ? "All required fields are complete." : "Complete these required fields to continue:"}
           </p>
@@ -1665,7 +1665,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
       </div>
 
       <div className={gradientFrameClass("teal")}>
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="text-left text-lg font-semibold text-[#141B2E]">
             {boostChecklistRemaining > 0
               ? "Not compulsory, but these help narrow your candidate pool and attract better applicants:"
@@ -1869,7 +1869,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
                 setShowPreview(false);
                 setShowJobseekerPreview(true);
               }}
-              className="flex h-[38px] flex-1 items-center justify-center rounded-full border border-[#008990] bg-white text-sm text-brand-teal-dark hover:bg-[#E6F9FA] disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] shrink-0 items-center sm:flex-1 justify-center rounded-full border border-[#008990] bg-white text-sm text-brand-teal-dark hover:bg-[#E6F9FA] disabled:cursor-not-allowed disabled:opacity-60"
             >
               👁️ See jobseeker view
             </button>
@@ -1877,7 +1877,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
               type="button"
               disabled={submitting}
               onClick={() => submitPosting("pending")}
-              className="flex h-[38px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] shrink-0 items-center sm:flex-1 justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? "Submitting…" : "Looks good, post it"}
             </button>
@@ -2053,7 +2053,7 @@ const PostJobForm = forwardRef<PostJobFormHandle, { onClose: () => void; address
               type="button"
               disabled={submitting}
               onClick={() => submitPosting("pending")}
-              className="flex h-[38px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] shrink-0 items-center sm:flex-1 justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? "Submitting…" : "Submit for approval"}
             </button>
@@ -2602,15 +2602,15 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
 
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
-    <div className="flex min-w-0 flex-col gap-[20px] lg:flex-[3]">
+    <div className="flex min-w-0 flex-col gap-[20px] lg:flex-1">
     <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-      <div className="relative flex flex-col gap-[16px] overflow-hidden rounded-[19px] bg-white p-[22px]">
+      <div className="@container relative flex flex-col gap-[16px] overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
         <JobTitleIllustration
           lit={heroTitle.trim().length > 0}
-          className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto sm:block"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto @[40rem]:block"
         />
 
-        <div className="relative sm:max-w-[calc(100%-300px)]">
+        <div className="relative @[40rem]:max-w-[calc(100%-300px)]">
           <p className="text-sm text-[#141B2E]">Start with your job title</p>
           <p className="mt-[2px] text-xs text-[#9AA3B2]">
             It&rsquo;s the first thing candidates see and how they&rsquo;ll find you, so a clear,
@@ -2619,8 +2619,8 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
           </p>
         </div>
 
-        <Field label="Job title" htmlFor="heroJobTitle" hint={<MatchHint field="targetRole" />} className="relative sm:max-w-[calc(100%-300px)]">
-          <div className="flex gap-[8px]">
+        <Field label="Job title" htmlFor="heroJobTitle" hint={<MatchHint field="targetRole" />} className="relative @[40rem]:max-w-[calc(100%-300px)]">
+          <div className="flex flex-wrap gap-[8px]">
             <input
               id="heroJobTitle"
               type="text"
@@ -2633,7 +2633,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                 }
               }}
               placeholder="e.g. Sales Executive"
-              className={`${inputClass} flex-1`}
+              className={`${inputClass} min-w-[180px] flex-1`}
             />
             <button
               type="button"
@@ -2650,7 +2650,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
     </div>
 
     <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-      <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px]">
+      <div className="relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
         {!howItWorksOpen && (
           <div
             aria-hidden
@@ -2676,29 +2676,35 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
             className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${howItWorksOpen ? "" : "-rotate-90"}`}
           />
         </button>
-        {howItWorksOpen && (
-          <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { step: 1, title: "Start with a title", detail: "Type a job title above, then fill it in yourself or let AI draft it." },
-              { step: 2, title: "Fill in the details", detail: "Role details, then screening requirements like experience and languages." },
-              { step: 3, title: "Preview & submit", detail: "Check the jobseeker view, then post it or save as a draft for later." },
-              { step: 4, title: "Reviewed, then live", detail: "A superadmin reviews submitted postings before they go Active." },
-            ].map((s) => (
-              <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
-                <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
-                  {s.step}
-                </span>
-                <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
-                <p className="text-xs text-[#4B5468]">{s.detail}</p>
-              </div>
-            ))}
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+            howItWorksOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { step: 1, title: "Start with a title", detail: "Type a job title above, then fill it in yourself or let AI draft it." },
+                { step: 2, title: "Fill in the details", detail: "Role details, then screening requirements like experience and languages." },
+                { step: 3, title: "Preview & submit", detail: "Check the jobseeker view, then post it or save as a draft for later." },
+                { step: 4, title: "Reviewed, then live", detail: "A superadmin reviews submitted postings before they go Active." },
+              ].map((s) => (
+                <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
+                  <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
+                    {s.step}
+                  </span>
+                  <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
+                  <p className="text-xs text-[#4B5468]">{s.detail}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
 
     <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
-      <div className="rounded-[19px] bg-white p-[22px]">
+      <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
         <p className="mb-[12px] text-sm text-[#141B2E]">Hiring pipeline at a glance</p>
         <div className="grid grid-cols-4 gap-[12px]">
           {tiles.map((tile) => {
@@ -2752,7 +2758,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                   className={`animate-fade-in-up ${gradientFrameClass("teal")} scroll-mt-[100px]`}
                   style={{ animationDelay: `${180 + index * 40}ms` }}
                 >
-                <div className="rounded-[19px] bg-white p-[22px]">
+                <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
                   <button
                     type="button"
                     onClick={() => toggleStatusCollapsed(status)}
@@ -2769,7 +2775,12 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                       className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${collapsed ? "-rotate-90" : ""}`}
                     />
                   </button>
-                  {!collapsed && (
+                  <div
+                    className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+                      collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+                    }`}
+                  >
+                  <div className="overflow-hidden">
                   <div className="mt-[10px] flex flex-col gap-[10px]">
                     {statusPostings.map((posting) => (
                       <div
@@ -2781,8 +2792,9 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                             setViewing(posting);
                           }
                         }}
-                        className="flex flex-col gap-[8px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] cursor-pointer transition-colors hover:bg-[#F1F4F8] sm:flex-row sm:items-center sm:justify-between"
+                        className="@container cursor-pointer rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] transition-colors hover:bg-[#F1F4F8]"
                       >
+                        <div className="flex flex-col gap-[8px] @[36rem]:flex-row @[36rem]:items-center @[36rem]:justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-[8px]">
                             <p className="truncate text-sm text-[#141B2E]">{posting.title}</p>
@@ -2809,8 +2821,8 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                             </span>
                           </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-[12px] text-xs">
-                          <span className="text-[#9AA3B2]">
+                        <div className="flex flex-wrap items-center gap-x-[12px] gap-y-[6px] text-xs @[36rem]:shrink-0 @[36rem]:flex-nowrap">
+                          <span className="whitespace-nowrap text-[#9AA3B2]">
                             {posting.views} view{posting.views === 1 ? "" : "s"}
                           </span>
                           <button
@@ -2819,12 +2831,12 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                               e.stopPropagation();
                               router.push(`/employer/applicants?jobId=${posting.id}`);
                             }}
-                            className="rounded-full bg-[#E6F9FA] px-[10px] py-[3px] text-sm text-brand-teal-dark transition-colors hover:bg-[#D2F3F5]"
+                            className="whitespace-nowrap rounded-full bg-[#E6F9FA] px-[10px] py-[3px] text-sm text-brand-teal-dark transition-colors hover:bg-[#D2F3F5]"
                           >
                             {posting.applicants} applicants
                           </button>
-                          <span className="text-[#9AA3B2]">{posting.posted}</span>
-                          <div onClick={(e) => e.stopPropagation()}>
+                          <span className="whitespace-nowrap text-[#9AA3B2]">{posting.posted}</span>
+                          <div className="ml-auto @[36rem]:ml-0" onClick={(e) => e.stopPropagation()}>
                             <PostingActionsMenu
                               posting={posting}
                               onView={() => setViewing(posting)}
@@ -2835,10 +2847,12 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
                             />
                           </div>
                         </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                  )}
+                  </div>
+                  </div>
                 </div>
                 </div>
               );
@@ -2857,9 +2871,9 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
     </div>
     </div>
 
-    <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
+    <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:w-[300px] lg:shrink-0">
       <div className={gradientFrameClass("teal")}>
-        <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[22px]">
+        <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <div>
             <p className="text-sm text-[#141B2E]">Poster generator</p>
             <p className="mt-[2px] text-xs text-[#9AA3B2]">

@@ -35,12 +35,12 @@ export type HighlightCompany = {
  */
 type SizeVariant = { logoBox: number; logoImg: number; padding: string; offset: number };
 const SIZE_VARIANTS: SizeVariant[] = [
-  { logoBox: 125, logoImg: 120, padding: "p-[22px]", offset: 0 },
-  { logoBox: 88, logoImg: 84, padding: "p-[16px]", offset: 30 },
-  { logoBox: 150, logoImg: 145, padding: "p-[26px]", offset: -20 },
-  { logoBox: 100, logoImg: 96, padding: "p-[18px]", offset: 16 },
-  { logoBox: 132, logoImg: 127, padding: "p-[24px]", offset: -8 },
-  { logoBox: 92, logoImg: 88, padding: "p-[16px]", offset: 24 },
+  { logoBox: 125, logoImg: 120, padding: "lg:p-[22px]", offset: 0 },
+  { logoBox: 88, logoImg: 84, padding: "lg:p-[16px]", offset: 30 },
+  { logoBox: 150, logoImg: 145, padding: "lg:p-[26px]", offset: -20 },
+  { logoBox: 100, logoImg: 96, padding: "lg:p-[18px]", offset: 16 },
+  { logoBox: 132, logoImg: 127, padding: "lg:p-[24px]", offset: -8 },
+  { logoBox: 92, logoImg: 88, padding: "lg:p-[16px]", offset: 24 },
 ];
 
 function PlaceholderLogo({
@@ -201,14 +201,20 @@ export default function CompanyHighlights({ realCompanies }: { realCompanies: Hi
           const variant = SIZE_VARIANTS[i];
           const revealStyle = getRevealStyle(revealProgress, getRevealOffset(i));
           return (
-            <div key={company.name} style={{ transform: `translateY(${variant.offset}px)` }}>
+            // The uneven "skyline" offsets only make sense in the single
+            // 6-across row; in the 2/3-column grids they overlap the row below.
+            <div
+              key={company.name}
+              className="lg:translate-y-[var(--skyline-offset)]"
+              style={{ "--skyline-offset": `${variant.offset}px` } as React.CSSProperties}
+            >
               <div className="will-change-transform" style={revealStyle}>
                 <div className={gradientFrameClass("teal")}>
                   <div
-                    className={`flex flex-col items-center gap-[10px] rounded-[19px] bg-white text-center ${variant.padding}`}
+                    className={`flex flex-col items-center gap-[10px] rounded-[19px] bg-white p-[14px] text-center ${variant.padding}`}
                   >
                     <div
-                      className="flex shrink-0 items-center justify-center"
+                      className="flex max-w-full shrink-0 items-center justify-center"
                       style={{ height: variant.logoBox, width: variant.logoBox }}
                     >
                       {company.logoKind === "image" ? (
@@ -221,7 +227,7 @@ export default function CompanyHighlights({ realCompanies }: { realCompanies: Hi
                         <img
                           src={company.src}
                           alt={company.name}
-                          className="object-contain"
+                          className="max-w-full object-contain"
                           style={{ height: variant.logoImg, width: variant.logoImg }}
                         />
                       ) : (
@@ -234,9 +240,9 @@ export default function CompanyHighlights({ realCompanies }: { realCompanies: Hi
                       )}
                     </div>
 
-                    <div className="min-w-0">
+                    <div className="w-full min-w-0">
                       <p className="truncate text-sm text-[#141B2E]">{company.name}</p>
-                      <p className="truncate text-xs text-[#4B5468]">{company.industry}</p>
+                      <p className="text-balance break-words text-xs text-[#4B5468]">{company.industry}</p>
                       <p className="mt-[2px] text-xs text-brand-teal-dark">
                         {company.openRoles} open roles
                       </p>

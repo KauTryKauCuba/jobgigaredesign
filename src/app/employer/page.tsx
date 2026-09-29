@@ -6,7 +6,7 @@ import EmployerFloatingBadges from "@/components/EmployerFloatingBadges";
 import EmployerInterviewCard from "@/components/EmployerInterviewCard";
 import EmployerJobPostCard from "@/components/EmployerJobPostCard";
 import EmployerManageJobCard from "@/components/EmployerManageJobCard";
-import FloatingDemoWidget from "@/components/FloatingDemoWidget";
+import FloatingAssistant from "@/components/FloatingAssistant";
 import Footer from "@/components/Footer";
 import Hero from "@/components/Hero";
 import HiringStats from "@/components/HiringStats";
@@ -73,9 +73,9 @@ export default async function EmployerPage() {
       <div className="-mb-[92px] h-[80px] overflow-hidden bg-white sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon />
       </div>
-      {/* FloatingDemoWidget is fixed to the viewport bottom, like the navbar
+      {/* FloatingAssistant is fixed to the viewport bottom, like the navbar
           pinned to the top — it renders here for source order, not layout. */}
-      <FloatingDemoWidget />
+      <FloatingAssistant />
     </main>
   );
 }

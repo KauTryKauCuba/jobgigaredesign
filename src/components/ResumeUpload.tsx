@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import AuthModal from "./AuthModal";
-import { gradientFrameClass } from "./formStyles";
+import { gradientFrameClass, inputClass, textareaClass } from "./formStyles";
 import { FileIcon, PencilIcon, UploadIcon, XIcon } from "./icons";
 import SiriOrb from "./SiriOrb";
 
@@ -27,11 +28,45 @@ export default function ResumeUpload({
   // dropzone/Continue flow, which is for the pre-signup path only.
   existingResume?: { fileName: string; fileSize: number | null } | null;
 }) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
+
+  const [showCoverLetterForm, setShowCoverLetterForm] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [jobPostingText, setJobPostingText] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    if (!companyName.trim() || !jobTitle.trim() || !jobPostingText.trim()) {
+      setGenerateError("Fill in the company name, job title, and job posting description.");
+      return;
+    }
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch("/api/jobseeker/cover-letters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName, jobTitle, jobPostingText }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGenerateError(data.error ?? "Couldn't generate a cover letter.");
+        return;
+      }
+      router.push("/jobseeker/cover-letters");
+    } catch {
+      setGenerateError("Couldn't reach the generation service.");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   function handleFiles(files: FileList | null) {
     const picked = files?.[0];
@@ -77,7 +112,7 @@ export default function ResumeUpload({
 
   return (
     <div className={`mx-auto mt-[24px] w-full max-w-[440px] ${gradientFrameClass("gold")}`}>
-      <div className="rounded-[19px] bg-white p-[22px] text-left">
+      <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
         <div>
           <h2 className="text-sm text-[#141B2E]">
             Upload your resume, we&rsquo;ll build your profile
@@ -103,9 +138,57 @@ export default function ResumeUpload({
               </div>
             </div>
 
+            <div
+              className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+                showCoverLetterForm ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <div className="mt-[16px] flex flex-col gap-[12px] border-t border-[#EAEDF2] pt-[16px]">
+                  <div>
+                    <label className="mb-[6px] block text-xs text-[#4B5468]">Company name</label>
+                    <input
+                      className={inputClass("gold")}
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="e.g. Maju Jaya Sdn Bhd"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-[6px] block text-xs text-[#4B5468]">Job title</label>
+                    <input
+                      className={inputClass("gold")}
+                      value={jobTitle}
+                      onChange={(e) => setJobTitle(e.target.value)}
+                      placeholder="e.g. Marketing Executive"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-[6px] block text-xs text-[#4B5468]">Job posting description</label>
+                    <textarea
+                      className={`${textareaClass("gold")} min-h-[120px]`}
+                      value={jobPostingText}
+                      onChange={(e) => setJobPostingText(e.target.value)}
+                      placeholder="Paste the job description here"
+                    />
+                  </div>
+                  {generateError && <p className="text-xs text-red-500">{generateError}</p>}
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold-dark text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  >
+                    {generating ? "Generating…" : "Generate cover letter"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="mt-[10px] flex flex-col gap-[8px]">
               <button
                 type="button"
+                onClick={() => setShowCoverLetterForm((v) => !v)}
                 className="flex h-[42px] items-center justify-center gap-[7px] rounded-[12px] bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90"
               >
                 <PencilIcon className="h-[14px] w-[14px]" />

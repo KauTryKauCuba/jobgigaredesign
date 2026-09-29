@@ -10,7 +10,8 @@ type AiUsageFeature =
   | "skill_suggestion"
   | "match_scoring"
   | "cover_letter"
-  | "poster_generation";
+  | "poster_generation"
+  | "assistant_chat";
 
 type TokenUsage = {
   prompt_tokens?: number;

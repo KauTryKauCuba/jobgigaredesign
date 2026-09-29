@@ -15,6 +15,7 @@ export default function Navbar({
   pageRole = "employer",
   onboarding = false,
   hideProfileLinks = false,
+  appShell = false,
 }: {
   showUserName?: boolean;
   initialUser?: AuthUser | null;
@@ -28,6 +29,9 @@ export default function Navbar({
   // pages that already surface those as sidebar nav links (the employer
   // dashboard shell), where repeating them in the dropdown is redundant.
   hideProfileLinks?: boolean;
+  // Dashboards use .app-shell gutters; the navbar must match so its logo
+  // and buttons line up with the content below.
+  appShell?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -214,7 +218,7 @@ export default function Navbar({
 
   return (
     <header className="relative z-20 h-[65px] shrink-0">
-      <nav className="shell flex h-full items-center justify-between">
+      <nav className={`${appShell ? "app-shell" : "shell"} flex h-full items-center justify-between`}>
         <Link
           href={user ? (user.role === "employer" ? "/employer" : "/jobseeker") : "/"}
           className="flex items-center"
@@ -236,7 +240,7 @@ export default function Navbar({
                 e.preventDefault();
                 document.getElementById("job-search")?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-              className="hidden px-[6px] py-[6px] hover:opacity-60 sm:block"
+              className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 sm:block"
             >
               Find job
             </Link>
@@ -244,13 +248,14 @@ export default function Navbar({
           {user === undefined ? null : user ? (
             <>
               {showUserName && (
-                <span className="relative hidden sm:flex" ref={menuRef}>
+                <span className="relative flex" ref={menuRef}>
                   <button
                     type="button"
                     onClick={() => setMenuOpen((open) => !open)}
                     aria-expanded={menuOpen}
                     aria-haspopup="menu"
-                    className="flex items-center gap-[8px] rounded-full px-[6px] py-[4px] text-sm text-[#4B5468] hover:bg-black/[0.03]"
+                    aria-label="Account menu"
+                    className="flex h-[38px] items-center gap-[8px] rounded-full px-[6px] text-sm text-[#4B5468] hover:bg-black/[0.03]"
                   >
                     <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
                       {displayAvatarUrl ? (
@@ -260,7 +265,7 @@ export default function Navbar({
                         <UserIcon className="h-[13px] w-[13px]" />
                       )}
                     </span>
-                    {displayName}
+                    <span className="hidden max-w-[200px] truncate whitespace-nowrap md:inline">{displayName}</span>
                     <ChevronDownIcon className="h-[9px] w-[9px] text-[#9AA3B2]" />
                   </button>
 
@@ -276,6 +281,39 @@ export default function Navbar({
                           redirect straight back here. hideProfileLinks does
                           the same trim for the employer dashboard shell,
                           which already surfaces these as sidebar links. */}
+                      {/* The navbar's own Dashboard / Find job / Switch buttons are
+                          hidden below sm to fit a phone header, so they live
+                          in this menu there instead. */}
+                      <div className="sm:hidden">
+                        {!onboarding && (
+                          <Link
+                            href={user.role === "employer" ? "/employer/dashboard" : "/jobseeker/dashboard"}
+                            onClick={() => setMenuOpen(false)}
+                            className="block px-[16px] py-[9px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                          >
+                            Dashboard
+                          </Link>
+                        )}
+                        {pageRole === "jobseeker" && (
+                          <Link
+                            href="/jobseeker#job-search"
+                            onClick={() => setMenuOpen(false)}
+                            className="block px-[16px] py-[9px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                          >
+                            Find job
+                          </Link>
+                        )}
+                        {onboarding && (
+                          <button
+                            type="button"
+                            onClick={handleSwitchRoleClick}
+                            disabled={switching}
+                            className="block w-full px-[16px] py-[9px] text-left text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {switching ? "Switching…" : `Switch to ${user.role === "employer" ? "Jobseeker" : "Employer"}`}
+                          </button>
+                        )}
+                      </div>
                       {!onboarding && !hideProfileLinks && (
                         <>
                           <Link

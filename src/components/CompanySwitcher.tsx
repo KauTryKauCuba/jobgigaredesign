@@ -56,7 +56,7 @@ function CompanyLogo({ url }: { url: string | null }) {
     );
   }
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={url} alt="" className="h-[26px] w-[26px] shrink-0 rounded-full object-cover" />;
+  return <img src={url} alt="" className="h-[26px] w-[26px] shrink-0 rounded-[7px] border border-[#EAEDF2] bg-white object-contain p-[2px]" />;
 }
 
 // Self-fetching and self-contained so it can drop into EmployerDashboardShell
@@ -156,22 +156,28 @@ export default function CompanySwitcher() {
         <span className="min-w-0 flex-1 truncate text-sm text-[#141B2E]">{current.companyName}</span>
       </div>
 
-      {detailsOpen && (
-        <div className="mt-[12px] flex flex-col gap-[4px] text-xs text-[#4B5468]">
-          <p>
-            <span className="text-[#9AA3B2]">Owner:</span> {current.ownerName}
-          </p>
-          <p>
-            <span className="text-[#9AA3B2]">Joined:</span> {formatJoinedDate(current.joinedAt)}
-          </p>
-          <p>
-            <span className="text-[#9AA3B2]">Industry:</span> {current.industry}
-          </p>
-          <p>
-            <span className="text-[#9AA3B2]">Size:</span> {current.companySize} employees
-          </p>
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+          detailsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="mt-[12px] flex flex-col gap-[4px] text-xs text-[#4B5468]">
+            <p>
+              <span className="text-[#9AA3B2]">Owner:</span> {current.ownerName}
+            </p>
+            <p>
+              <span className="text-[#9AA3B2]">Joined:</span> {formatJoinedDate(current.joinedAt)}
+            </p>
+            <p>
+              <span className="text-[#9AA3B2]">Industry:</span> {current.industry}
+            </p>
+            <p>
+              <span className="text-[#9AA3B2]">Size:</span> {current.companySize} employees
+            </p>
+          </div>
         </div>
-      )}
+      </div>
 
       <button
         type="button"

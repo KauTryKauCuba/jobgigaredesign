@@ -46,7 +46,7 @@ export default function DeleteAccountCard({ email }: { email: string }) {
   return (
     <>
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
-        <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[22px]">
+        <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="text-sm text-[#141B2E]">Danger zone</p>
           <p className="text-xs text-[#4B5468]">
             Permanently delete your account. If you own a company with no other team members, this also deletes

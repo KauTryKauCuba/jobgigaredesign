@@ -188,8 +188,8 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
 
   return (
     <div className="flex flex-col gap-[16px] lg:flex-row lg:items-start">
-      <div className={`animate-fade-in-up min-w-0 lg:flex-[3] ${gradientFrameClass("teal")}`}>
-        <div className="rounded-[19px] bg-white p-[22px]">
+      <div className={`animate-fade-in-up min-w-0 lg:flex-1 ${gradientFrameClass("teal")}`}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="text-sm text-[#141B2E]">Job posting</p>
           <p className="mt-[2px] text-xs text-[#9AA3B2]">
             Pick which active posting to generate a poster for — only one can generate at a time, but
@@ -259,8 +259,8 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
         </div>
       </div>
 
-      <div className={`min-w-0 lg:sticky lg:top-[85px] lg:flex-[1] ${gradientFrameClass("teal")}`}>
-        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
+      <div className={`min-w-0 lg:sticky lg:top-[85px] lg:w-[340px] lg:shrink-0 ${gradientFrameClass("teal")}`}>
+        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <div>
             <p className="text-sm text-[#141B2E]">Poster generator</p>
             <p className="mt-[2px] text-xs text-[#9AA3B2]">

@@ -123,11 +123,11 @@ function InterviewRow({
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`flex flex-col gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] text-left transition-colors hover:bg-[#F1F4F8] ${
+      className={`@container flex flex-col gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] text-left transition-colors hover:bg-[#F1F4F8] ${
         draggable ? "cursor-grab active:cursor-grabbing" : ""
       } ${dragging ? "opacity-40" : ""}`}
     >
-      <div className="flex items-start justify-between gap-[10px]">
+      <div className="flex flex-col gap-[8px] @[26rem]:flex-row @[26rem]:items-start @[26rem]:justify-between @[26rem]:gap-[10px]">
         <div className="flex min-w-0 flex-1 items-start gap-[10px]">
           <ApplicantAvatar url={applicant.applicantAvatarUrl} />
           <div className="min-w-0 flex-1">
@@ -137,13 +137,13 @@ function InterviewRow({
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-[6px]">
+        <div className="flex items-center justify-between gap-[6px] pl-[48px] @[26rem]:shrink-0 @[26rem]:flex-col @[26rem]:items-end @[26rem]:pl-0">
           {responseStatus && responseColor && (
-            <span className={`rounded-full px-[10px] py-[3px] text-xs ${responseColor.bg} ${responseColor.text}`}>
+            <span className={`whitespace-nowrap rounded-full px-[10px] py-[3px] text-xs ${responseColor.bg} ${responseColor.text}`}>
               {INTERVIEW_RESPONSE_STATUS_LABEL[responseStatus]}
             </span>
           )}
-          <span className="text-xs text-brand-teal-dark">View details →</span>
+          <span className="whitespace-nowrap text-xs text-brand-teal-dark">View details →</span>
         </div>
       </div>
       {details ? (
@@ -477,7 +477,7 @@ export default function EmployerInterviewsView({
       subheading="Everyone currently scheduled for an interview, across every job posting."
     >
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto w-full max-w-[1440px]`}>
-        <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px]">
+        <div className="relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           {!howItWorksOpen && (
             <div
               aria-hidden
@@ -503,24 +503,30 @@ export default function EmployerInterviewsView({
               className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${howItWorksOpen ? "" : "-rotate-90"}`}
             />
           </button>
-          {howItWorksOpen && (
-            <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { step: 1, title: "Pick a shortlisted applicant", detail: "\"Schedule interview\" → pick a job posting → pick who to interview." },
-                { step: 2, title: "Or start from the calendar", detail: "Click \"+\" on a calendar day to schedule with that date already filled in." },
-                { step: 3, title: "Set round, mode, date & time", detail: "Onsite, online, or phone — with location or meeting link as needed." },
-                { step: 4, title: "Track through to evaluation", detail: "Mark attendance after the interview, then evaluate from the Applicants page." },
-              ].map((s) => (
-                <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
-                  <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
-                    {s.step}
-                  </span>
-                  <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
-                  <p className="text-xs text-[#4B5468]">{s.detail}</p>
-                </div>
-              ))}
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+              howItWorksOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { step: 1, title: "Pick a shortlisted applicant", detail: "\"Schedule interview\" → pick a job posting → pick who to interview." },
+                  { step: 2, title: "Or start from the calendar", detail: "Click \"+\" on a calendar day to schedule with that date already filled in." },
+                  { step: 3, title: "Set round, mode, date & time", detail: "Onsite, online, or phone — with location or meeting link as needed." },
+                  { step: 4, title: "Track through to evaluation", detail: "Mark attendance after the interview, then evaluate from the Applicants page." },
+                ].map((s) => (
+                  <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
+                    <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
+                      {s.step}
+                    </span>
+                    <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
+                    <p className="text-xs text-[#4B5468]">{s.detail}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -528,7 +534,7 @@ export default function EmployerInterviewsView({
         className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}
         style={{ animationDelay: "60ms" }}
       >
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Interview status</p>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-3 lg:grid-cols-6">
             {INTERVIEW_RESPONSE_STATUS_ORDER.map((responseStatus) => {
@@ -613,7 +619,7 @@ export default function EmployerInterviewsView({
           className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}
           style={{ animationDelay: "120ms" }}
         >
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <InterviewBigCalendar
               interviews={calendarInterviews}
               onSelectInterview={setViewingId}
@@ -738,9 +744,9 @@ export default function EmployerInterviewsView({
         </div>
       ) : (
       <div className="mx-auto mt-[12px] flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
-      <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:flex-[1]">
+      <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:w-[300px] lg:shrink-0">
         <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="mb-[12px] text-sm text-[#141B2E]">Calendar</p>
             <div className="flex flex-col gap-[12px]">
               <div className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
@@ -773,10 +779,10 @@ export default function EmployerInterviewsView({
       </div>
 
       <div
-        className={`animate-fade-in-up ${gradientFrameClass("teal")} min-w-0 lg:flex-[3]`}
+        className={`animate-fade-in-up ${gradientFrameClass("teal")} min-w-0 lg:flex-1`}
         style={{ animationDelay: "180ms" }}
       >
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           {statusError && <p className="text-xs text-red-500">{statusError}</p>}
 
           <div className="flex items-center gap-[8px]">

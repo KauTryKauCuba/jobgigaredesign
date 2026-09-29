@@ -44,6 +44,28 @@ body {
   padding-inline: 13.28%;
 }
 
+/* Dashboard counterpart to .shell — the landing pages' percentage gutters
+   leave ~230px unused on a 1280px laptop, which a sidebar + content +
+   right rail can't afford. Fixed gutters, capped width. */
+.app-shell {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-inline: 32px;
+}
+
+@media (max-width: 1024px) {
+  .app-shell {
+    padding-inline: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding-inline: 16px;
+  }
+}
+
 /* For a horizontally scrollable row that has its own visible scroll
    affordance (drag-to-pan, dot pagination, etc.) — hides the native
    scrollbar without disabling scrolling itself. */

@@ -57,9 +57,15 @@ export default function AssistantCard({
   );
 
   const visualBlock = (
-    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[28px]">
+    <div
+      className={`relative w-full overflow-hidden rounded-[28px] ${
+        // A custom mockup stacks its cards on narrow screens and is taller
+        // than 4:3 there — a fixed ratio would crop its top and bottom off.
+        visual ? "lg:aspect-[4/3]" : "aspect-[4/3]"
+      }`}
+    >
       {visual ? (
-        <div className="absolute inset-0">{visual}</div>
+        <div className="lg:absolute lg:inset-0">{visual}</div>
       ) : image ? (
         <Image src={image} alt="" fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" />
       ) : (

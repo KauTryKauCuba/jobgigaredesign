@@ -116,8 +116,8 @@ export default function JobseekerApplicationsView({
       subheading="Every job you've applied to, and where things stand."
       resume={resume}
     >
-      <div className={gradientFrameClass("gold")}>
-        <div className="rounded-[19px] bg-white p-[22px]">
+      <div className={`animate-fade-in-up ${gradientFrameClass("gold")}`}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Applications at a glance</p>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
             <div className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">

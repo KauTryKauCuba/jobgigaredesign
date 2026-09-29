@@ -685,10 +685,14 @@ export default function OnboardingForm({
   mode = "onboarding",
   initialProfile,
   accountEmail: initialAccountEmail,
+  initialAvatarUrl,
+  initialDraft,
 }: {
   mode?: "onboarding" | "edit";
   initialProfile?: JobseekerProfile;
   accountEmail?: string;
+  initialAvatarUrl?: string | null;
+  initialDraft?: Partial<DraftData> | null;
 } = {}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -741,12 +745,18 @@ export default function OnboardingForm({
   useRegisterUnsavedChangesGuard(guardNavigation);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialProfile?.avatarUrl ?? null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    initialProfile?.avatarUrl ?? initialDraft?.avatarUrl ?? initialAvatarUrl ?? null,
+  );
   // True only while avatarUrl is still the unconfirmed Google account
   // picture auto-filled below, never something the jobseeker actually chose
   // — lets the resume-photo suggestion still offer to replace it, instead of
   // hiding just because *some* avatar happens to be set.
-  const [avatarIsAccountDefault, setAvatarIsAccountDefault] = useState(false);
+  const [avatarIsAccountDefault, setAvatarIsAccountDefault] = useState(
+    initialDraft?.avatarUrl
+      ? Boolean(initialDraft.avatarIsAccountDefault)
+      : !initialProfile?.avatarUrl && !initialDraft?.avatarUrl && Boolean(initialAvatarUrl),
+  );
   // Same idea as avatarIsAccountDefault — true only while the current
   // avatarUrl came from accepting a resume's suggested photo, never a
   // manual upload the jobseeker deliberately chose. Lets removing that
@@ -779,7 +789,14 @@ export default function OnboardingForm({
           tokens: null,
           durationMs: null,
         }
-      : null,
+      : initialDraft?.resumeFileName
+        ? {
+            name: initialDraft.resumeFileName,
+            size: initialDraft.resumeFileSize ?? 0,
+            tokens: initialDraft.resumeParseTokens ?? null,
+            durationMs: initialDraft.resumeParseDurationMs ?? null,
+          }
+        : null,
   );
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
@@ -801,7 +818,7 @@ export default function OnboardingForm({
     return () => clearInterval(interval);
   }, [parsing]);
 
-  const [fullName, setFullName] = useState(initialProfile?.fullName ?? "");
+  const [fullName, setFullName] = useState(initialProfile?.fullName ?? initialDraft?.fullName ?? "");
   const draftContext = useDraftName();
   const setDraftName = draftContext?.setDraftName;
   useEffect(() => {
@@ -811,30 +828,40 @@ export default function OnboardingForm({
   useEffect(() => {
     setDraftAvatarUrl?.(avatarUrl);
   }, [avatarUrl, setDraftAvatarUrl]);
-  const [dateOfBirth, setDateOfBirth] = useState(initialProfile?.dateOfBirth ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState(initialProfile?.dateOfBirth ?? initialDraft?.dateOfBirth ?? "");
   const [gender, setGender] = useState<(typeof GENDERS)[number]["value"] | "">(
-    (initialProfile?.gender as (typeof GENDERS)[number]["value"] | null | undefined) ?? "",
+    (initialProfile?.gender as (typeof GENDERS)[number]["value"] | null | undefined) ??
+      initialDraft?.gender ??
+      "",
   );
   const [maritalStatus, setMaritalStatus] = useState<(typeof MARITAL_STATUSES)[number]["value"] | "">(
-    (initialProfile?.maritalStatus as (typeof MARITAL_STATUSES)[number]["value"] | null | undefined) ?? "",
+    (initialProfile?.maritalStatus as (typeof MARITAL_STATUSES)[number]["value"] | null | undefined) ??
+      initialDraft?.maritalStatus ??
+      "",
   );
-  const [nationality, setNationality] = useState(initialProfile?.nationality ?? "");
-  const [accountEmail, setAccountEmail] = useState(initialAccountEmail ?? "");
-  const [phone, setPhone] = useState(initialProfile?.phone ?? "");
+  const [nationality, setNationality] = useState(initialProfile?.nationality ?? initialDraft?.nationality ?? "");
+  const accountEmail = initialAccountEmail ?? "";
+  const [phone, setPhone] = useState(initialProfile?.phone ?? initialDraft?.phone ?? "");
   const [drivingLicense, setDrivingLicense] = useState<(typeof DRIVING_LICENSES)[number]["value"] | "">(
-    (initialProfile?.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null | undefined) ?? "",
+    (initialProfile?.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null | undefined) ??
+      initialDraft?.drivingLicense ??
+      "",
   );
-  const [city, setCity] = useState(initialProfile?.city ?? "");
+  const [city, setCity] = useState(initialProfile?.city ?? initialDraft?.city ?? "");
   const [state, setState] = useState<(typeof MALAYSIA_STATES)[number] | "">(
-    (initialProfile?.state as (typeof MALAYSIA_STATES)[number] | undefined) ?? "",
+    (initialProfile?.state as (typeof MALAYSIA_STATES)[number] | undefined) ?? initialDraft?.state ?? "",
   );
   const location = city.trim() && state ? `${city.trim()}, ${state}` : city.trim() || state;
-  const [targetRole, setTargetRole] = useState(initialProfile?.targetRole ?? "");
+  const [targetRole, setTargetRole] = useState(initialProfile?.targetRole ?? initialDraft?.targetRole ?? "");
   const [preferredIndustry, setPreferredIndustry] = useState<(typeof INDUSTRIES)[number] | "">(
-    (initialProfile?.preferredIndustry as (typeof INDUSTRIES)[number] | null | undefined) ?? "",
+    (initialProfile?.preferredIndustry as (typeof INDUSTRIES)[number] | null | undefined) ??
+      initialDraft?.preferredIndustry ??
+      "",
   );
   const [yearsExperience, setYearsExperience] = useState(
-    initialProfile?.yearsExperience != null ? String(initialProfile.yearsExperience) : "",
+    initialProfile?.yearsExperience != null
+      ? String(initialProfile.yearsExperience)
+      : (initialDraft?.yearsExperience ?? ""),
   );
   // Once the user edits this by hand, it stops auto-recalculating from
   // Experience & background — an explicit override should stick, not get
@@ -844,16 +871,20 @@ export default function OnboardingForm({
   const [yearsExperienceAuto, setYearsExperienceAuto] = useState(initialProfile?.yearsExperience == null);
   const [professionalSkillInput, setProfessionalSkillInput] = useState("");
   const [professionalSkills, setProfessionalSkills] = useState<string[]>(
-    initialProfile?.professionalSkills ?? [],
+    initialProfile?.professionalSkills ?? initialDraft?.professionalSkills ?? [],
   );
   const [softSkillInput, setSoftSkillInput] = useState("");
-  const [softSkills, setSoftSkills] = useState<string[]>(initialProfile?.softSkills ?? []);
+  const [softSkills, setSoftSkills] = useState<string[]>(
+    initialProfile?.softSkills ?? initialDraft?.softSkills ?? [],
+  );
   const [otherSkillInput, setOtherSkillInput] = useState("");
-  const [otherSkills, setOtherSkills] = useState<string[]>(initialProfile?.otherSkills ?? []);
+  const [otherSkills, setOtherSkills] = useState<string[]>(
+    initialProfile?.otherSkills ?? initialDraft?.otherSkills ?? [],
+  );
   const [skillSuggestions, setSkillSuggestions] = useState<{
     professionalSkills: string[];
     softSkills: string[];
-  } | null>(null);
+  } | null>(initialDraft?.skillSuggestions ?? null);
   const [suggestingSkills, setSuggestingSkills] = useState(false);
   const [suggestSkillsError, setSuggestSkillsError] = useState<string | null>(null);
   const [suggestSkillsStatus, setSuggestSkillsStatus] = useState<string | null>(null);
@@ -869,35 +900,48 @@ export default function OnboardingForm({
   }, [suggestingSkills]);
   const [employmentType, setEmploymentType] = useState<(typeof EMPLOYMENT_TYPES)[number]["value"]>(
     (initialProfile?.employmentType as (typeof EMPLOYMENT_TYPES)[number]["value"] | undefined) ??
+      initialDraft?.employmentType ??
       "full_time",
   );
   const [expectedSalaryMin, setExpectedSalaryMin] = useState(
-    initialProfile?.expectedSalaryMin != null ? String(initialProfile.expectedSalaryMin) : "",
+    initialProfile?.expectedSalaryMin != null
+      ? String(initialProfile.expectedSalaryMin)
+      : (initialDraft?.expectedSalaryMin ?? ""),
   );
   const [expectedSalaryMax, setExpectedSalaryMax] = useState(
-    initialProfile?.expectedSalaryMax != null ? String(initialProfile.expectedSalaryMax) : "",
+    initialProfile?.expectedSalaryMax != null
+      ? String(initialProfile.expectedSalaryMax)
+      : (initialDraft?.expectedSalaryMax ?? ""),
   );
 
-  const [bio, setBio] = useState(initialProfile?.bio ?? "");
-  const [linkedinUrl, setLinkedinUrl] = useState(initialProfile?.linkedinUrl ?? "");
-  const [portfolioUrl, setPortfolioUrl] = useState(initialProfile?.portfolioUrl ?? "");
-  const [githubUrl, setGithubUrl] = useState(initialProfile?.githubUrl ?? "");
+  const [bio, setBio] = useState(initialProfile?.bio ?? initialDraft?.bio ?? "");
+  const [linkedinUrl, setLinkedinUrl] = useState(initialProfile?.linkedinUrl ?? initialDraft?.linkedinUrl ?? "");
+  const [portfolioUrl, setPortfolioUrl] = useState(
+    initialProfile?.portfolioUrl ?? initialDraft?.portfolioUrl ?? "",
+  );
+  const [githubUrl, setGithubUrl] = useState(initialProfile?.githubUrl ?? initialDraft?.githubUrl ?? "");
   const [workArrangement, setWorkArrangement] = useState<(typeof WORK_ARRANGEMENTS)[number]["value"]>(
     (initialProfile?.workArrangement as (typeof WORK_ARRANGEMENTS)[number]["value"] | undefined) ??
+      initialDraft?.workArrangement ??
       "onsite",
   );
   const [workAuthorization, setWorkAuthorization] = useState<
     (typeof WORK_AUTHORIZATIONS)[number]["value"]
   >(
     (initialProfile?.workAuthorization as (typeof WORK_AUTHORIZATIONS)[number]["value"] | undefined) ??
+      initialDraft?.workAuthorization ??
       "citizen",
   );
   const [noticePeriod, setNoticePeriod] = useState<(typeof NOTICE_PERIODS)[number]["value"]>(
-    (initialProfile?.noticePeriod as (typeof NOTICE_PERIODS)[number]["value"] | undefined) ?? "immediate",
+    (initialProfile?.noticePeriod as (typeof NOTICE_PERIODS)[number]["value"] | undefined) ??
+      initialDraft?.noticePeriod ??
+      "immediate",
   );
 
   const [workExperiences, setWorkExperiences] = useState<WorkExperienceEntry[]>(
-    initialProfile ? mapWorkExperiences(initialProfile.workExperiences) : [],
+    initialProfile
+      ? mapWorkExperiences(initialProfile.workExperiences)
+      : (initialDraft?.workExperiences?.map((entry) => ({ ...entry, id: newId() })) ?? []),
   );
 
   // Keeps Years of experience in sync with Experience & background for as
@@ -913,126 +957,35 @@ export default function OnboardingForm({
     setPrevWorkExperiences(workExperiences);
   }
   const [education, setEducation] = useState<EducationEntry[]>(
-    initialProfile ? mapEducation(initialProfile.education) : [],
+    initialProfile
+      ? mapEducation(initialProfile.education)
+      : (initialDraft?.education?.map((entry) => ({ ...entry, id: newId() })) ?? []),
   );
   const [certifications, setCertifications] = useState<CertificationEntry[]>(
-    initialProfile ? mapCertifications(initialProfile.certifications) : [],
+    initialProfile
+      ? mapCertifications(initialProfile.certifications)
+      : (initialDraft?.certifications?.map((entry) => ({ ...entry, id: newId() })) ?? []),
   );
   const [languages, setLanguages] = useState<LanguageEntry[]>(
-    initialProfile ? mapLanguages(initialProfile.languages) : [],
+    initialProfile
+      ? mapLanguages(initialProfile.languages)
+      : (initialDraft?.languages?.map((entry) => ({ ...entry, id: newId() })) ?? []),
   );
   const [references, setReferences] = useState<ReferenceEntry[]>(
-    initialProfile ? mapReferences(initialProfile.references) : [],
+    initialProfile
+      ? mapReferences(initialProfile.references)
+      : (initialDraft?.references?.map((entry) => ({ ...entry, id: newId() })) ?? []),
   );
 
-  const [draftLoaded, setDraftLoaded] = useState(mode === "edit");
   const [autosaveError, setAutosaveError] = useState(false);
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeParseId = useRef(0);
 
-  // Loaded once on mount so a refresh — or logging back in on any device —
-  // picks up where the user left off. Saved server-side (not localStorage)
-  // since a draft tied only to the browser wouldn't survive logging in
-  // elsewhere and could leak between different users on a shared browser.
-  // Skipped in edit mode — there's no draft to resume, the profile already
-  // exists and its values were used to seed state above.
+  // Debounced autosave — waits for a pause in typing rather than saving on
+  // every keystroke. Skipped in edit mode — there's no draft to autosave to
+  // once a profile exists.
   useEffect(() => {
     if (mode === "edit") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/jobseeker/onboarding-draft");
-        const data = await res.json();
-        const draft = (res.ok ? data.draft : null) as Partial<DraftData> | null;
-        if (draft && !cancelled) {
-          if (draft.avatarUrl) {
-            setAvatarUrl(draft.avatarUrl);
-            setAvatarIsAccountDefault(Boolean(draft.avatarIsAccountDefault));
-          }
-          if (draft.fullName) setFullName(draft.fullName);
-          if (draft.dateOfBirth) setDateOfBirth(draft.dateOfBirth);
-          if (draft.gender) setGender(draft.gender);
-          if (draft.maritalStatus) setMaritalStatus(draft.maritalStatus);
-          if (draft.nationality) setNationality(draft.nationality);
-          if (draft.phone) setPhone(draft.phone);
-          if (draft.drivingLicense) setDrivingLicense(draft.drivingLicense);
-          if (draft.city) setCity(draft.city);
-          if (draft.state) setState(draft.state);
-          if (draft.targetRole) setTargetRole(draft.targetRole);
-          if (draft.preferredIndustry) setPreferredIndustry(draft.preferredIndustry);
-          if (draft.yearsExperience) setYearsExperience(draft.yearsExperience);
-          if (draft.professionalSkills?.length) setProfessionalSkills(draft.professionalSkills);
-          if (draft.softSkills?.length) setSoftSkills(draft.softSkills);
-          if (draft.otherSkills?.length) setOtherSkills(draft.otherSkills);
-          if (draft.skillSuggestions) setSkillSuggestions(draft.skillSuggestions);
-          if (draft.employmentType) setEmploymentType(draft.employmentType);
-          if (draft.expectedSalaryMin) setExpectedSalaryMin(draft.expectedSalaryMin);
-          if (draft.expectedSalaryMax) setExpectedSalaryMax(draft.expectedSalaryMax);
-          if (draft.bio) setBio(draft.bio);
-          if (draft.linkedinUrl) setLinkedinUrl(draft.linkedinUrl);
-          if (draft.portfolioUrl) setPortfolioUrl(draft.portfolioUrl);
-          if (draft.githubUrl) setGithubUrl(draft.githubUrl);
-          if (draft.workArrangement) setWorkArrangement(draft.workArrangement);
-          if (draft.workAuthorization) setWorkAuthorization(draft.workAuthorization);
-          if (draft.noticePeriod) setNoticePeriod(draft.noticePeriod);
-          if (draft.workExperiences?.length) {
-            setWorkExperiences(draft.workExperiences.map((entry) => ({ ...entry, id: newId() })));
-          }
-          if (draft.education?.length) {
-            setEducation(draft.education.map((entry) => ({ ...entry, id: newId() })));
-          }
-          if (draft.certifications?.length) {
-            setCertifications(draft.certifications.map((entry) => ({ ...entry, id: newId() })));
-          }
-          if (draft.languages?.length) {
-            setLanguages(draft.languages.map((entry) => ({ ...entry, id: newId() })));
-          }
-          if (draft.references?.length) {
-            setReferences(draft.references.map((entry) => ({ ...entry, id: newId() })));
-          }
-          if (draft.resumeFileName) {
-            setRestoredResume({
-              name: draft.resumeFileName,
-              size: draft.resumeFileSize ?? 0,
-              tokens: draft.resumeParseTokens ?? null,
-              durationMs: draft.resumeParseDurationMs ?? null,
-            });
-          }
-        }
-        if (!cancelled) {
-          try {
-            const meRes = await fetch("/api/auth/me");
-            const me = await meRes.json();
-            if (!cancelled && meRes.ok) {
-              if (!draft?.avatarUrl && me.user?.avatarUrl) {
-                setAvatarUrl(me.user.avatarUrl);
-                setAvatarIsAccountDefault(true);
-              }
-              // Email is always the account's sign-in email — shown read-only,
-              // never a separately editable field here.
-              if (me.user?.email) setAccountEmail(me.user.email);
-            }
-          } catch {
-            // No account info to prefill — leave those fields empty.
-          }
-        }
-      } catch {
-        // No draft, or the fetch failed — just start from a blank form.
-      } finally {
-        if (!cancelled) setDraftLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mode]);
-
-  // Debounced autosave — waits for a pause in typing rather than saving on
-  // every keystroke. Gated on draftLoaded so the initial fetch above isn't
-  // immediately overwritten by the empty pre-load form state. Skipped in
-  // edit mode — there's no draft to autosave to once a profile exists.
-  useEffect(() => {
-    if (mode === "edit" || !draftLoaded) return;
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     draftSaveTimeout.current = setTimeout(() => {
       const payload: DraftData = {
@@ -1111,7 +1064,6 @@ export default function OnboardingForm({
     };
   }, [
     mode,
-    draftLoaded,
     avatarUrl,
     avatarIsAccountDefault,
     fullName,
@@ -1739,7 +1691,7 @@ export default function OnboardingForm({
   // (selected before the user had an account) so it's actually parsed here
   // instead of silently disappearing after signup.
   useEffect(() => {
-    if (!draftLoaded || resumeFile || restoredResume) return;
+    if (resumeFile || restoredResume) return;
     let raw: string | null = null;
     try {
       raw = sessionStorage.getItem(PENDING_RESUME_KEY);
@@ -1762,7 +1714,7 @@ export default function OnboardingForm({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftLoaded]);
+  }, []);
 
   function clearResume() {
     resumeParseId.current++;
@@ -2021,29 +1973,17 @@ export default function OnboardingForm({
     submitProfile();
   }
 
-  if (!draftLoaded) {
-    return (
-      <div className={`mx-auto flex w-full flex-col gap-[20px] lg:flex-row lg:items-start ${mode === "edit" ? "" : "max-w-[1100px]"}`}>
-        <div className={`${gradientFrameClass("gold")} lg:sticky lg:top-[22px] lg:flex-[1]`}>
-          <div className="h-[280px] animate-pulse rounded-[19px] bg-white" />
-        </div>
-        <div className="flex min-w-0 flex-col gap-[20px] lg:flex-[2]">
-          <div className={gradientFrameClass("gold")}>
-            <div className="h-[520px] animate-pulse rounded-[19px] bg-white" />
-          </div>
-          <div className={gradientFrameClass("gold")}>
-            <div className="h-[420px] animate-pulse rounded-[19px] bg-white" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
+    <div
+      className={`mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] ${
+        // Onboarding's three columns (no dashboard sidebar) wait for xl —
+        // at lg the resume and checklist columns are too narrow.
+        mode === "edit" ? "lg:flex-row lg:items-start" : "xl:flex-row xl:items-start"
+      }`}
+    >
       {mode !== "edit" && (
-      <div className={`${gradientFrameClass("gold")} lg:sticky lg:top-[22px] lg:flex-[1]`}>
-        <div id="resumeUploadCard" className="rounded-[19px] bg-white p-[22px] text-left">
+      <div className={`min-w-0 ${gradientFrameClass("gold")} xl:sticky xl:top-[22px] xl:flex-[1]`}>
+        <div id="resumeUploadCard" className="min-w-0 rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h2 className="text-lg font-semibold text-[#141B2E]">Upload your resume</h2>
           <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
             Optional — we&apos;ll autofill the form on the right from it.
@@ -2192,9 +2132,9 @@ export default function OnboardingForm({
       </div>
       )}
 
-      <div className={`flex min-w-0 flex-col gap-[20px] ${mode === "edit" ? "lg:flex-1" : "lg:flex-[2]"}`}>
-      <div className={gradientFrameClass("gold")}>
-        <div className="rounded-[19px] bg-white p-[22px] text-left">
+      <div className={`flex min-w-0 flex-col gap-[20px] ${mode === "edit" ? "lg:flex-1" : "xl:flex-[2]"}`}>
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${gradientFrameClass("gold")}`}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Set up your profile</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
             Tell us a bit about yourself so we can match you with the right roles.
@@ -2452,7 +2392,7 @@ export default function OnboardingForm({
             )}
           </Field>
           <div className={`col-span-full ${gradientFrameClass("gold")}`}>
-            <div className="flex flex-col gap-[12px] rounded-[19px] bg-white p-[22px]">
+            <div className="flex flex-col gap-[12px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <div className="flex items-center justify-between">
               <p className="text-lg font-semibold text-[#141B2E]">Skills</p>
               <button
@@ -2621,7 +2561,7 @@ export default function OnboardingForm({
       </div>
 
       <div className={gradientFrameClass("gold")}>
-        <div className="rounded-[19px] bg-white p-[22px] text-left">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Work preferences</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
             Salary, availability, and how you like to work.
@@ -2707,7 +2647,7 @@ export default function OnboardingForm({
       </div>
 
       <div className={gradientFrameClass("gold")}>
-        <div className="rounded-[19px] bg-white p-[22px] text-left">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Experience & background</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
             Add your work history, education, and languages.
@@ -3031,12 +2971,12 @@ export default function OnboardingForm({
       </div>
 
       <div
-        className={`flex flex-col gap-[16px] lg:sticky ${
+        className={`flex flex-col gap-[16px] ${
           // In edit mode this page sits inside JobseekerDashboardShell, which
           // has its own sticky navbar (~85px tall) pinned above — top-[22px]
           // would tuck this column underneath it. Onboarding has no such
           // navbar, so it can sit right under the page's own top padding.
-          mode === "edit" ? "lg:top-[85px] lg:w-[300px] lg:shrink-0" : "lg:top-[22px] lg:flex-[1]"
+          mode === "edit" ? "lg:sticky lg:top-[85px] lg:w-[300px] lg:shrink-0" : "xl:sticky xl:top-[22px] xl:flex-[1]"
         }`}
       >
         <div
@@ -3046,7 +2986,7 @@ export default function OnboardingForm({
               : "rounded-[20px] bg-gradient-to-br from-[#A66A61] via-white to-[#A66A61] p-px shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-24px_rgba(20,27,46,0.2)]"
           }
         >
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
               {formValid ? "All required fields are complete." : "Complete these required fields to continue:"}
             </p>
@@ -3077,7 +3017,7 @@ export default function OnboardingForm({
         </div>
 
           <div className={gradientFrameClass("gold")}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
               {boostChecklistRemaining > 0
                 ? "Not compulsory, but these help you match better and stand out from the crowd:"

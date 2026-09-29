@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import Dropdown from "./Dropdown";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
@@ -608,6 +608,15 @@ export default function JobPostingHighlights({
   // posting drops out of the filtered results, this falls straight back to
   // the first remaining result on the very next render.
   const [selectedId, setSelectedId] = useState(allPostings[0]?.id);
+  const detailRef = useRef<HTMLDivElement>(null);
+  // Below lg the detail panel stacks under the list, so picking a posting
+  // needs to bring it into view or the tap looks like it did nothing.
+  function selectPosting(id: string) {
+    setSelectedId(id);
+    if (!window.matchMedia("(min-width: 1024px)").matches) {
+      requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
   const selectedPosting = filteredPostings.find((p) => p.id === selectedId) ?? filteredPostings[0];
   const screeningPosting = screeningPostingId ? allPostings.find((p) => p.id === screeningPostingId) : undefined;
 
@@ -680,11 +689,11 @@ export default function JobPostingHighlights({
         </div>
       )}
 
-      <div className="sticky top-0 z-30 mx-auto mt-[64px] flex w-full flex-col gap-[14px] bg-[#FDFAF0] py-[14px]">
+      <div className="z-30 mx-auto mt-[64px] flex w-full flex-col gap-[14px] bg-[#FDFAF0] py-[14px] lg:sticky lg:top-0">
         <div
           role="group"
           aria-label="Filter jobs by location and type"
-          className="mx-auto flex flex-wrap items-center justify-center gap-[4px] rounded-full border border-black/[0.1] p-[3px]"
+          className="scrollbar-hide mx-auto flex w-fit max-w-full items-center gap-[4px] overflow-x-auto rounded-full border border-black/[0.1] p-[3px]"
         >
           {locations.map((location) => (
             <button
@@ -693,7 +702,7 @@ export default function JobPostingHighlights({
               role="radio"
               aria-checked={locationFilter === location}
               onClick={() => setLocationFilter(location)}
-              className={`flex h-[30px] items-center justify-center rounded-full px-[14px] text-sm transition-colors ${
+              className={`flex h-[30px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-[14px] text-sm transition-colors ${
                 locationFilter === location
                   ? "bg-[#FFE9A6] text-[#141B2E]"
                   : "text-[#4B5468] hover:bg-black/[0.03]"
@@ -703,7 +712,7 @@ export default function JobPostingHighlights({
             </button>
           ))}
 
-          <span className="mx-[4px] h-[20px] w-px bg-black/[0.1]" />
+          <span className="mx-[4px] h-[20px] w-px shrink-0 bg-black/[0.1]" />
 
           {jobTypes.map((type) => (
             <button
@@ -712,7 +721,7 @@ export default function JobPostingHighlights({
               role="radio"
               aria-checked={typeFilter === type}
               onClick={() => setTypeFilter(type)}
-              className={`flex h-[30px] items-center justify-center rounded-full px-[14px] text-sm transition-colors ${
+              className={`flex h-[30px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-[14px] text-sm transition-colors ${
                 typeFilter === type
                   ? "bg-brand-gold-dark text-white"
                   : "text-[#4B5468] hover:bg-black/[0.03]"
@@ -727,7 +736,7 @@ export default function JobPostingHighlights({
           id="job-search"
           className="scroll-mt-[90px] flex flex-col rounded-[29px] border border-black/[0.1] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:h-[58px] sm:flex-row sm:items-center"
         >
-          <div className="flex h-[58px] flex-1 items-center gap-[10px] px-[18px]">
+          <div className="flex h-[58px] shrink-0 items-center gap-[10px] px-[18px] sm:flex-1">
             <SearchIcon className="h-[16px] w-[16px] shrink-0 text-[#9AA3B2]" />
             <input
               type="text"
@@ -741,7 +750,7 @@ export default function JobPostingHighlights({
           <span className="mx-[6px] hidden h-[26px] w-px shrink-0 bg-black/[0.1] sm:block" />
           <span className="mx-[18px] block h-px shrink-0 bg-black/[0.1] sm:hidden" />
 
-          <div className="flex h-[58px] flex-1 items-center gap-[10px] px-[18px]">
+          <div className="flex h-[58px] shrink-0 items-center gap-[10px] px-[18px] sm:flex-1">
             <SearchIcon className="h-[16px] w-[16px] shrink-0 text-[#9AA3B2]" />
             <input
               type="text"
@@ -786,13 +795,13 @@ export default function JobPostingHighlights({
                 key={posting.id}
                 posting={posting}
                 selected={selectedPosting.id === posting.id}
-                onClick={() => setSelectedId(posting.id)}
+                onClick={() => selectPosting(posting.id)}
               />
             ))}
           </div>
 
-          <div className={`sticky top-[150px] ${gradientFrameClass("gold")}`}>
-            <div className="rounded-[19px] bg-white p-[24px]">
+          <div ref={detailRef} className={`scroll-mt-[16px] lg:sticky lg:top-[150px] ${gradientFrameClass("gold")}`}>
+            <div className="rounded-[19px] bg-white p-[16px] sm:p-[24px]">
               <div className="flex items-start justify-between gap-[16px]">
                 <div>
                   <p className="text-lg text-[#141B2E]">{selectedPosting.title}</p>

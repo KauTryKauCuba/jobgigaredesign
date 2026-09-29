@@ -130,7 +130,7 @@ export default function HiringStats({
 
   return (
     <div className={`mx-auto mt-[24px] w-full max-w-[440px] ${gradientFrameClass("teal")}`}>
-      <div className="rounded-[19px] bg-white p-[22px] text-left">
+      <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
         <p className="text-sm text-[#141B2E]">{PAGE_COPY[page].title}</p>
         <p className="mt-[2px] text-xs leading-[19px] text-[#4B5468]">{PAGE_COPY[page].subtitle}</p>
 

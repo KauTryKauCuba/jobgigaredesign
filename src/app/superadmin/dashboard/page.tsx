@@ -44,7 +44,7 @@ export default async function SuperadminDashboardPage() {
       subheading="Platform-wide overview — job posting review queue and account counts."
     >
       <div className="rounded-[20px] bg-gradient-to-br from-brand-teal via-white to-brand-teal p-px shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-24px_rgba(20,27,46,0.2)]">
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Platform at a glance</p>
           <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-3">
             {tiles.map((tile) => (

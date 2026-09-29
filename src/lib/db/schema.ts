@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, doublePrecision, index } from "drizzle-orm/pg-core";
+import type { AssistantAction } from "../assistant-types";
 
 export const roleEnum = pgEnum("role", ["employer", "jobseeker"]);
 
@@ -418,6 +419,7 @@ export const aiUsageFeatureEnum = pgEnum("ai_usage_feature", [
   "match_scoring",
   "cover_letter",
   "poster_generation",
+  "assistant_chat",
 ]);
 
 // job_postings — finalized 7-state pipeline (see the design memory this was
@@ -944,3 +946,40 @@ export const coverLetters = pgTable("cover_letters", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// JobGiga Assistant chat history — one row per conversation, scoped to the
+// role (and, for employers, the company) it was held under, since the
+// assistant's answers depend on that context. Signed-out visitors' chats
+// are never stored.
+export const assistantConversations = pgTable(
+  "assistant_conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: roleEnum("role").notNull(),
+    employerProfileId: uuid("employer_profile_id").references(() => employerProfiles.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("assistant_conversations_user_updated_idx").on(table.userId, table.updatedAt)],
+);
+
+export const assistantMessageRoleEnum = pgEnum("assistant_message_role", ["user", "assistant"]);
+
+export const assistantMessages = pgTable(
+  "assistant_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => assistantConversations.id, { onDelete: "cascade" }),
+    role: assistantMessageRoleEnum("role").notNull(),
+    content: text("content").notNull(),
+    action: jsonb("action").$type<AssistantAction | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("assistant_messages_conversation_created_idx").on(table.conversationId, table.createdAt)],
+);

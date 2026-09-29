@@ -199,31 +199,37 @@ function ApplicantRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px] text-left transition-colors hover:bg-[#F1F4F8]"
+      className="@container rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px] text-left transition-colors hover:bg-[#F1F4F8]"
     >
-      <ApplicantAvatar url={applicant.applicantAvatarUrl} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-[#141B2E]">{applicant.applicantName}</p>
-        <p className="mt-[1px] truncate text-xs text-[#4B5468]">
-          {applicant.applicantTargetRole} · Applied {relativeTimeAgo(applicant.application.appliedAt)}
-        </p>
+      <div className="flex items-start gap-[10px] @[30rem]:items-center">
+        <ApplicantAvatar url={applicant.applicantAvatarUrl} />
+        <div className="flex min-w-0 flex-1 flex-col gap-[6px] @[30rem]:flex-row @[30rem]:items-center @[30rem]:gap-[10px]">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-[#141B2E]">{applicant.applicantName}</p>
+            <p className="mt-[1px] truncate text-xs text-[#4B5468]">
+              {applicant.applicantTargetRole} · Applied {relativeTimeAgo(applicant.application.appliedAt)}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-[6px] @[30rem]:shrink-0 @[30rem]:justify-end">
+            {band && match && (
+              <span className={`rounded-full px-[10px] py-[3px] text-xs ${band.bg} ${band.text}`}>
+                {match.score}% job match
+              </span>
+            )}
+            {match && !match.eligible && (
+              <span
+                className="rounded-full bg-[#FDEDE8] px-[10px] py-[3px] text-xs text-[#C2410C]"
+                title={match.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
+              >
+                Failed screening
+              </span>
+            )}
+            <span className={`rounded-full px-[10px] py-[3px] text-xs ${color.bg} ${color.text}`}>
+              {APPLICATION_STATUS_LABEL[applicant.application.status] ?? applicant.application.status}
+            </span>
+          </div>
+        </div>
       </div>
-      {band && match && (
-        <span className={`shrink-0 rounded-full px-[10px] py-[3px] text-xs ${band.bg} ${band.text}`}>
-          {match.score}% job match
-        </span>
-      )}
-      {match && !match.eligible && (
-        <span
-          className="shrink-0 rounded-full bg-[#FDEDE8] px-[10px] py-[3px] text-xs text-[#C2410C]"
-          title={match.ineligibleReasons.join("; ") || "Doesn't meet this posting's requirements"}
-        >
-          Failed screening
-        </span>
-      )}
-      <span className={`shrink-0 rounded-full px-[10px] py-[3px] text-xs ${color.bg} ${color.text}`}>
-        {APPLICATION_STATUS_LABEL[applicant.application.status] ?? applicant.application.status}
-      </span>
     </button>
   );
 }
@@ -372,7 +378,7 @@ function PostingAnalytics({
 
   return (
     <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-      <div className="rounded-[19px] bg-white p-[22px]">
+      <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
         <p className="text-sm text-[#141B2E]">Analytics</p>
 
         {/* Funnel */}
@@ -786,7 +792,7 @@ export default function EmployerJobPostingView({
       <div className="mt-[16px] flex flex-col gap-[16px] lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-col gap-[16px] lg:flex-[3]">
           <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-            <div className="rounded-[19px] bg-white p-[22px]">
+            <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
               <p className="text-sm text-[#141B2E]">Job posting</p>
 
               <div className="mt-[12px] flex flex-wrap items-center gap-[8px] text-xs">
@@ -903,7 +909,7 @@ export default function EmployerJobPostingView({
           </div>
 
           <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-            <div className="rounded-[19px] bg-white p-[22px]">
+            <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
               <div className="flex items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">Applicants</p>
                 <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">
@@ -941,7 +947,7 @@ export default function EmployerJobPostingView({
           <PostingAnalytics postingCreatedAt={posting.createdAt} rows={rows} matchByApplicationId={matchByApplicationId} />
 
           <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-            <div className="rounded-[19px] bg-white p-[22px]">
+            <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
               <div className="flex items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">Interviews</p>
                 <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">

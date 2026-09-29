@@ -168,6 +168,9 @@ export default function EmployerOnboardingForm({
   mode = "onboarding",
   initialProfile,
   initialAddresses,
+  initialAvatarUrl,
+  initialContactEmail,
+  initialDraft,
   only,
   sidebarSlot,
   earnedBadges,
@@ -175,6 +178,9 @@ export default function EmployerOnboardingForm({
   mode?: "onboarding" | "edit";
   initialProfile?: EmployerProfile;
   initialAddresses?: EmployerAddress[];
+  initialAvatarUrl?: string | null;
+  initialContactEmail?: string;
+  initialDraft?: Partial<DraftData> | null;
   only?: "contact" | "company";
   // Rendered next to "About you", splitting its flex-[3] evenly into
   // flex-[1.5]/flex-[1.5] — lets the My Profile page's AiUsageCard sit
@@ -232,10 +238,12 @@ export default function EmployerOnboardingForm({
   useRegisterUnsavedChangesGuard(guardNavigation);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialProfile?.avatarUrl ?? null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    initialProfile?.avatarUrl ?? initialDraft?.avatarUrl ?? initialAvatarUrl ?? null,
+  );
   const [avatarError, setAvatarError] = useState<string | null>(null);
 
-  const [contactName, setContactName] = useState(initialProfile?.contactName ?? "");
+  const [contactName, setContactName] = useState(initialProfile?.contactName ?? initialDraft?.contactName ?? "");
   const draftContext = useDraftName();
   const setDraftName = draftContext?.setDraftName;
   useEffect(() => {
@@ -246,24 +254,34 @@ export default function EmployerOnboardingForm({
     setDraftAvatarUrl?.(avatarUrl);
   }, [avatarUrl, setDraftAvatarUrl]);
   const [contactRole, setContactRole] = useState<(typeof CONTACT_ROLES)[number] | "">(
-    (initialProfile?.contactRole as (typeof CONTACT_ROLES)[number] | undefined) ?? "",
+    (initialProfile?.contactRole as (typeof CONTACT_ROLES)[number] | undefined) ??
+      initialDraft?.contactRole ??
+      "",
   );
-  const [contactPhone, setContactPhone] = useState(initialProfile?.contactPhone ?? "");
-  const [contactEmail, setContactEmail] = useState(initialProfile?.contactEmail ?? "");
-  const [companyName, setCompanyName] = useState(initialProfile?.companyName ?? "");
-  const [ssmNumber, setSsmNumber] = useState(initialProfile?.ssmNumber ?? "");
-  const [industry, setIndustry] = useState(initialProfile?.industry ?? "");
+  const [contactPhone, setContactPhone] = useState(initialProfile?.contactPhone ?? initialDraft?.contactPhone ?? "");
+  const [contactEmail, setContactEmail] = useState(
+    initialProfile?.contactEmail ?? initialDraft?.contactEmail ?? initialContactEmail ?? "",
+  );
+  const [companyName, setCompanyName] = useState(initialProfile?.companyName ?? initialDraft?.companyName ?? "");
+  const [ssmNumber, setSsmNumber] = useState(initialProfile?.ssmNumber ?? initialDraft?.ssmNumber ?? "");
+  const [industry, setIndustry] = useState(initialProfile?.industry ?? initialDraft?.industry ?? "");
   // Standardized alongside the free-text `industry` above (kept as-is) so it
   // can be compared 1:1 against jobseekerProfiles.preferredIndustry and
   // jobPostings.industry, which already use this same INDUSTRIES list.
   const [industryCategory, setIndustryCategory] = useState<(typeof INDUSTRIES)[number] | "">(
-    INDUSTRIES.find((i) => i === initialProfile?.industryCategory) ?? "",
+    INDUSTRIES.find((i) => i === initialProfile?.industryCategory) ??
+      INDUSTRIES.find((i) => i === initialDraft?.industryCategory) ??
+      "",
   );
   const [companySize, setCompanySize] = useState<(typeof COMPANY_SIZES)[number]>(
-    (initialProfile?.companySize as (typeof COMPANY_SIZES)[number] | undefined) ?? "1-10",
+    (initialProfile?.companySize as (typeof COMPANY_SIZES)[number] | undefined) ??
+      initialDraft?.companySize ??
+      "1-10",
   );
   const [addresses, setAddresses] = useState<AddressEntry[]>(
-    initialAddresses?.length ? initialAddresses.map(addressFromSaved) : [blankAddress("Headquarters")],
+    initialAddresses?.length
+      ? initialAddresses.map(addressFromSaved)
+      : (initialDraft?.addresses?.length ? initialDraft.addresses : [blankAddress("Headquarters")]),
   );
 
   function addAddress() {
@@ -275,30 +293,44 @@ export default function EmployerOnboardingForm({
   function updateAddress(key: string, patch: Partial<Omit<AddressEntry, "key">>) {
     setAddresses((prev) => prev.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   }
-  const [companyDescription, setCompanyDescription] = useState(initialProfile?.companyDescription ?? "");
-  const [websiteUrl, setWebsiteUrl] = useState(initialProfile?.websiteUrl ?? "");
-  const [companyEmail, setCompanyEmail] = useState(initialProfile?.companyEmail ?? "");
-  const [companyPhone, setCompanyPhone] = useState(initialProfile?.companyPhone ?? "");
-  const [companyLinkedin, setCompanyLinkedin] = useState(initialProfile?.companyLinkedin ?? "");
-  const [companyFacebook, setCompanyFacebook] = useState(initialProfile?.companyFacebook ?? "");
-  const [companyInstagram, setCompanyInstagram] = useState(initialProfile?.companyInstagram ?? "");
+  const [companyDescription, setCompanyDescription] = useState(
+    initialProfile?.companyDescription ?? initialDraft?.companyDescription ?? "",
+  );
+  const [websiteUrl, setWebsiteUrl] = useState(initialProfile?.websiteUrl ?? initialDraft?.websiteUrl ?? "");
+  const [companyEmail, setCompanyEmail] = useState(initialProfile?.companyEmail ?? initialDraft?.companyEmail ?? "");
+  const [companyPhone, setCompanyPhone] = useState(initialProfile?.companyPhone ?? initialDraft?.companyPhone ?? "");
+  const [companyLinkedin, setCompanyLinkedin] = useState(
+    initialProfile?.companyLinkedin ?? initialDraft?.companyLinkedin ?? "",
+  );
+  const [companyFacebook, setCompanyFacebook] = useState(
+    initialProfile?.companyFacebook ?? initialDraft?.companyFacebook ?? "",
+  );
+  const [companyInstagram, setCompanyInstagram] = useState(
+    initialProfile?.companyInstagram ?? initialDraft?.companyInstagram ?? "",
+  );
   const [foundedYear, setFoundedYear] = useState(
-    initialProfile?.foundedYear != null ? String(initialProfile.foundedYear) : "",
+    initialProfile?.foundedYear != null ? String(initialProfile.foundedYear) : (initialDraft?.foundedYear ?? ""),
   );
   const [companyType, setCompanyType] = useState<(typeof COMPANY_TYPES)[number] | "">(
-    (initialProfile?.companyType as (typeof COMPANY_TYPES)[number] | null | undefined) ?? "",
+    (initialProfile?.companyType as (typeof COMPANY_TYPES)[number] | null | undefined) ??
+      initialDraft?.companyType ??
+      "",
   );
 
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(initialProfile?.logoUrl ?? null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(initialProfile?.logoUrl ?? initialDraft?.logoUrl ?? null);
   const [logoError, setLogoError] = useState<string | null>(null);
 
-  const [officePhotoUrl, setOfficePhotoUrl] = useState<string | null>(initialProfile?.officePhotoUrl ?? null);
+  const [officePhotoUrl, setOfficePhotoUrl] = useState<string | null>(
+    initialProfile?.officePhotoUrl ?? initialDraft?.officePhotoUrl ?? null,
+  );
   const [recentNews, setRecentNews] = useState<{ title: string; url: string }[]>(
-    initialProfile?.recentNews ?? [],
+    initialProfile?.recentNews ?? initialDraft?.recentNews ?? [],
   );
 
-  const [benefits, setBenefits] = useState<string[]>(initialProfile?.benefits ?? ["EPF", "SOCSO", "EIS"]);
+  const [benefits, setBenefits] = useState<string[]>(
+    initialProfile?.benefits ?? initialDraft?.benefits ?? ["EPF", "SOCSO", "EIS"],
+  );
   const [benefitInput, setBenefitInput] = useState("");
 
   // Editing an existing profile prefills every field from initialProfile
@@ -323,7 +355,6 @@ export default function EmployerOnboardingForm({
   const [aiLookupTokens, setAiLookupTokens] = useState<number | null>(null);
   const [aiLookupDurationMs, setAiLookupDurationMs] = useState<number | null>(null);
 
-  const [draftLoaded, setDraftLoaded] = useState(mode === "edit");
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiLookupRequestId = useRef(0);
   // Name this form last ran a lookup for — seeded with whatever company name
@@ -339,7 +370,9 @@ export default function EmployerOnboardingForm({
   // so the same first-click case is handled there too. Only a genuine name
   // change *relative to this baseline* clears the AI-fillable fields — see
   // handleAiLookup.
-  const lastLookedUpCompanyName = useRef<string | null>(initialProfile?.companyName?.trim() || null);
+  const lastLookedUpCompanyName = useRef<string | null>(
+    initialProfile?.companyName?.trim() || initialDraft?.companyName?.trim() || null,
+  );
   // Locked (read-only, with an "Edit" button) whenever the name field
   // already holds a confirmed value — an existing edit-mode profile, a
   // resumed draft, or the result of a completed "Fill with AI" — so a stray
@@ -349,7 +382,9 @@ export default function EmployerOnboardingForm({
   // fully supported: click Edit, retype, then Save/Finish directly — the
   // other fields are untouched either way, since this only gates the input
   // itself, not what gets submitted.
-  const [companyNameLocked, setCompanyNameLocked] = useState(Boolean(initialProfile?.companyName?.trim()));
+  const [companyNameLocked, setCompanyNameLocked] = useState(
+    Boolean(initialProfile?.companyName?.trim()) || Boolean(initialDraft?.hasConfirmedCompanyName),
+  );
   // Separate from `companyNameLocked` itself: the "Edit" button stays
   // visible in both the locked AND unlocked states once something has been
   // confirmed (so it's always there to toggle back), but on a genuinely
@@ -357,7 +392,7 @@ export default function EmployerOnboardingForm({
   // is no confirmed value for it to edit, so it shouldn't show at all. Reset
   // clears this back to false along with everything else.
   const [hasConfirmedCompanyName, setHasConfirmedCompanyName] = useState(
-    Boolean(initialProfile?.companyName?.trim()),
+    Boolean(initialProfile?.companyName?.trim()) || Boolean(initialDraft?.hasConfirmedCompanyName),
   );
   const companyNameInputRef = useRef<HTMLInputElement | null>(null);
   // Captured the moment "Edit" unlocks the field — what to snap back to if
@@ -365,95 +400,11 @@ export default function EmployerOnboardingForm({
   // field isn't mid-edit.
   const preEditCompanyNameRef = useRef<string | null>(null);
 
-  // Loaded once on mount so a refresh — or logging back in on any device —
-  // picks up where the user left off. Saved server-side (not localStorage)
-  // since a draft tied only to the browser wouldn't survive logging in
-  // elsewhere and could leak between different users on a shared browser.
-  // Skipped entirely in edit mode — there's no draft to resume, the profile
-  // already exists and its values were used to seed state above.
+  // Debounced autosave — waits for a pause in typing rather than saving on
+  // every keystroke. Skipped in edit mode — there's no draft to autosave to
+  // once a profile exists.
   useEffect(() => {
     if (mode === "edit") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/employer/onboarding-draft");
-        const data = await res.json();
-        const draft = (res.ok ? data.draft : null) as Partial<DraftData> | null;
-        if (draft && !cancelled) {
-          if (draft.avatarUrl) setAvatarUrl(draft.avatarUrl);
-          if (draft.contactName) setContactName(draft.contactName);
-          if (draft.contactRole) setContactRole(draft.contactRole);
-          if (draft.contactPhone) setContactPhone(draft.contactPhone);
-          if (draft.contactEmail) setContactEmail(draft.contactEmail);
-          if (draft.companyName) {
-            setCompanyName(draft.companyName);
-            // Same reasoning as the initialProfile seed above — the first
-            // "Fill with AI" click after resuming this draft must compare
-            // against the name it already had, not against `null`.
-            lastLookedUpCompanyName.current = draft.companyName;
-          }
-          if (draft.ssmNumber) setSsmNumber(draft.ssmNumber);
-          if (draft.industry) setIndustry(draft.industry);
-          if (draft.industryCategory) {
-            const matched = INDUSTRIES.find((i) => i === draft.industryCategory);
-            if (matched) setIndustryCategory(matched);
-          }
-          if (draft.companySize) setCompanySize(draft.companySize);
-          if (draft.addresses?.length) setAddresses(draft.addresses);
-          if (draft.companyDescription) setCompanyDescription(draft.companyDescription);
-          if (draft.websiteUrl) setWebsiteUrl(draft.websiteUrl);
-          if (draft.companyEmail) setCompanyEmail(draft.companyEmail);
-          if (draft.companyPhone) setCompanyPhone(draft.companyPhone);
-          if (draft.companyLinkedin) setCompanyLinkedin(draft.companyLinkedin);
-          if (draft.companyFacebook) setCompanyFacebook(draft.companyFacebook);
-          if (draft.companyInstagram) setCompanyInstagram(draft.companyInstagram);
-          if (draft.foundedYear) setFoundedYear(draft.foundedYear);
-          if (draft.companyType) setCompanyType(draft.companyType);
-          if (draft.logoUrl) setLogoUrl(draft.logoUrl);
-          if (draft.officePhotoUrl) setOfficePhotoUrl(draft.officePhotoUrl);
-          if (draft.recentNews?.length) setRecentNews(draft.recentNews);
-          if (draft.benefits?.length) setBenefits(draft.benefits);
-          // Restores the exact same locked/"Edit"-visible state a completed
-          // "Fill with AI" leaves behind, rather than always resuming
-          // unlocked with no "Edit" button regardless of whether AI had
-          // already run before the user left.
-          if (draft.hasConfirmedCompanyName) {
-            setHasConfirmedCompanyName(true);
-            setCompanyNameLocked(true);
-          }
-        }
-        if (!cancelled && (!draft?.avatarUrl || !draft?.contactEmail)) {
-          try {
-            const meRes = await fetch("/api/auth/me");
-            const me = await meRes.json();
-            if (!cancelled && meRes.ok) {
-              if (!draft?.avatarUrl && me.user?.avatarUrl) setAvatarUrl(me.user.avatarUrl);
-              // Always the account's login email — the field is read-only
-              // (same as the jobseeker side's account email), so this is the
-              // only place it's ever set.
-              if (!draft?.contactEmail && me.user?.email) setContactEmail(me.user.email);
-            }
-          } catch {
-            // No account info to prefill — leave those fields empty.
-          }
-        }
-      } catch {
-        // No draft, or the fetch failed — just start from a blank form.
-      } finally {
-        if (!cancelled) setDraftLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mode]);
-
-  // Debounced autosave — waits for a pause in typing rather than saving on
-  // every keystroke. Gated on draftLoaded so the initial fetch above isn't
-  // immediately overwritten by the empty pre-load form state. Skipped in
-  // edit mode — there's no draft to autosave to once a profile exists.
-  useEffect(() => {
-    if (mode === "edit" || !draftLoaded) return;
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     draftSaveTimeout.current = setTimeout(() => {
       const payload: DraftData = {
@@ -494,7 +445,6 @@ export default function EmployerOnboardingForm({
     };
   }, [
     mode,
-    draftLoaded,
     avatarUrl,
     contactName,
     contactRole,
@@ -1049,27 +999,13 @@ export default function EmployerOnboardingForm({
     }
   }
 
-  if (!draftLoaded) {
-    return (
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-[20px] lg:flex-row lg:items-start">
-        <div className={`${cardClass} lg:flex-[1]`}>
-          <div className="h-[280px] animate-pulse rounded-[19px] bg-white" />
-        </div>
-        <div className="flex min-w-0 flex-col gap-[20px] lg:flex-[2]">
-          <div className={cardClass}>
-            <div className="h-[420px] animate-pulse rounded-[19px] bg-white" />
-          </div>
-          <div className={cardClass}>
-            <div className="h-[280px] animate-pulse rounded-[19px] bg-white" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
-      className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start"
+      className={`mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] ${
+        // Onboarding is three columns with no dashboard sidebar; at lg the
+        // outer two get too narrow for their fields, so it waits for xl.
+        mode === "edit" ? "lg:flex-row lg:items-start" : "xl:flex-row xl:items-start"
+      }`}
     >
       {showContact && (
       // sidebarSlot wraps together with the card into one flex-[3] item
@@ -1090,16 +1026,20 @@ export default function EmployerOnboardingForm({
       // within its own containing block — it never visibly sticks, even
       // though the class is applied.
       <div
-        className={`flex min-w-0 flex-col gap-[20px] lg:flex-row lg:items-start ${
-          sidebarSlot ? (bothShown ? "lg:flex-[1]" : "lg:flex-[3]") : "lg:contents"
+        className={`flex min-w-0 flex-col gap-[20px] ${
+          sidebarSlot
+            ? `lg:flex-row lg:items-start ${bothShown ? "lg:flex-[1]" : "lg:flex-1"}`
+            : mode === "edit"
+              ? "lg:contents"
+              : "xl:contents"
         }`}
       >
       <div
-        className={`animate-fade-in-up ${cardClass} min-w-0 lg:sticky ${mode === "edit" ? "lg:top-[85px]" : "lg:top-[22px]"} ${
-          sidebarSlot ? "lg:flex-1" : bothShown ? "lg:flex-[1]" : "lg:flex-[3]"
+        className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass} min-w-0 ${
+          mode === "edit" ? "lg:sticky lg:top-[85px] lg:flex-1" : "xl:sticky xl:top-[22px] xl:flex-[1]"
         }`}
       >
-        <div className="rounded-[19px] bg-white p-[22px] text-left">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">About you</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
             Tell us who&rsquo;s registering this company.
@@ -1227,23 +1167,25 @@ export default function EmployerOnboardingForm({
       )}
 
       {showCompany && (
-      <div className={`flex min-w-0 flex-col gap-[20px] ${bothShown ? "lg:flex-[2]" : "lg:flex-[3]"}`}>
+      <div className={`flex min-w-0 flex-col gap-[20px] ${mode === "edit" ? "lg:flex-1" : "xl:flex-[2]"}`}>
       {earnedBadges && <CompanyBadgesCard earnedBadges={earnedBadges} />}
-      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "60ms" }}>
-        <div className="relative overflow-hidden rounded-[19px] bg-white p-[22px] text-left">
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "60ms" } : undefined}>
+        <div className="@container relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <InlineIllustration
             src="/illustrations/company-name-web-search.svg"
-            className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto sm:block"
+            className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto @[34rem]:block"
           />
 
-          <h1 className="relative text-xl font-semibold text-[#141B2E] sm:max-w-[calc(100%-220px)]">Company name</h1>
-          <p className="relative mt-[6px] text-sm leading-[20px] text-[#4B5468] sm:max-w-[calc(100%-220px)]">
+          <h1 className="relative text-xl font-semibold text-[#141B2E] @[34rem]:max-w-[calc(100%-220px)]">Company name</h1>
+          <p className="relative mt-[6px] text-sm leading-[20px] text-[#4B5468] @[34rem]:max-w-[calc(100%-220px)]">
             We&rsquo;ll use this to search public sources and help fill out the rest of your profile.
           </p>
 
-          <div className="relative mt-[16px] sm:max-w-[calc(100%-220px)]">
+          <div className="relative mt-[16px] @[34rem]:max-w-[calc(100%-220px)]">
             <Field required label="Company name" htmlFor="companyName">
-              <div className="flex gap-[8px]">
+              {/* Wraps below ~360px of card width so the input keeps a
+                  usable width instead of shrinking behind its buttons. */}
+              <div className="flex flex-wrap gap-[8px]">
                 <input
                   ref={companyNameInputRef}
                   id="companyName"
@@ -1291,7 +1233,7 @@ export default function EmployerOnboardingForm({
                   }}
                   disabled={companyNameLocked || aiLookupLoading}
                   placeholder="e.g. Maju Jaya Sdn Bhd"
-                  className={`${inputClass} min-w-0 flex-1 disabled:bg-[#F8FAFB] disabled:text-[#4B5468]`}
+                  className={`${inputClass} min-w-[180px] flex-1 disabled:bg-[#F8FAFB] disabled:text-[#4B5468]`}
                 />
                 {hasConfirmedCompanyName &&
                   (companyNameLocked ? (
@@ -1412,8 +1354,8 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "120ms" }}>
-        <div className="rounded-[19px] bg-white p-[22px] text-left">
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "120ms" } : undefined}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Company profile</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
             Your logo and a short description shown on your postings.
@@ -1641,8 +1583,8 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={`animate-fade-in-up ${cardClass}`} style={{ animationDelay: "180ms" }}>
-        <div className="rounded-[19px] bg-white p-[22px] text-left">
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "180ms" } : undefined}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">About your company</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
             Tell us a bit about your company so we can help you hire faster.
@@ -1826,7 +1768,7 @@ export default function EmployerOnboardingForm({
                     role="radio"
                     onClick={() => setCompanySize(size)}
                     aria-checked={companySize === size}
-                    className="flex h-[30px] items-center justify-center rounded-full text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
+                    className="flex h-[30px] items-center justify-center whitespace-nowrap rounded-full text-xs sm:text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
                   >
                     {size}
                   </button>
@@ -1911,7 +1853,9 @@ export default function EmployerOnboardingForm({
       )}
 
       <div
-        className={`flex flex-col gap-[16px] lg:sticky lg:flex-[1] ${mode === "edit" ? "lg:top-[85px]" : "lg:top-[22px]"}`}
+        className={`flex flex-col gap-[16px] ${
+          mode === "edit" ? "lg:sticky lg:top-[85px] lg:w-[300px] lg:shrink-0" : "xl:sticky xl:top-[22px] xl:flex-[1]"
+        }`}
       >
           <div
             className={
@@ -1920,7 +1864,7 @@ export default function EmployerOnboardingForm({
                 : "rounded-[20px] bg-gradient-to-br from-[#A66A61] via-white to-[#A66A61] p-px shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-24px_rgba(20,27,46,0.2)]"
             }
           >
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
               {requiredChecklistComplete ? "All required fields are complete." : "Complete these required fields to continue:"}
             </p>
@@ -1952,7 +1896,7 @@ export default function EmployerOnboardingForm({
 
           {showCompany && (
           <div className={cardClass}>
-          <div className="rounded-[19px] bg-white p-[22px]">
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
               {boostChecklistRemaining > 0
                 ? "Not compulsory, but these help your posting stand out to candidates:"

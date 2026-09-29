@@ -184,7 +184,7 @@ export default function EmployerTeamView({
   return (
     <div className="flex flex-col gap-[20px]">
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
+        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <div>
             <p className="text-sm text-[#141B2E]">Invite a teammate</p>
             <p className="mt-[2px] text-xs text-[#4B5468]">
@@ -192,7 +192,7 @@ export default function EmployerTeamView({
             </p>
           </div>
           <form onSubmit={handleInvite} className="flex flex-col gap-[10px] sm:flex-row sm:items-end">
-            <div className="flex-1">
+            <div className="sm:flex-1">
               <input
                 type="email"
                 value={inviteEmail}
@@ -226,7 +226,7 @@ export default function EmployerTeamView({
       </div>
 
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[22px]">
+        <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="text-sm text-[#141B2E]">
             {members.length} member{members.length === 1 ? "" : "s"}
           </p>
@@ -238,60 +238,64 @@ export default function EmployerTeamView({
               return (
                 <div
                   key={member.id}
-                  className="flex flex-wrap items-center gap-[12px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
+                  className="@container rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
                 >
-                  <MemberAvatar url={member.avatarUrl} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-[#141B2E]">
-                      {member.name || member.email}
-                      {isSelf && <span className="text-[#9AA3B2]"> (you)</span>}
-                    </p>
-                    <p className="truncate text-xs text-[#9AA3B2]">{member.email}</p>
-                  </div>
-
-                  {member.status === "pending" && (
-                    <div className="flex items-center gap-[6px]">
-                      <span className="rounded-full bg-[#F1F4F8] px-[9px] py-[3px] text-xs text-[#4B5468]">
-                        Pending
-                      </span>
-                      <button
-                        type="button"
-                        disabled={resendingId === member.id}
-                        onClick={() => handleResend(member.id)}
-                        className="text-xs text-brand-teal-dark underline hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {resendingId === member.id ? "Sending…" : resentIds.has(member.id) ? "Sent!" : "Resend"}
-                      </button>
+                  <div className="flex flex-wrap items-center gap-x-[12px] gap-y-[10px]">
+                    <MemberAvatar url={member.avatarUrl} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-[#141B2E]">
+                        {member.name || member.email}
+                        {isSelf && <span className="text-[#9AA3B2]"> (you)</span>}
+                      </p>
+                      <p className="truncate text-xs text-[#9AA3B2]">{member.email}</p>
                     </div>
-                  )}
 
-                  <div className="w-[130px]">
-                    <Dropdown
-                      id={`role-${member.id}`}
-                      label="Role"
-                      value={member.role}
-                      options={[
-                        { value: "admin", label: "Admin" },
-                        { value: "owner", label: "Owner" },
-                      ]}
-                      onChange={(v) => handleRoleChange(member.id, v as "owner" | "admin")}
-                    />
+                    <div className="order-last flex w-full flex-wrap items-center gap-[8px] @[34rem]:order-none @[34rem]:w-auto">
+                      {member.status === "pending" && (
+                        <div className="flex items-center gap-[6px]">
+                          <span className="rounded-full bg-[#F1F4F8] px-[9px] py-[3px] text-xs text-[#4B5468]">
+                            Pending
+                          </span>
+                          <button
+                            type="button"
+                            disabled={resendingId === member.id}
+                            onClick={() => handleResend(member.id)}
+                            className="text-xs text-brand-teal-dark underline hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {resendingId === member.id ? "Sending…" : resentIds.has(member.id) ? "Sent!" : "Resend"}
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="w-[130px]">
+                        <Dropdown
+                          id={`role-${member.id}`}
+                          label="Role"
+                          value={member.role}
+                          options={[
+                            { value: "admin", label: "Admin" },
+                            { value: "owner", label: "Owner" },
+                          ]}
+                          onChange={(v) => handleRoleChange(member.id, v as "owner" | "admin")}
+                        />
+                      </div>
+
+                      <span className={`rounded-full px-[9px] py-[3px] text-xs ${pill.bg} ${pill.text}`}>
+                        {ROLE_LABEL[member.role] ?? member.role}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={busyId === member.id || isLastOwner}
+                      onClick={() => handleRemove(member.id)}
+                      aria-label={`Remove ${member.name || member.email}`}
+                      title={isLastOwner ? "A company needs at least one owner." : undefined}
+                      className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05] hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <XIcon className="h-[12px] w-[12px]" />
+                    </button>
                   </div>
-
-                  <span className={`rounded-full px-[9px] py-[3px] text-xs ${pill.bg} ${pill.text}`}>
-                    {ROLE_LABEL[member.role] ?? member.role}
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={busyId === member.id || isLastOwner}
-                    onClick={() => handleRemove(member.id)}
-                    aria-label={`Remove ${member.name || member.email}`}
-                    title={isLastOwner ? "A company needs at least one owner." : undefined}
-                    className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05] hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <XIcon className="h-[12px] w-[12px]" />
-                  </button>
                 </div>
               );
             })}
@@ -301,7 +305,7 @@ export default function EmployerTeamView({
 
       {activity.length > 0 && (
         <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
-          <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[22px]">
+          <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-sm text-[#141B2E]">Activity</p>
             <div className="flex flex-col gap-[8px]">
               {activity.map((entry) => (

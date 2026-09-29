@@ -43,7 +43,7 @@ export default function SuperadminJobseekersView({
       subheading="Every jobseeker account registered on the platform."
     >
       <div className="rounded-[20px] bg-gradient-to-br from-brand-teal via-white to-brand-teal p-px shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-24px_rgba(20,27,46,0.2)]">
-        <div className="rounded-[19px] bg-white p-[22px]">
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <div className="flex items-center gap-[8px]">
             <p className="text-sm text-[#141B2E]">All jobseekers</p>
             <span className="rounded-full bg-[#F1ECFB] px-[10px] py-[3px] text-xs text-[#7C5CD1]">

@@ -83,9 +83,12 @@ export default function RichTextEditor({
         accent === "gold" ? "focus-within:border-brand-gold-dark" : "focus-within:border-brand-teal-dark"
       } ${disabled ? "bg-black/[0.03]" : ""}`}
     >
-      <div className="relative">
+      {/* Placeholder and editor share one grid cell, so a placeholder that
+          wraps on a narrow screen grows the box instead of spilling over
+          the toolbar below. */}
+      <div className="grid">
         {isEmpty && placeholder && (
-          <p className="pointer-events-none absolute top-[10px] left-[14px] text-sm text-[#9AA3B2]">
+          <p className="pointer-events-none px-[14px] py-[10px] text-sm text-[#9AA3B2] [grid-area:1/1]">
             {placeholder}
           </p>
         )}
@@ -96,7 +99,7 @@ export default function RichTextEditor({
           suppressContentEditableWarning
           onInput={emitChange}
           onBlur={emitChange}
-          className={`min-h-[76px] w-full px-[14px] py-[10px] text-sm text-[#141B2E] outline-none [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-black/[0.15] [&_blockquote]:pl-[12px] [&_blockquote]:text-[#4B5468] [&_code]:rounded [&_code]:bg-black/[0.06] [&_code]:px-[4px] [&_code]:py-[1px] [&_ol]:list-decimal [&_ol]:pl-[20px] [&_ul]:list-disc [&_ul]:pl-[20px] ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
+          className={`min-h-[76px] w-full px-[14px] py-[10px] [grid-area:1/1] text-sm text-[#141B2E] outline-none [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-black/[0.15] [&_blockquote]:pl-[12px] [&_blockquote]:text-[#4B5468] [&_code]:rounded [&_code]:bg-black/[0.06] [&_code]:px-[4px] [&_code]:py-[1px] [&_ol]:list-decimal [&_ol]:pl-[20px] [&_ul]:list-disc [&_ul]:pl-[20px] ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
         />
       </div>
 
