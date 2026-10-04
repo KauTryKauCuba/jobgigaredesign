@@ -7,6 +7,14 @@ FROM node:24-alpine
 
 WORKDIR /app
 
+# ffmpeg for video pitches (480p MP4 conversion), from Alpine's own package
+# mirror — ffmpeg-static (an optional dependency, used for local dev) would
+# otherwise download its binary from github.com during `npm ci`, which fails
+# the whole build whenever that download can't be reached. If it does fail
+# now, npm just skips the optional package; FFMPEG_BIN is what the app uses.
+RUN apk add --no-cache ffmpeg
+ENV FFMPEG_BIN=/usr/bin/ffmpeg
+
 COPY package.json package-lock.json ./
 RUN npm ci
 

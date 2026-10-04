@@ -3,7 +3,6 @@ import { execFile } from "child_process";
 import { randomUUID } from "crypto";
 import { mkdir, rm, stat } from "fs/promises";
 import { and, eq, inArray } from "drizzle-orm";
-import ffmpegPath from "ffmpeg-static";
 import { db } from "./db";
 import {
   employerProfiles,
@@ -28,7 +27,25 @@ export const MAX_PITCH_SECONDS = 60;
 const MAX_INPUT_SECONDS = 65;
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
-function runFfmpeg(args: string[]): Promise<{ stderr: string }> {
+/**
+ * The ffmpeg binary to run. On the server, FFMPEG_BIN points at the system
+ * ffmpeg the Docker image installs (apk) — so the build never depends on
+ * ffmpeg-static's download from github.com. Locally, ffmpeg-static (an
+ * optional dependency) provides it; loaded lazily so a missing package
+ * can't break this module.
+ */
+async function resolveFfmpegPath(): Promise<string | null> {
+  if (process.env.FFMPEG_BIN) return process.env.FFMPEG_BIN;
+  try {
+    const mod = await import("ffmpeg-static");
+    return (mod.default as unknown as string | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function runFfmpeg(args: string[]): Promise<{ stderr: string }> {
+  const ffmpegPath = await resolveFfmpegPath();
   return new Promise((resolve, reject) => {
     if (!ffmpegPath) return reject(new Error("ffmpeg is not available on this server."));
     execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
