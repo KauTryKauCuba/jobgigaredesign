@@ -26,13 +26,17 @@ function formatJoinedDate(iso: string): string {
 }
 
 // Dispatched by anything that adds/removes a company the current user has
-// access to (currently just the "Get/Remove dummy data" buttons) so this
+// access to (currently just My Profile's "Add/Remove sample data" card) so this
 // switcher — mounted once in EmployerDashboardShell, fetching its own data
 // independently of the page's server components — knows to refetch.
 // router.refresh() alone doesn't reach it: that only re-runs server
 // components, and this component's own mount-time fetch never re-fires on
 // its own without something telling it to.
 export const COMPANIES_CHANGED_EVENT = "employer:companies-changed";
+
+// Dispatched after switching to another company, for client components that
+// fetch per-company state themselves (e.g. the sample-data bar).
+export const COMPANY_SWITCHED_EVENT = "employer:company-switched";
 
 // Every employer page renders EmployerDashboardShell itself rather than
 // sharing a persisted layout.tsx, so this component fully unmounts and
@@ -116,6 +120,7 @@ export default function CompanySwitcher() {
         cachedCurrentId = id;
         setCurrentId(id);
         setOpen(false);
+        window.dispatchEvent(new Event(COMPANY_SWITCHED_EVENT));
         // Every server component under this layout resolved its data from
         // the old session cookie value — a client-side route change alone
         // wouldn't re-run any of that, only a full refresh does.

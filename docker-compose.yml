@@ -64,7 +64,12 @@ services:
       # Next serves directly from disk. Without this volume, every redeploy
       # rebuilds the image from scratch and wipes anything written there.
       - jobgiga-uploads-data:/app/public/uploads
+      # Jobseeker video pitches — deliberately NOT under public/, so they're
+      # only reachable through the permission-checked stream route
+      # (src/app/api/video-pitches/[id]/stream). Same reason for a volume.
+      - jobgiga-private-storage:/app/storage
 
 volumes:
   jobgiga-db-data:
   jobgiga-uploads-data:
+  jobgiga-private-storage:

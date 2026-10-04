@@ -11,7 +11,7 @@ import path from "path";
 // just a folder on disk. Either way, files land in the same relative path.
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
 
-export type UploadCategory = "logos" | "avatars" | "office-photos" | "resumes" | "posters";
+export type UploadCategory = "logos" | "avatars" | "office-photos" | "resumes" | "posters" | "banners";
 
 const EXTENSION_BY_MIME: Record<string, string> = {
   "image/png": "png",
@@ -50,6 +50,21 @@ export async function saveBase64Upload(dataUrl: string, category: UploadCategory
   if (!match) throw new Error("Not a valid base64 data URL.");
   const [, mimeType, base64Data] = match;
   return saveBufferUpload(Buffer.from(base64Data, "base64"), mimeType, category);
+}
+
+// A company cover banner: whatever size/shape was picked, center-cropped to
+// exactly 3:1 and saved as a light 1500x500 WebP — so every banner fits the
+// same slots and a phone photo straight off the camera doesn't weigh 8 MB.
+export async function saveBannerUpload(dataUrl: string): Promise<string> {
+  const match = /^data:(image\/[^;]+);base64,(.+)$/.exec(dataUrl);
+  if (!match) throw new Error("Not a valid image.");
+  const { default: sharp } = await import("sharp");
+  const output = await sharp(Buffer.from(match[2], "base64"))
+    .rotate() // honour phone photos' EXIF orientation
+    .resize(1500, 500, { fit: "cover", position: "centre" })
+    .webp({ quality: 80 })
+    .toBuffer();
+  return saveBufferUpload(output, "image/webp", "banners");
 }
 
 export function isBase64DataUrl(value: unknown): value is string {

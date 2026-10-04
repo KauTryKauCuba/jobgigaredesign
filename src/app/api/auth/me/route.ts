@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { resolveAvatarUrl, resolveNameForRole } from "@/lib/auth-user";
+import { resolveAvatarUrl, resolveEmployerBadge, resolveNameForRole } from "@/lib/auth-user";
 import { users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 
@@ -16,10 +16,21 @@ export async function GET() {
     .limit(1);
   if (!user) return NextResponse.json({ user: null });
 
-  const [avatarUrl, name] = await Promise.all([
+  const [avatarUrl, name, badge] = await Promise.all([
     resolveAvatarUrl(session.userId, session.role, user.avatarUrl),
     resolveNameForRole(session.userId, session.role, user.name),
+    session.role === "employer" ? resolveEmployerBadge(session.userId) : null,
   ]);
 
-  return NextResponse.json({ user: { ...user, name, avatarUrl, role: session.role } });
+  return NextResponse.json({
+    user: {
+      id: session.userId,
+      ...user,
+      name,
+      avatarUrl,
+      role: session.role,
+      position: badge?.position ?? null,
+      teamRole: badge?.teamRole ?? null,
+    },
+  });
 }

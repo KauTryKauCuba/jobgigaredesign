@@ -8,6 +8,7 @@ import AuthModal, { type AuthMode, type AuthUser } from "./AuthModal";
 import { useDraftName } from "./DraftNameContext";
 import { ChevronDownIcon, SignOutIcon, UserIcon } from "./icons";
 import Modal from "./Modal";
+import NotificationBell from "./NotificationBell";
 
 export default function Navbar({
   showUserName = true,
@@ -223,7 +224,7 @@ export default function Navbar({
           href={user ? (user.role === "employer" ? "/employer" : "/jobseeker") : "/"}
           className="flex items-center"
         >
-          <Image src="/jg-logo.svg" alt="JobGiga" width={111} height={28} priority />
+          <Image src="/jg-logo.svg" alt="JobGiga" width={111} height={28} loading="eager" />
         </Link>
 
         <div className="flex items-center gap-[18px] text-sm text-[#141B2E]">
@@ -243,6 +244,18 @@ export default function Navbar({
               className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 sm:block"
             >
               Find job
+            </Link>
+          )}
+          {/* The public company directory — on the employer landing pages, not
+              the jobseeker ones, nor inside the signed-in dashboards (appShell),
+              which have their own sidebar. */}
+          {!appShell && pageRole !== "jobseeker" && (
+            <Link
+              href="/companies"
+              aria-current={pathname?.startsWith("/companies") ? "page" : undefined}
+              className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
+            >
+              Find companies
             </Link>
           )}
           {user === undefined ? null : user ? (
@@ -265,7 +278,16 @@ export default function Navbar({
                         <UserIcon className="h-[13px] w-[13px]" />
                       )}
                     </span>
-                    <span className="hidden max-w-[200px] truncate whitespace-nowrap md:inline">{displayName}</span>
+                    <span className="hidden min-w-0 max-w-[200px] flex-col items-start leading-tight md:flex">
+                      <span className="max-w-full truncate whitespace-nowrap">{displayName}</span>
+                      {user.role === "employer" && (user.position || user.teamRole) && (
+                        <span className="max-w-full truncate whitespace-nowrap text-xs text-[#9AA3B2]">
+                          {[user.position, user.teamRole ? (user.teamRole === "owner" ? "Owner" : "Admin") : null]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      )}
+                    </span>
                     <ChevronDownIcon className="h-[9px] w-[9px] text-[#9AA3B2]" />
                   </button>
 
@@ -301,6 +323,15 @@ export default function Navbar({
                             className="block px-[16px] py-[9px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
                           >
                             Find job
+                          </Link>
+                        )}
+                        {!appShell && pageRole !== "jobseeker" && (
+                          <Link
+                            href="/companies"
+                            onClick={() => setMenuOpen(false)}
+                            className="block px-[16px] py-[9px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                          >
+                            Find companies
                           </Link>
                         )}
                         {onboarding && (
@@ -387,6 +418,8 @@ export default function Navbar({
                   Dashboard
                 </Link>
               )}
+              {/* Paired with Sign out — same circle style, side by side. */}
+              {!onboarding && <NotificationBell accent={user.role === "jobseeker" ? "gold" : "teal"} />}
               <button
                 type="button"
                 onClick={handleLogout}
@@ -416,6 +449,27 @@ export default function Navbar({
               >
                 Get started
               </button>
+            </>
+          )}
+          {/* Employer / Jobseeker landing-page links, at the far right — on
+              the public pages only, not inside the dashboards (appShell) or
+              mid-onboarding. */}
+          {!appShell && !onboarding && (
+            <>
+              <Link
+                href="/employer"
+                aria-current={pathname === "/employer" ? "page" : undefined}
+                className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
+              >
+                Employer
+              </Link>
+              <Link
+                href="/jobseeker"
+                aria-current={pathname === "/jobseeker" ? "page" : undefined}
+                className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
+              >
+                Jobseeker
+              </Link>
             </>
           )}
         </div>

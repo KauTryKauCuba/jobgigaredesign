@@ -1,9 +1,9 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import AnimatedRibbon from "./AnimatedRibbon";
-import { COMPANIES_CHANGED_EVENT } from "./CompanySwitcher";
 import Dropdown from "./Dropdown";
 import EmployerDashboardShell from "./EmployerDashboardShell";
 import Field from "./Field";
@@ -47,6 +47,7 @@ import {
   LockIcon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
   StackIcon,
   TrashIcon,
   XCircleIcon,
@@ -58,7 +59,6 @@ import type { AuthUser } from "./AuthModal";
 import type { EmployerAddress } from "@/lib/employer-profile";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { INDUSTRIES } from "@/lib/industries";
-import { DUMMY_POSTING_MARKER } from "@/lib/dummy-job-postings";
 import { plainTextToHtml } from "@/lib/richText";
 
 // Matches the finalized (but not yet built) `job_posting_status` enum in
@@ -2245,17 +2245,50 @@ function PostingActionsMenu({
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // The menu is portaled to <body> with fixed coordinates: the status
+  // sections wrap their rows in overflow-hidden (for the collapse animation),
+  // which would otherwise clip an absolutely-positioned popover.
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setConfirmingDelete(false);
-      }
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+      setConfirmingDelete(false);
+    }
+    function dismiss() {
+      setOpen(false);
+      setConfirmingDelete(false);
     }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
   }, []);
+
+  function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) {
+      const right = window.innerWidth - rect.right;
+      // ~250px covers the tallest menu (5 items); flip above if it won't fit.
+      setPos(
+        window.innerHeight - rect.bottom < 250
+          ? { bottom: window.innerHeight - rect.top + 6, right }
+          : { top: rect.bottom + 6, right },
+      );
+    }
+    setOpen(true);
+  }
 
   const canClose = posting.status !== "Closed";
 
@@ -2263,7 +2296,7 @@ function PostingActionsMenu({
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Actions for ${posting.title}`}
@@ -2272,10 +2305,12 @@ function PostingActionsMenu({
         <DotsIcon className="h-[14px] w-[14px]" />
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-0 z-10 mt-[6px] w-[190px] rounded-[12px] border border-black/[0.08] bg-white p-[6px] shadow-[0_8px_24px_-8px_rgba(20,27,46,0.2)]"
+          style={pos}
+          className="fixed z-50 w-[190px] rounded-[12px] border border-black/[0.08] bg-white p-[6px] shadow-[0_8px_24px_-8px_rgba(20,27,46,0.2)]"
         >
           <MenuItem
             icon={EyeIcon}
@@ -2325,7 +2360,8 @@ function PostingActionsMenu({
               }}
             />
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -2459,6 +2495,7 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
   // it's a lookup cache, not something the UI renders from.
   const rawByIdRef = useRef(new Map(initialPostings.map((p) => [p.id, p])));
   const [actionError, setActionError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [viewing, setViewing] = useState<PostingWithId | null>(null);
   const [collapsedStatuses, setCollapsedStatuses] = useState<Set<JobStatus>>(() => new Set());
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
@@ -2479,6 +2516,16 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
     router.push(`/employer/jobs/postajob?title=${encodeURIComponent(value)}&autofill=1`);
   }
 
+  const searchTerm = search.trim().toLowerCase();
+  const searching = searchTerm.length > 0;
+  const visiblePostings = searching
+    ? postings.filter((p) =>
+        [p.title, p.location, p.employmentType, p.workArrangement, p.status].some((v) =>
+          String(v ?? "").toLowerCase().includes(searchTerm),
+        ),
+      )
+    : postings;
+  const matchCount = visiblePostings.length;
   const tiles: { label: "Total postings" | JobStatus; count: number }[] = [
     { label: "Total postings", count: postings.length },
     ...STATUS_ORDER.map((status) => ({
@@ -2746,11 +2793,27 @@ function JobPostingsPanel({ initialPostings }: { initialPostings: DbJobPosting[]
         <div id="job-postings-list" className="mt-[24px] scroll-mt-[100px]">
           <p className="text-sm text-[#141B2E]">Your job postings, organized by status</p>
           {actionError && <p className="mt-[6px] text-xs text-red-500">{actionError}</p>}
+          <div className="mt-[10px] flex items-center gap-[8px] rounded-[12px] border border-black/[0.1] px-[12px] focus-within:border-brand-teal-dark">
+            <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search job postings by title, location or status..."
+              aria-label="Search job postings"
+              className="h-[38px] w-full bg-transparent text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2]"
+            />
+          </div>
+          {searching && matchCount === 0 && (
+            <p className="mt-[12px] text-sm text-[#9AA3B2]">No job postings match &ldquo;{search.trim()}&rdquo;.</p>
+          )}
           <div className="mt-[10px] flex flex-col gap-[10px]">
             {STATUS_ORDER.map((status, index) => {
-              const statusPostings = postings.filter((p) => p.status === status);
+              const statusPostings = visiblePostings.filter((p) => p.status === status);
               if (statusPostings.length === 0) return null;
-              const collapsed = collapsedStatuses.has(status);
+              // Matches stay visible while searching, even in a section the
+              // employer had collapsed.
+              const collapsed = !searching && collapsedStatuses.has(status);
               return (
                 <div
                   key={status}
@@ -2909,31 +2972,6 @@ export default function EmployerJobsView({
   const router = useRouter();
   const composing = mode === "post";
   const postJobFormRef = useRef<PostJobFormHandle>(null);
-  const [dummyBusy, setDummyBusy] = useState(false);
-  const hasDummyData = initialPostings.some((p) => p.postingName === DUMMY_POSTING_MARKER);
-
-  async function toggleDummyData() {
-    setDummyBusy(true);
-    try {
-      if (hasDummyData) {
-        // Applicants reference postings, so clear them first — otherwise
-        // deleting the postings cascades their applications away silently
-        // instead of going through the applicants button's own cleanup.
-        await fetch("/api/employer/applications/dummy", { method: "DELETE" });
-        await fetch("/api/employer/job-postings/dummy", { method: "DELETE" });
-        await fetch("/api/employer/dummy-companies", { method: "DELETE" });
-      } else {
-        await fetch("/api/employer/job-postings/dummy", { method: "POST" });
-        await fetch("/api/employer/applications/dummy", { method: "POST" });
-        await fetch("/api/employer/dummy-companies", { method: "POST" });
-      }
-      window.dispatchEvent(new Event(COMPANIES_CHANGED_EVENT));
-      router.refresh();
-    } finally {
-      setDummyBusy(false);
-    }
-  }
-
   const guardNavigation: NavigationGuard = (proceed) => {
     if (composing && postJobFormRef.current) {
       postJobFormRef.current.guardNavigation(proceed);
@@ -2957,14 +2995,6 @@ export default function EmployerJobsView({
           </button>
         ) : (
           <div className="flex flex-wrap items-center gap-[8px]">
-            <button
-              type="button"
-              disabled={dummyBusy}
-              onClick={toggleDummyData}
-              className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[16px] text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {hasDummyData ? "Remove dummy data" : "Get dummy data"}
-            </button>
             <button
               type="button"
               onClick={() => router.push("/employer/jobs/postajob")}

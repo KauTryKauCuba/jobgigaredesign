@@ -1,19 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import JobPostingDetailView from "@/components/JobPostingDetailView";
+import { getEmployerResponsiveness } from "@/lib/application-events";
 import { getAuthUser } from "@/lib/auth-user";
 import { getActiveJobPostingBySlug, stripCustomQuestionAnswers } from "@/lib/job-postings";
 import { getJobseekerProfile } from "@/lib/jobseeker-profile";
-import {
-  employmentTypeMatchScore,
-  experienceFitScore,
-  hardFilterCheck,
-  industryMatchScore,
-  skillsOverlapScore,
-  weightedScore,
-  workArrangementMatchScore,
-  type MatchBreakdown,
-} from "@/lib/matching";
+import { scoreJobseekerForPosting } from "@/lib/jobseeker-match";
 import { getOnboardingRedirect } from "@/lib/onboarding";
+import { getSavedJobPostingIds } from "@/lib/saved-jobs";
 import { getSession } from "@/lib/session";
 
 export default async function JobPostingDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -39,42 +32,16 @@ export default async function JobPostingDetailPage({ params }: { params: Promise
     : null;
 
   // How well this jobseeker fits this specific posting — same scoring used
-  // for the employer's "Top Matches" (src/lib/matching.ts), just run in the
-  // other direction. All criteria weighted equally (full DEFAULT_CRITERIA);
-  // there's no jobseeker-side equivalent of the employer's on/off toggles.
+  // for the employer's "Top Matches", just run in the other direction (and
+  // the same one new-job alerts use, so an alert's % agrees with this page).
   const posting = row.posting;
-  const match = profile
-    ? (() => {
-        const { eligible, reasons } = hardFilterCheck({
-          requiredWorkAuthorizations: posting.workAuthorizations,
-          candidateWorkAuthorization: profile.workAuthorization,
-          requiredDrivingLicense: posting.drivingLicense,
-          candidateDrivingLicense: profile.drivingLicense,
-        });
-        // Employers and jobseekers file traits like "Communication" or
-        // "Leadership" inconsistently — one side's required skill is the
-        // other's soft skill tag, or vice versa — so all three skill
-        // components check the candidate's combined pool rather than only
-        // their same-named counterpart bucket. Mirrors the employer-side fix
-        // in src/app/api/employer/applicants/matches/route.ts.
-        const profileAllSkills = [...profile.professionalSkills, ...profile.softSkills, ...profile.otherSkills];
-        const breakdown: MatchBreakdown = {
-          skills: skillsOverlapScore(posting.skills, profileAllSkills),
-          softSkills: skillsOverlapScore(posting.softSkills, profileAllSkills),
-          niceToHaveSkills: skillsOverlapScore(posting.niceToHaveSkills, profileAllSkills),
-          experience: experienceFitScore(posting.minYearsExperience, profile.yearsExperience),
-          industry: industryMatchScore(posting.industry, profile.preferredIndustry),
-          workArrangement: workArrangementMatchScore(posting.workArrangement, profile.workArrangement),
-          employmentType: employmentTypeMatchScore(posting.employmentType, profile.employmentType),
-        };
-        return {
-          score: eligible ? weightedScore(breakdown) : 0,
-          eligible,
-          ineligibleReasons: reasons,
-          breakdown,
-        };
-      })()
-    : null;
+  const match = profile ? scoreJobseekerForPosting(posting, profile) : null;
+
+  const [responsivenessMap, savedIds] = await Promise.all([
+    getEmployerResponsiveness([posting.employerProfileId]),
+    profile ? getSavedJobPostingIds(profile.id) : ([] as string[]),
+  ]);
+  const responsiveness = responsivenessMap.get(posting.employerProfileId) ?? null;
 
   return (
     <JobPostingDetailView
@@ -84,6 +51,8 @@ export default async function JobPostingDetailPage({ params }: { params: Promise
       companyName={row.companyName}
       companyLogoUrl={row.companyLogoUrl}
       match={match}
+      responsiveness={responsiveness}
+      initialSaved={savedIds.includes(posting.id)}
     />
   );
 }

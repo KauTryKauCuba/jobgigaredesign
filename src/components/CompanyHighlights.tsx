@@ -1,9 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { gradientFrameClass } from "./formStyles";
-import { getRevealOffset, getRevealStyle } from "@/lib/cardReveal";
+import { getRevealOffset, getRevealStyle, getTuckStyle } from "@/lib/cardReveal";
+
+// How far the page scrolls (px) for the "page" variant's cards to fully tuck
+// away behind the directory card.
+const TUCK_DISTANCE = 450;
+
+function subscribeScroll(onChange: () => void) {
+  window.addEventListener("scroll", onChange, { passive: true });
+  window.addEventListener("resize", onChange);
+  return () => {
+    window.removeEventListener("scroll", onChange);
+    window.removeEventListener("resize", onChange);
+  };
+}
+const noSubscribe = () => () => {};
+import { CURATED_FILL_TARGET, curatedFill } from "@/lib/curated-companies";
 
 type Company = {
   name: string;
@@ -66,77 +81,11 @@ function PlaceholderLogo({
   );
 }
 
-/**
- * Curated padding — real, verified outside companies (same set as
- * TrustedByStrip; WHALE/usewhale.io's mark pulled from its own site same as
- * the others — see that file's comment), used to fill out empty slots
- * `buildDisplayCompanies` below doesn't have a real JobGiga employer for.
- * "openRoles" is illustrative for every one of these.
- */
-const CURATED_COMPANIES: Company[] = [
-  {
-    name: "aikido",
-    industry: "Cybersecurity",
-    openRoles: 8,
-    logoKind: "image",
-    src: "/logos/aikido.svg",
-    width: 88,
-    height: 20,
-  },
-  {
-    name: "Bolt",
-    industry: "Fintech",
-    openRoles: 5,
-    logoKind: "image",
-    src: "/logos/bolt.jpg",
-    width: 132,
-    height: 64,
-  },
-  {
-    name: "Parim",
-    industry: "Workforce management",
-    openRoles: 12,
-    logoKind: "image",
-    src: "/logos/parim.svg",
-    width: 104,
-    height: 32,
-  },
-  {
-    name: "parcelly",
-    industry: "Logistics",
-    openRoles: 4,
-    logoKind: "image",
-    src: "/logos/parcelly.svg",
-    width: 90,
-    height: 31,
-  },
-  {
-    name: "ParcelTracker",
-    industry: "Business software",
-    openRoles: 6,
-    logoKind: "image",
-    src: "/logos/parceltracker.svg",
-    width: 168,
-    height: 30,
-  },
-  {
-    name: "WHALE",
-    industry: "Process documentation software",
-    openRoles: 7,
-    logoKind: "image",
-    src: "/logos/whale.svg",
-    width: 104,
-    height: 22,
-  },
-];
+const MAX_CARDS = CURATED_FILL_TARGET;
 
-const MAX_CARDS = 6;
-
-// Real employers replace curated ones one slot at a time (first real company
-// bumps the last curated one, second bumps the second-to-last, etc.) instead
-// of an all-or-nothing swap — so the row never suddenly looks sparse while
-// the platform still has few real employers, but also never shows a curated
-// placeholder next to five real companies once there are enough.
+// Real employers first, then curated showcase companies (src/lib/
+// curated-companies.ts) filling whatever slots are left — same fill logic as
+// the Find companies directory.
 function buildDisplayCompanies(realCompanies: HighlightCompany[]): Company[] {
   const real: Company[] = realCompanies.slice(0, MAX_CARDS).map((c) => ({
     name: c.companyName,
@@ -144,11 +93,28 @@ function buildDisplayCompanies(realCompanies: HighlightCompany[]): Company[] {
     openRoles: c.activeCount,
     ...(c.logoUrl ? { logoKind: "image" as const, src: c.logoUrl } : { logoKind: "icon" as const }),
   }));
-  const curatedNeeded = MAX_CARDS - real.length;
-  return [...real, ...CURATED_COMPANIES.slice(0, curatedNeeded)];
+  const curated: Company[] = curatedFill(
+    real.length,
+    real.map((c) => c.name),
+  ).map((c) => ({ ...c, logoKind: "image" as const }));
+  return [...real, ...curated];
 }
 
-export default function CompanyHighlights({ realCompanies }: { realCompanies: HighlightCompany[] }) {
+/**
+ * `variant="landing"` (default) is the employer landing page's row, tucked
+ * under AnimatedRibbon and revealed by scroll. `variant="page"` is the same
+ * row at the top of the Find companies page — already on screen at load, so
+ * its cards fade up in a stagger, then tuck down behind the directory card as
+ * the page scrolls (the page gives that card a higher z-index).
+ */
+export default function CompanyHighlights({
+  realCompanies,
+  variant = "landing",
+}: {
+  realCompanies: HighlightCompany[];
+  variant?: "landing" | "page";
+}) {
+  const onPage = variant === "page";
   const { ref, progress } = useScrollReveal();
   const displayCompanies = buildDisplayCompanies(realCompanies);
 
@@ -168,17 +134,31 @@ export default function CompanyHighlights({ realCompanies }: { realCompanies: Hi
   }, []);
   const revealProgress = reducedMotion ? 1 : progress;
 
+  // Only the page variant follows the scroll position (server snapshot 0 = at
+  // rest), and only in the single 6-across row (lg+) — in the 2/3-column
+  // grids the row is too tall to tuck away and would just fade mid-screen.
+  const scrollY = useSyncExternalStore(
+    onPage ? subscribeScroll : noSubscribe,
+    () => (onPage && window.innerWidth >= 1024 ? window.scrollY : 0),
+    () => 0,
+  );
+  const tuckProgress = reducedMotion ? 0 : Math.min(1, scrollY / TUCK_DISTANCE);
+
   return (
-    <div className="shell relative z-[1] -mt-[32px] pt-[clamp(32px,5vh,56px)] pb-[128px]">
+    <div
+      className={
+        onPage ? "relative z-0 pt-[16px] pb-[48px]" : "shell relative z-[1] -mt-[32px] pt-[clamp(32px,5vh,56px)] pb-[128px]"
+      }
+    >
       <div className="relative z-[1] mx-auto max-w-[560px] text-center">
         <span className="inline-flex items-center rounded-full bg-[#F1F4F8] px-[14px] py-[7px] text-xs text-[#4B5468]">
-          Who&apos;s hiring
+          {onPage ? "Featured companies" : "Who's hiring"}
         </span>
         <h2
           className="mt-[16px] font-sans font-semibold text-[#141B2E]"
           style={{ fontSize: "clamp(24px,2.6vw,32px)", lineHeight: 1.15, letterSpacing: "-0.02em" }}
         >
-          Companies building their teams on JobGiga
+          {onPage ? "Meet the teams growing with JobGiga" : "Companies building their teams on JobGiga"}
         </h2>
       </div>
 
@@ -195,27 +175,40 @@ export default function CompanyHighlights({ realCompanies }: { realCompanies: Hi
       */}
       <div
         ref={ref}
-        className="relative z-0 mt-[128px] grid grid-cols-2 items-start gap-[12px] sm:grid-cols-3 lg:grid-cols-6"
+        className={`relative z-0 grid grid-cols-2 items-start gap-[12px] sm:grid-cols-3 lg:grid-cols-6 ${
+          onPage ? "mt-[40px] lg:mt-[56px]" : "mt-[128px]"
+        }`}
       >
         {displayCompanies.map((company, i) => {
-          const variant = SIZE_VARIANTS[i];
-          const revealStyle = getRevealStyle(revealProgress, getRevealOffset(i));
+          const size = SIZE_VARIANTS[i];
+          const revealStyle = onPage
+            ? getTuckStyle(tuckProgress, getRevealOffset(i))
+            : getRevealStyle(revealProgress, getRevealOffset(i));
           return (
             // The uneven "skyline" offsets only make sense in the single
             // 6-across row; in the 2/3-column grids they overlap the row below.
+            // The page variant's load fade lives on this outer div (its
+            // keyframes set `transform`; the skyline offset uses the separate
+            // `translate` property) so it never overrides the inner div's
+            // scroll-driven transform.
             <div
               key={company.name}
-              className="lg:translate-y-[var(--skyline-offset)]"
-              style={{ "--skyline-offset": `${variant.offset}px` } as React.CSSProperties}
+              className={`lg:translate-y-[var(--skyline-offset)] ${onPage ? "animate-fade-in-up" : ""}`}
+              style={
+                {
+                  "--skyline-offset": `${size.offset}px`,
+                  ...(onPage ? { animationDelay: `${i * 70}ms` } : {}),
+                } as React.CSSProperties
+              }
             >
               <div className="will-change-transform" style={revealStyle}>
                 <div className={gradientFrameClass("teal")}>
                   <div
-                    className={`flex flex-col items-center gap-[10px] rounded-[19px] bg-white p-[14px] text-center ${variant.padding}`}
+                    className={`flex flex-col items-center gap-[10px] rounded-[19px] bg-white p-[14px] text-center ${size.padding}`}
                   >
                     <div
                       className="flex max-w-full shrink-0 items-center justify-center"
-                      style={{ height: variant.logoBox, width: variant.logoBox }}
+                      style={{ height: size.logoBox, width: size.logoBox }}
                     >
                       {company.logoKind === "image" ? (
                         // Curated logos are static /public assets; real
@@ -228,13 +221,13 @@ export default function CompanyHighlights({ realCompanies }: { realCompanies: Hi
                           src={company.src}
                           alt={company.name}
                           className="max-w-full object-contain"
-                          style={{ height: variant.logoImg, width: variant.logoImg }}
+                          style={{ height: size.logoImg, width: size.logoImg }}
                         />
                       ) : (
                         <PlaceholderLogo
                           className="text-[#141B2E]"
                           style={
-                            { height: variant.logoImg * 0.4, width: variant.logoImg * 0.4 } as React.CSSProperties
+                            { height: size.logoImg * 0.4, width: size.logoImg * 0.4 } as React.CSSProperties
                           }
                         />
                       )}

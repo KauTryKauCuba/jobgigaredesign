@@ -13,6 +13,7 @@ export default function Dropdown<T extends string>({
   searchable = false,
   searchPlaceholder = "Search...",
   disabled = false,
+  openUpward = false,
 }: {
   id?: string;
   label: string;
@@ -27,6 +28,10 @@ export default function Dropdown<T extends string>({
   searchable?: boolean;
   searchPlaceholder?: string;
   disabled?: boolean;
+  // For a trigger that sits right above other content (e.g. the last field
+  // in a card, directly followed by another card) — opens the popover above
+  // the trigger instead of below, so it doesn't spill into what's next.
+  openUpward?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -98,7 +103,11 @@ export default function Dropdown<T extends string>({
       </button>
 
       {!disabled && open && (
-        <div className="absolute z-10 mt-[6px] w-full rounded-[12px] border border-black/[0.1] bg-white p-[6px] shadow-[0_8px_24px_-8px_rgba(20,27,46,0.2)]">
+        <div
+          className={`absolute z-10 w-full rounded-[12px] border border-black/[0.1] bg-white p-[6px] shadow-[0_8px_24px_-8px_rgba(20,27,46,0.2)] ${
+            openUpward ? "bottom-full mb-[6px]" : "mt-[6px]"
+          }`}
+        >
           {searchable && (
             <div className="mb-[4px] flex items-center gap-[8px] rounded-[8px] border border-black/[0.08] px-[10px]">
               <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />

@@ -194,3 +194,113 @@ export async function getAiUsageForUser(userId: string) {
     recent,
   };
 }
+
+export const AI_FEATURE_LABEL: Record<AiUsageFeature, string> = {
+  company_lookup: "Company lookup",
+  job_posting_suggestion: "Job posting writer",
+  resume_parse: "Resume parsing",
+  skill_suggestion: "Skill suggestions",
+  match_scoring: "Match scoring",
+  cover_letter: "Cover letters",
+  poster_generation: "Poster generation",
+  assistant_chat: "AI assistant chat",
+};
+
+type UsageTotals = { calls: number; tokens: number; costUsd: number };
+function emptyTotals(): UsageTotals {
+  return { calls: 0, tokens: 0, costUsd: 0 };
+}
+function addTo(target: UsageTotals, calls: number, tokens: number, costUsd: number) {
+  target.calls += calls;
+  target.tokens += tokens;
+  target.costUsd += costUsd;
+}
+
+/**
+ * Platform-wide AI usage for the superadmin page: totals, a per-day series,
+ * a per-feature breakdown and the heaviest users, over the last `days` days
+ * (Malaysia time for day boundaries). Costs are the same published-pricing
+ * estimates as above — approximate, not billing-accurate.
+ */
+export async function getPlatformAiUsage(days = 30) {
+  const rows = await db.execute<{
+    day: string;
+    feature: AiUsageFeature;
+    provider: string | null;
+    user_id: string;
+    email: string | null;
+    name: string | null;
+    role: string | null;
+    row_count: string;
+    prompt_tokens: string;
+    completion_tokens: string;
+    total_tokens: string;
+    call_count: string;
+    actual_cost: number | null;
+  }>(sql`
+    SELECT
+      to_char((l.created_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date, 'YYYY-MM-DD') AS day,
+      l.feature,
+      l.provider,
+      l.user_id,
+      u.email,
+      u.name,
+      u.role,
+      count(*) AS row_count,
+      coalesce(sum(l.prompt_tokens), 0) AS prompt_tokens,
+      coalesce(sum(l.completion_tokens), 0) AS completion_tokens,
+      coalesce(sum(l.total_tokens), 0) AS total_tokens,
+      coalesce(sum(l.call_count), 0) AS call_count,
+      sum(l.actual_cost_usd) AS actual_cost
+    FROM ai_usage_logs l
+    LEFT JOIN users u ON u.id = l.user_id
+    WHERE l.created_at > now() - make_interval(days => ${days})
+    GROUP BY 1, 2, 3, 4, 5, 6, 7
+  `);
+
+  const totals = emptyTotals();
+  const byDay = new Map<string, UsageTotals>();
+  const byFeature = new Map<AiUsageFeature, UsageTotals>();
+  const byUser = new Map<string, UsageTotals & { email: string | null; name: string | null; role: string | null }>();
+
+  for (const r of rows.rows) {
+    // "none" = a no-op lookup that never reached an AI provider.
+    if (r.provider === "none") continue;
+    const calls = r.provider === "perplexity" ? Number(r.call_count) : Number(r.row_count);
+    const tokens = Number(r.total_tokens);
+    const cost =
+      r.actual_cost ??
+      (r.provider ? estimateCostUsd(r.provider, Number(r.prompt_tokens), Number(r.completion_tokens), calls) : null) ??
+      0;
+
+    addTo(totals, calls, tokens, cost);
+    if (!byDay.has(r.day)) byDay.set(r.day, emptyTotals());
+    addTo(byDay.get(r.day)!, calls, tokens, cost);
+    if (!byFeature.has(r.feature)) byFeature.set(r.feature, emptyTotals());
+    addTo(byFeature.get(r.feature)!, calls, tokens, cost);
+    if (!byUser.has(r.user_id)) byUser.set(r.user_id, { ...emptyTotals(), email: r.email, name: r.name, role: r.role });
+    addTo(byUser.get(r.user_id)!, calls, tokens, cost);
+  }
+
+  // Every day in the window, including quiet ones, oldest first.
+  const series: ({ day: string } & UsageTotals)[] = [];
+  const todayMy = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(todayMy.getTime() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    series.push({ day: d, ...(byDay.get(d) ?? emptyTotals()) });
+  }
+
+  return {
+    days,
+    totals,
+    today: series[series.length - 1],
+    series,
+    features: [...byFeature.entries()]
+      .map(([feature, t]) => ({ feature, label: AI_FEATURE_LABEL[feature] ?? feature, ...t }))
+      .sort((a, b) => b.costUsd - a.costUsd || b.calls - a.calls),
+    topUsers: [...byUser.entries()]
+      .map(([userId, t]) => ({ userId, ...t }))
+      .sort((a, b) => b.costUsd - a.costUsd || b.calls - a.calls)
+      .slice(0, 10),
+  };
+}

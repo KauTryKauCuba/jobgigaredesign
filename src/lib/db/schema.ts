@@ -10,6 +10,9 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   googleId: text("google_id").unique(),
   role: roleEnum("role").notNull(),
+  // When this person closed the employer "Get sample data" bar — stored on
+  // the account (not the browser) so closing it once hides it everywhere.
+  sampleDataBannerDismissedAt: timestamp("sample_data_banner_dismissed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -32,7 +35,13 @@ export const employerProfiles = pgTable("employer_profiles", {
     .references(() => users.id),
   avatarUrl: text("avatar_url"),
   contactName: text("contact_name").notNull(),
+  // Hiring-function category (Founder/Owner, HR Manager, ...) — a short fixed
+  // list, standardizable because it's scoped to "why this person is using
+  // the platform." `contactPosition` below is their actual job title in the
+  // company org chart (e.g. "Senior Graphic Designer") — free text, since
+  // real job titles aren't a short enough list to standardize.
   contactRole: text("contact_role").notNull(),
+  contactPosition: text("contact_position").notNull(),
   contactPhone: text("contact_phone").notNull(),
   contactEmail: text("contact_email").notNull(),
   companyName: text("company_name").notNull(),
@@ -56,6 +65,9 @@ export const employerProfiles = pgTable("employer_profiles", {
   foundedYear: integer("founded_year"),
   companyType: text("company_type"),
   officePhotoUrl: text("office_photo_url"),
+  // Wide cover image (3:1, resized to 1500x500 WebP on upload) shown across
+  // the top of the company's directory card and public company page.
+  bannerUrl: text("banner_url"),
   recentNews: jsonb("recent_news")
     .$type<{ title: string; url: string }[]>()
     .notNull()
@@ -142,6 +154,10 @@ export const employerTeamMembers = pgTable(
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     role: teamMemberRoleEnum("role").notNull().default("admin"),
+    // Optional job title (e.g. "Senior Graphic Designer") — nullable since
+    // the owner's own row relies on employerProfiles.contactPosition for
+    // display instead (set once at onboarding, not duplicated here).
+    position: text("position"),
     status: teamMemberStatusEnum("status").notNull().default("pending"),
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
     joinedAt: timestamp("joined_at", { withTimezone: true }),
@@ -327,6 +343,10 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
   // Opt-in for employers to approach this jobseeker outside of applications (R10).
   talentPoolConsent: boolean("talent_pool_consent").notNull().default(false),
   visibility: jobseekerVisibilityEnum("visibility").notNull().default("discoverable"),
+  // Bell notification when a newly approved posting is a strong match for
+  // this profile (see src/lib/job-alerts.ts). On by default; toggled from
+  // the Saved Jobs page.
+  jobAlertsEnabled: boolean("job_alerts_enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -672,7 +692,12 @@ export const jobApplications = pgTable(
       durationMinutes: number | null;
       location: string | null;
       meetingLink: string | null;
-      interviewerName: string | null;
+      // Panel-capable: zero or more interviewer names for this round.
+      interviewers: string[];
+      // Account ids for the same panel, in the same order as `interviewers` —
+      // who's required to submit an evaluation. Absent on interviews
+      // scheduled before panel evaluations existed.
+      interviewerUserIds?: string[];
       notes: string | null;
     } | null>(),
     interviewResponseStatus: interviewResponseStatusEnum("interview_response_status"),
@@ -733,22 +758,132 @@ export const interviewRecommendationEnum = pgEnum("interview_recommendation", [
   "strong_no_hire",
 ]);
 
-// One scorecard per application (not per round) — a later round overwrites
-// the previous one's evaluation rather than keeping a history, same
-// "current state only" tradeoff interviewDetails already makes.
-export const interviewEvaluations = pgTable("interview_evaluations", {
+// A jobseeker's optional 60-second video pitch — one per profile; recording
+// a new one replaces it. The file lives under storage/video-pitches/ (not
+// public/), served only to the jobseeker and to employers they've applied
+// to. `intro` and `strengths` are the jobseeker's own skimmable summary
+// (strengths picked from their profile skills) — no AI involved.
+export const videoPitches = pgTable("video_pitches", {
   id: uuid("id").primaryKey().defaultRandom(),
-  jobApplicationId: uuid("job_application_id")
+  jobseekerProfileId: uuid("jobseeker_profile_id")
     .notNull()
     .unique()
-    .references(() => jobApplications.id, { onDelete: "cascade" }),
-  round: integer("round").notNull(),
-  scores: jsonb("scores").$type<Record<string, number>>().notNull(),
-  recommendation: interviewRecommendationEnum("recommendation").notNull(),
-  notes: text("notes"),
+    .references(() => jobseekerProfiles.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  durationSeconds: integer("duration_seconds").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  intro: text("intro"),
+  strengths: text("strengths").array().notNull().default([]),
+  // Off = hidden from employers (the intro/strengths too) without deleting it.
+  visible: boolean("visible").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Which employer companies have watched a pitch — one row per company (the
+// first watch), powering the jobseeker's "Watched by N employers", their
+// "an employer watched your pitch" notification, and the employer-side
+// "Watched" mark. Cleared when the jobseeker replaces their video.
+export const videoPitchViews = pgTable(
+  "video_pitch_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    videoPitchId: uuid("video_pitch_id")
+      .notNull()
+      .references(() => videoPitches.id, { onDelete: "cascade" }),
+    employerProfileId: uuid("employer_profile_id")
+      .notNull()
+      .references(() => employerProfiles.id, { onDelete: "cascade" }),
+    viewerUserId: uuid("viewer_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("video_pitch_views_pitch_employer_unique").on(table.videoPitchId, table.employerProfileId)],
+);
+
+// A jobseeker's bookmarked postings (the heart button). Kept even after a
+// posting closes, so the Saved Jobs page can say "no longer accepting
+// applications" instead of the job silently vanishing.
+export const savedJobs = pgTable(
+  "saved_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobseekerProfileId: uuid("jobseeker_profile_id")
+      .notNull()
+      .references(() => jobseekerProfiles.id, { onDelete: "cascade" }),
+    jobPostingId: uuid("job_posting_id")
+      .notNull()
+      .references(() => jobPostings.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("saved_jobs_profile_posting_unique").on(table.jobseekerProfileId, table.jobPostingId)],
+);
+
+// In-app notifications (the navbar bell). One row per recipient. `audience`
+// is which side of the app it belongs to — the same account can be both an
+// employer and a jobseeker, and the bell only shows the side they're
+// currently signed in as. `link` is where clicking it takes them.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    audience: roleEnum("audience").notNull(),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    link: text("link"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("notifications_user_audience_created_idx").on(table.userId, table.audience, table.createdAt)],
+);
+
+// Append-only log of every pipeline move, so a jobseeker can see *when*
+// each step happened (the application row itself only holds the current
+// status) and an employer's typical reply time can be measured — the first
+// event leaving "applied" is the employer's first response. `fromStatus` is
+// null only for the initial "applied" event.
+export const jobApplicationEvents = pgTable(
+  "job_application_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobApplicationId: uuid("job_application_id")
+      .notNull()
+      .references(() => jobApplications.id, { onDelete: "cascade" }),
+    fromStatus: applicationStatusEnum("from_status"),
+    toStatus: applicationStatusEnum("to_status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("job_application_events_job_application_id_idx").on(table.jobApplicationId)],
+);
+
+// One scorecard per interviewer per application (not per round) — each
+// panelist submits their own, and a later round overwrites that same
+// interviewer's previous one rather than keeping a history, same "current
+// state only" tradeoff interviewDetails already makes. `evaluatorUserId` is
+// null only for scorecards saved before per-interviewer evaluations existed.
+export const interviewEvaluations = pgTable(
+  "interview_evaluations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobApplicationId: uuid("job_application_id")
+      .notNull()
+      .references(() => jobApplications.id, { onDelete: "cascade" }),
+    evaluatorUserId: uuid("evaluator_user_id").references(() => users.id, { onDelete: "set null" }),
+    round: integer("round").notNull(),
+    scores: jsonb("scores").$type<Record<string, number>>().notNull(),
+    recommendation: interviewRecommendationEnum("recommendation").notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("interview_evaluations_application_evaluator_unique").on(table.jobApplicationId, table.evaluatorUserId),
+    index("interview_evaluations_job_application_id_idx").on(table.jobApplicationId),
+  ],
+);
 
 export const offerStatusEnum = pgEnum("offer_status", [
   "pending",

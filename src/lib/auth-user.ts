@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import type { AuthUser, Role } from "@/components/AuthModal";
 import { db } from "./db";
+import { getEmployerAccess } from "./employer-profile";
 import {
   employerOnboardingDrafts,
   employerProfiles,
@@ -114,6 +115,26 @@ export async function getJobseekerResumeInfo(
  * known-at-render-time `initialUser` into `<Navbar>` so it never has to show
  * a signed-out flash while its own client-side fetch resolves.
  */
+/**
+ * The signed-in employer's job title and team role at whichever company
+ * they're currently acting for (see getEmployerAccess). The owner's title
+ * lives on their profile (contactPosition); an invited teammate's lives on
+ * their own team-member row.
+ */
+export async function resolveEmployerBadge(userId: string): Promise<{ position: string | null; teamRole: "owner" | "admin" } | null> {
+  const access = await getEmployerAccess(userId);
+  if (!access) return null;
+  if (access.role === "owner" && access.profile.userId === userId) {
+    return { position: access.profile.contactPosition, teamRole: "owner" };
+  }
+  const [member] = await db
+    .select({ position: employerTeamMembers.position })
+    .from(employerTeamMembers)
+    .where(and(eq(employerTeamMembers.userId, userId), eq(employerTeamMembers.employerProfileId, access.profile.id)))
+    .limit(1);
+  return { position: member?.position ?? null, teamRole: access.role };
+}
+
 export async function getAuthUser(): Promise<AuthUser | null> {
   const session = await getSession();
   if (!session) return null;
@@ -125,9 +146,18 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     .limit(1);
   if (!user) return null;
 
-  const [avatarUrl, name] = await Promise.all([
+  const [avatarUrl, name, badge] = await Promise.all([
     resolveAvatarUrl(session.userId, session.role, user.avatarUrl),
     resolveNameForRole(session.userId, session.role, user.name),
+    session.role === "employer" ? resolveEmployerBadge(session.userId) : null,
   ]);
-  return { email: user.email, name, avatarUrl, role: session.role };
+  return {
+    id: session.userId,
+    email: user.email,
+    name,
+    avatarUrl,
+    role: session.role,
+    position: badge?.position ?? null,
+    teamRole: badge?.teamRole ?? null,
+  };
 }

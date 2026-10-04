@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import EmployerDashboardShell from "@/components/EmployerDashboardShell";
 import EmployerOnboardingForm from "@/components/EmployerOnboardingForm";
@@ -32,6 +33,17 @@ export default async function EmployerCompanyPage() {
       active="company"
       heading="Company Profile"
       subheading="Everything jobseekers see about your company."
+      headerAction={
+        // A new tab, so unsaved edits on this form aren't lost.
+        <Link
+          href={`/companies/${profile.id}`}
+          target="_blank"
+          rel="noopener"
+          className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[22px] text-sm text-white transition-opacity hover:opacity-90"
+        >
+          View profile ↗
+        </Link>
+      }
     >
       {/* key forces a remount on company switch — see dashboard/page.tsx's comment. */}
       <EmployerOnboardingForm

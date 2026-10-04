@@ -5,6 +5,7 @@ type Bullet = { title: string; detail?: string };
 type ChatMessage = { from: "user" | "assistant"; text: string };
 
 export default function AssistantCard({
+  step,
   eyebrow,
   headline,
   bullets,
@@ -14,7 +15,13 @@ export default function AssistantCard({
   visual,
   reverse = false,
   accent = "teal",
+  background,
 }: {
+  /** Optional full-width background colour band behind the whole section. */
+  background?: string;
+  /** Numbers the section (shown in a small circle before the eyebrow) when
+   *  a page's sections read as a journey, e.g. the employer landing page. */
+  step?: number;
   eyebrow: string;
   headline: string;
   bullets: Bullet[];
@@ -34,7 +41,20 @@ export default function AssistantCard({
 }) {
   const copy = (
     <div>
-      <span className="inline-flex items-center rounded-full bg-[#F1F4F8] px-[14px] py-[7px] text-xs text-[#4B5468]">
+      <span
+        className={`inline-flex items-center gap-[8px] rounded-full bg-[#F1F4F8] py-[7px] pr-[14px] text-xs text-[#4B5468] ${
+          step ? "pl-[7px]" : "pl-[14px]"
+        }`}
+      >
+        {step && (
+          <span
+            className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white ${
+              accent === "gold" ? "bg-brand-gold-dark" : "bg-brand-teal-dark"
+            }`}
+          >
+            {step}
+          </span>
+        )}
         {eyebrow}
       </span>
 
@@ -116,7 +136,7 @@ export default function AssistantCard({
     </div>
   );
 
-  return (
+  const section = (
     <div className="relative z-10 mx-auto w-[1300px] max-w-[calc(100%-40px)] py-[clamp(40px,7vh,80px)]">
       <div
         className={`grid items-center gap-[48px] lg:gap-[64px] ${
@@ -136,5 +156,15 @@ export default function AssistantCard({
         )}
       </div>
     </div>
+  );
+
+  // A full-width colour band behind the section, to set it apart from its
+  // neighbours on the page.
+  return background ? (
+    <section className="relative z-10 w-full" style={{ backgroundColor: background }}>
+      {section}
+    </section>
+  ) : (
+    section
   );
 }

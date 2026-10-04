@@ -35,6 +35,7 @@ export default async function EmployerTeamPage() {
         initialMembers={members}
         initialActivity={activity}
         currentUserId={session.userId}
+        ownerPosition={profile.contactPosition}
       />
     </EmployerDashboardShell>
   );

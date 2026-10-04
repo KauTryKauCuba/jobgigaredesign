@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   APPLICATION_STATUS_COLOR,
   APPLICATION_STATUS_LABEL,
@@ -11,22 +11,27 @@ import {
   type InterviewDetails,
   type InterviewResponseStatus,
 } from "@/lib/applicationStatus";
-import { CheckIcon, FileIcon, UserIcon, XIcon } from "./icons";
+import { CheckIcon, ChevronDownIcon, FileIcon, PlusIcon, UserIcon, XIcon } from "./icons";
 import DatePicker from "./DatePicker";
 import Dropdown from "./Dropdown";
 import TimePicker from "./TimePicker";
+import type { ApplicantVideoPitch } from "./VideoPitchBadge";
+import VideoPitchPanel from "./VideoPitchPanel";
 import InterviewCountdown from "./InterviewCountdown";
 import RichTextContent from "./RichTextContent";
-import type { EmployerAddress } from "@/lib/employer-profile";
+import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import type { JobseekerProfileWithResume } from "@/lib/jobseeker-profile";
 import {
   EVALUATION_CRITERIA,
   EVALUATION_CRITERION_LABEL,
   RECOMMENDATION_COLOR,
   RECOMMENDATION_LABEL,
+  averageScore,
+  isPanelEvaluationComplete,
   type EvaluationCriterion,
   type InterviewEvaluation,
   type InterviewRecommendation,
+  type PanelEvaluation,
 } from "@/lib/interviewEvaluation";
 
 const PIPELINE_STATUSES = ["applied", "screened", "shortlisted", "interview", "interviewed", "evaluation", "evaluated", "offer", "hired"];
@@ -107,7 +112,12 @@ export type ApplicantDetail = {
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
+  // Combined panel result (what lists/badges show) and each interviewer's
+  // own scorecard for the current round.
   evaluation?: InterviewEvaluation | null;
+  evaluations?: PanelEvaluation[];
+  // The applicant's visible video pitch (null if none or hidden).
+  videoPitch?: ApplicantVideoPitch | null;
 };
 
 const inputClass =
@@ -124,17 +134,123 @@ function splitDateTime(iso: string | null): { date: string; time: string } {
   };
 }
 
+type InterviewerOption = { value: string; name: string; position: string | null; avatarUrl: string | null };
+
+// Same avatar+name+position look as the locked scheduler chip, but pickable
+// (not a plain-text Dropdown) — so a team member's photo shows up once
+// chosen, not just a name string.
+function InterviewerPicker({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: InterviewerOption[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-[52px] w-full items-center gap-[10px] rounded-[12px] border border-black/[0.1] px-[10px] text-left outline-none focus:border-brand-teal-dark"
+      >
+        {selected?.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={selected.avatarUrl} alt="" className="h-[28px] w-[28px] shrink-0 rounded-full object-cover" />
+        ) : (
+          <div className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
+            <UserIcon className="h-[14px] w-[14px]" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          {selected ? (
+            <>
+              <p className="truncate text-sm text-[#141B2E]">{selected.name}</p>
+              {selected.position && <p className="truncate text-xs text-[#9AA3B2]">{selected.position}</p>}
+            </>
+          ) : (
+            <p className="truncate text-sm text-[#9AA3B2]">Select a team member</p>
+          )}
+        </div>
+        <ChevronDownIcon
+          className={`h-[11px] w-[11px] shrink-0 text-[#9AA3B2] transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute z-10 mt-[6px] w-full rounded-[12px] border border-black/[0.1] bg-white p-[6px] shadow-[0_8px_24px_-8px_rgba(20,27,46,0.2)]">
+          <ul role="listbox" className="flex max-h-[240px] flex-col gap-[2px] overflow-y-auto">
+            {options.length === 0 ? (
+              <li className="px-[10px] py-[10px] text-sm text-[#9AA3B2]">No team members available</li>
+            ) : (
+              options.map((option) => (
+                <li key={option.value}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-[8px] rounded-[8px] px-[8px] py-[6px] text-left transition-colors hover:bg-[#F1F4F8] ${
+                      option.value === value ? "bg-[#F1F4F8]" : ""
+                    }`}
+                  >
+                    {option.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={option.avatarUrl} alt="" className="h-[24px] w-[24px] shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
+                        <UserIcon className="h-[12px] w-[12px]" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-[#141B2E]">{option.name}</p>
+                      {option.position && <p className="truncate text-xs text-[#9AA3B2]">{option.position}</p>}
+                    </div>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ApplicantDetailModal({
   applicant,
   updating,
   onUpdateStatus,
   onSetAttendance,
   onSaveEvaluation,
+  onCompleteEvaluation,
   savingEvaluation,
   onClose,
   initialInterviewDate,
   autoOpenInterviewForm,
   addresses = [],
+  currentUserId,
+  currentUserIsOwner = false,
+  currentUserName,
+  currentUserAvatarUrl,
+  currentUserRole,
+  teamMembers = [],
 }: {
   applicant: ApplicantDetail;
   updating: boolean;
@@ -145,6 +261,8 @@ export default function ApplicantDetailModal({
     recommendation: InterviewRecommendation,
     notes: string,
   ) => void;
+  // Owner-only: close out the evaluation without waiting for the rest of the panel.
+  onCompleteEvaluation?: () => void;
   savingEvaluation?: boolean;
   onClose: () => void;
   // Set when this modal was opened by picking a date on the interview
@@ -161,6 +279,18 @@ export default function ApplicantDetailModal({
   // "Post a job"'s own location field picks from, so an onsite interview
   // can reuse one instead of retyping it.
   addresses?: EmployerAddress[];
+  // The logged-in employer — pre-filled as the first interviewer on a
+  // brand-new interview, and how the evaluation section knows whether
+  // they're on the panel (and so owe a scorecard).
+  currentUserId?: string | null;
+  currentUserIsOwner?: boolean;
+  currentUserName?: string | null;
+  currentUserAvatarUrl?: string | null;
+  currentUserRole?: string | null;
+  // The company's team — panelists are picked from here (active members
+  // only) rather than typed freely, so an interviewer is always a real
+  // account on the Team page, not an arbitrary name.
+  teamMembers?: EmployerTeamMember[];
 }) {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -176,15 +306,21 @@ export default function ApplicantDetailModal({
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
+  // Each panelist fills in their own scorecard — the form only ever edits
+  // the signed-in user's, never someone else's.
+  const panelEvaluations = applicant.evaluations ?? [];
+  const myEvaluation = currentUserId
+    ? (panelEvaluations.find((e) => e.evaluatorUserId === currentUserId) ?? null)
+    : null;
   const [evaluationScores, setEvaluationScores] = useState<Partial<Record<EvaluationCriterion, number>>>(
-    applicant.evaluation?.scores ?? {},
+    myEvaluation?.scores ?? {},
   );
   const [evaluationRecommendation, setEvaluationRecommendation] = useState<InterviewRecommendation | null>(
-    applicant.evaluation?.recommendation ?? null,
+    myEvaluation?.recommendation ?? null,
   );
-  const [evaluationNotes, setEvaluationNotes] = useState(applicant.evaluation?.notes ?? "");
+  const [evaluationNotes, setEvaluationNotes] = useState(myEvaluation?.notes ?? "");
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
-  const [evaluationLocked, setEvaluationLocked] = useState(!!applicant.evaluation);
+  const [evaluationLocked, setEvaluationLocked] = useState(!!myEvaluation);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,15 +367,46 @@ export default function ApplicantDetailModal({
     interviewHasHappened &&
     (applicant.application.status === "evaluation" || applicant.application.status === "evaluated");
   const existingDateTime = splitDateTime(existing?.scheduledAt ?? null);
-  const todayIsoDate = splitDateTime(new Date().toISOString()).date;
+  // Captured once at mount — Date.now() during render is impure. The modal is
+  // short-lived, so a mount-time snapshot is accurate enough for "has the
+  // interview time passed yet".
+  const [openedAt] = useState(() => Date.now());
+  const todayIsoDate = splitDateTime(new Date(openedAt).toISOString()).date;
   const [round, setRound] = useState(existing ? existing.round : 1);
   const [mode, setMode] = useState<InterviewDetails["mode"]>(existing?.mode ?? "onsite");
-  const [date, setDate] = useState(existingDateTime.date || initialInterviewDate || "");
+  const [date, setDate] = useState(existingDateTime.date || initialInterviewDate || todayIsoDate);
   const [time, setTime] = useState(existingDateTime.time);
   const [durationMinutes, setDurationMinutes] = useState(existing?.durationMinutes ? String(existing.durationMinutes) : "60");
   const [location, setLocation] = useState(existing?.location ?? "");
   const [meetingLink, setMeetingLink] = useState(existing?.meetingLink ?? "");
-  const [interviewerName, setInterviewerName] = useState(existing?.interviewerName ?? "");
+  // Panel slots hold team-member account ids (each one owes an evaluation).
+  // An interview scheduled before that has only names — matched back to
+  // current team members where possible; a name with no matching member is
+  // dropped, since only members can sign in to evaluate.
+  const activeMembers = teamMembers.filter((m) => m.status === "active" && m.userId);
+  const memberName = (m: EmployerTeamMember) => m.name || m.email;
+  const [interviewers, setInterviewers] = useState<string[]>(() => {
+    // Someone who has since left the team can't stay on the panel (the
+    // server would reject the save) — drop them rather than show an
+    // empty-looking slot that blocks saving.
+    if (existing?.interviewerUserIds?.length) {
+      return existing.interviewerUserIds.filter((id) => activeMembers.some((m) => m.userId === id));
+    }
+    const legacyNames = existing?.interviewers?.length
+      ? existing.interviewers
+      : [(existing as { interviewerName?: string | null } | null)?.interviewerName].filter(
+          (n): n is string => !!n,
+        );
+    if (legacyNames.length > 0) {
+      return legacyNames
+        .map((name) => activeMembers.find((m) => memberName(m).trim() === name.trim())?.userId)
+        .filter((id): id is string => !!id);
+    }
+    // Brand-new interview (no `existing` at all) — default the first slot to
+    // whoever's actually scheduling it, since they're presumably on the panel.
+    if (!existing && currentUserId) return [currentUserId];
+    return [];
+  });
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -303,7 +470,16 @@ export default function ApplicantDetailModal({
       durationMinutes: durationMinutes.trim() ? Number(durationMinutes) : null,
       location: mode === "onsite" ? location.trim() : location.trim() || null,
       meetingLink: mode === "online" ? meetingLink.trim() : meetingLink.trim() || null,
-      interviewerName: interviewerName.trim() || null,
+      // Names are re-resolved server-side from these ids; sent here only so
+      // the optimistic local copy reads right until the response arrives.
+      interviewers: interviewers
+        .filter((id) => id.length > 0)
+        .map((id) => {
+          const member = activeMembers.find((m) => m.userId === id);
+          return member ? memberName(member) : "";
+        })
+        .filter((name) => name.length > 0),
+      interviewerUserIds: interviewers.filter((id) => id.length > 0),
       notes: notes.trim() || null,
     };
     onUpdateStatus("interview", details);
@@ -374,6 +550,7 @@ export default function ApplicantDetailModal({
 
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] pt-[18px] pb-[40px] sm:basis-2/3">
+            {applicant.videoPitch && <VideoPitchPanel key={applicant.videoPitch.id} pitch={applicant.videoPitch} />}
             <div>
               <p className="text-xs text-[#141B2E]">Candidate details</p>
               <div className="mt-[10px] grid grid-cols-1 gap-x-[16px] gap-y-[10px] sm:grid-cols-2">
@@ -749,14 +926,93 @@ export default function ApplicantDetailModal({
                 )}
 
                 <div>
-                  <label className="text-xs text-[#9AA3B2]">Interviewer (optional)</label>
-                  <input
-                    type="text"
-                    value={interviewerName}
-                    onChange={(e) => setInterviewerName(e.target.value)}
-                    placeholder="Who's conducting it"
-                    className={inputClass}
-                  />
+                  <label className="text-xs text-[#9AA3B2]">Interviewers (optional)</label>
+                  <p className="mt-[2px] text-xs text-[#9AA3B2]">
+                    Each interviewer will be asked to submit their own evaluation.
+                  </p>
+                  <div className="mt-[6px] flex flex-col gap-[6px]">
+                    {(() => {
+                      return interviewers.map((userId, i) => {
+                      // Locked only for the scheduler's own first-slot entry — a
+                      // legacy interview's first panelist isn't necessarily the
+                      // scheduler, so that stays editable/fixable.
+                      const isLockedScheduler = i === 0 && !!currentUserId && userId === currentUserId;
+                      if (isLockedScheduler) {
+                        const name = currentUserName?.trim() || "You";
+                        return (
+                          <div
+                            key={i}
+                            className="flex items-center gap-[10px] rounded-[12px] border border-black/[0.1] bg-[#F8FAFB] px-[10px] py-[7px]"
+                          >
+                            {currentUserAvatarUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={currentUserAvatarUrl}
+                                alt=""
+                                className="h-[28px] w-[28px] shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
+                                <UserIcon className="h-[14px] w-[14px]" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm text-[#141B2E]">{name}</p>
+                              {currentUserRole && (
+                                <p className="truncate text-xs text-[#9AA3B2]">{currentUserRole}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                      // Options for this slot: active team members not already
+                      // picked in another slot. Only members — every panelist
+                      // must be able to sign in and submit an evaluation.
+                      const otherChosen = new Set(interviewers.filter((_, j) => j !== i));
+                      const options: InterviewerOption[] = activeMembers
+                        .filter((m) => !otherChosen.has(m.userId as string))
+                        .map((m) => ({
+                          value: m.userId as string,
+                          name: memberName(m),
+                          position: m.position,
+                          avatarUrl: m.avatarUrl,
+                        }));
+                      return (
+                      <div key={i} className="flex items-center gap-[6px]">
+                        <div className="min-w-0 flex-1">
+                          <InterviewerPicker
+                            value={userId}
+                            options={options}
+                            onChange={(value) =>
+                              setInterviewers((prev) => prev.map((n, j) => (j === i ? value : n)))
+                            }
+                          />
+                        </div>
+                        {/* The first slot is whoever's scheduling this interview — kept
+                            on the panel rather than letting it be removed entirely. */}
+                        {i > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setInterviewers((prev) => prev.filter((_, j) => j !== i))}
+                            aria-label="Remove interviewer"
+                            className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] text-[#9AA3B2] hover:bg-black/[0.04] hover:text-[#141B2E]"
+                          >
+                            <XIcon className="h-[12px] w-[12px]" />
+                          </button>
+                        )}
+                      </div>
+                      );
+                      });
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => setInterviewers((prev) => [...prev, ""])}
+                      className="flex h-[32px] w-fit items-center gap-[6px] rounded-full border border-black/[0.1] px-[12px] text-xs text-[#4B5468] hover:bg-black/[0.03]"
+                    >
+                      <PlusIcon className="h-[9px] w-[9px]" />
+                      {interviewers.length === 0 ? "Add interviewer" : "Add another (panel)"}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -843,8 +1099,14 @@ export default function ApplicantDetailModal({
                     {existing.mode === "online" && existing.meetingLink && (
                       <p className="mt-[4px] truncate text-xs text-[#7C5CD1]">🔗 {existing.meetingLink}</p>
                     )}
-                    {existing.interviewerName && (
-                      <p className="mt-[4px] text-xs text-[#4B5468]">Interviewer: {existing.interviewerName}</p>
+                    {(existing.interviewers?.length ||
+                      (existing as { interviewerName?: string | null }).interviewerName) && (
+                      <p className="mt-[4px] text-xs text-[#4B5468]">
+                        {existing.interviewers?.length ? "Interviewers" : "Interviewer"}:{" "}
+                        {existing.interviewers?.length
+                          ? existing.interviewers.join(", ")
+                          : (existing as { interviewerName?: string | null }).interviewerName}
+                      </p>
                     )}
                     {existing.notes && <p className="mt-[4px] text-xs text-[#4B5468]">{existing.notes}</p>}
                     {applicant.application.interviewResponseStatus === "attended" && (
@@ -889,56 +1151,168 @@ export default function ApplicantDetailModal({
                 {existing &&
                   onSaveEvaluation &&
                   canEvaluate &&
-                  applicant.evaluation &&
-                  evaluationLocked &&
                   (() => {
-                    const savedEvaluation = applicant.evaluation!;
+                    // One row per panelist (each owes a scorecard), then any
+                    // extra scorecards from Owners who aren't on the panel
+                    // (or a pre-panel interview's single scorecard).
+                    const panelIds = existing.interviewerUserIds ?? [];
+                    const rows: { key: string; name: string; isMe: boolean; evaluation: PanelEvaluation | null }[] = [
+                      ...panelIds.map((id, i) => ({
+                        key: id,
+                        // The server stores names in the same order as the ids.
+                        name: existing.interviewers[i] ?? "Interviewer",
+                        isMe: id === currentUserId,
+                        evaluation: panelEvaluations.find((e) => e.evaluatorUserId === id) ?? null,
+                      })),
+                      ...panelEvaluations
+                        .filter((e) => !e.evaluatorUserId || !panelIds.includes(e.evaluatorUserId))
+                        .map((e, i) => ({
+                          key: e.evaluatorUserId ?? `legacy-${i}`,
+                          name: e.evaluatorName ?? "Earlier evaluation",
+                          isMe: !!e.evaluatorUserId && e.evaluatorUserId === currentUserId,
+                          evaluation: e,
+                        })),
+                    ];
+                    const submittedCount = panelIds.filter((id) =>
+                      panelEvaluations.some((e) => e.evaluatorUserId === id),
+                    ).length;
+                    const panelComplete = isPanelEvaluationComplete(existing.interviewerUserIds, panelEvaluations);
+                    const onPanel = !!currentUserId && panelIds.includes(currentUserId);
+                    const canSubmit = panelIds.length === 0 || onPanel || currentUserIsOwner;
+                    const summary = applicant.evaluation;
                     return (
                       <div className="rounded-[14px] border border-[#EAEDF2] bg-white p-[14px]">
                         <div className="flex items-center justify-between gap-[8px]">
-                          <p className="text-xs text-[#141B2E]">Interview evaluation</p>
-                          <span
-                            className={`shrink-0 rounded-full px-[9px] py-[2px] text-xs ${
-                              RECOMMENDATION_COLOR[savedEvaluation.recommendation].bg
-                            } ${RECOMMENDATION_COLOR[savedEvaluation.recommendation].text}`}
-                          >
-                            {RECOMMENDATION_LABEL[savedEvaluation.recommendation]}
-                          </span>
-                        </div>
-
-                        <div className="mt-[10px] flex flex-col gap-[6px]">
-                          {EVALUATION_CRITERIA.filter((criterion) => savedEvaluation.scores[criterion] !== undefined).map(
-                            (criterion) => (
-                              <div key={criterion} className="flex items-center justify-between gap-[8px]">
-                                <span className="text-xs text-[#4B5468]">{EVALUATION_CRITERION_LABEL[criterion]}</span>
-                                <span className="text-xs text-[#141B2E]">
-                                  {savedEvaluation.scores[criterion]}/5
-                                </span>
-                              </div>
-                            ),
+                          <p className="text-xs text-[#141B2E]">Interview evaluations</p>
+                          {summary && (
+                            <span
+                              className={`shrink-0 rounded-full px-[9px] py-[2px] text-xs ${
+                                RECOMMENDATION_COLOR[summary.recommendation].bg
+                              } ${RECOMMENDATION_COLOR[summary.recommendation].text}`}
+                              title={rows.length > 1 ? "Panel average" : undefined}
+                            >
+                              {RECOMMENDATION_LABEL[summary.recommendation]}
+                            </span>
                           )}
                         </div>
-
-                        {savedEvaluation.notes && (
-                          <p className="mt-[10px] whitespace-pre-line text-xs text-[#4B5468]">{savedEvaluation.notes}</p>
+                        {panelIds.length > 0 && (
+                          <p className="mt-[2px] text-xs text-[#9AA3B2]">
+                            {panelComplete
+                              ? "Every interviewer has submitted."
+                              : `${submittedCount} of ${panelIds.length} interviewer${panelIds.length === 1 ? "" : "s"} evaluated`}
+                          </p>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => setEvaluationLocked(false)}
-                          className="mt-[10px] flex h-[32px] w-full items-center justify-center rounded-full border border-black/[0.1] text-sm text-[#141B2E] hover:bg-black/[0.03]"
-                        >
-                          Edit evaluation
-                        </button>
+                        {rows.length > 0 && (
+                          <div className="mt-[10px] flex flex-col gap-[6px]">
+                            {rows.map((row) => {
+                              const avg = row.evaluation ? averageScore(row.evaluation.scores) : null;
+                              return (
+                                <details
+                                  key={row.key}
+                                  className="group rounded-[10px] border border-[#EAEDF2] bg-[#F8FAFB] px-[10px] py-[8px]"
+                                >
+                                  <summary
+                                    className={`flex list-none items-center gap-[8px] ${row.evaluation ? "cursor-pointer" : "pointer-events-none"}`}
+                                  >
+                                    <span className="min-w-0 flex-1 truncate text-xs text-[#141B2E]">
+                                      {row.name}
+                                      {row.isMe && <span className="text-[#9AA3B2]"> (you)</span>}
+                                    </span>
+                                    {row.evaluation ? (
+                                      <>
+                                        {avg !== null && (
+                                          <span className="shrink-0 text-xs text-[#4B5468]">{avg.toFixed(1)}/5</span>
+                                        )}
+                                        <span
+                                          className={`shrink-0 rounded-full px-[8px] py-[1px] text-xs ${
+                                            RECOMMENDATION_COLOR[row.evaluation.recommendation].bg
+                                          } ${RECOMMENDATION_COLOR[row.evaluation.recommendation].text}`}
+                                        >
+                                          {RECOMMENDATION_LABEL[row.evaluation.recommendation]}
+                                        </span>
+                                        <ChevronDownIcon className="h-[9px] w-[9px] shrink-0 text-[#9AA3B2] transition-transform group-open:rotate-180" />
+                                      </>
+                                    ) : (
+                                      <span className="shrink-0 rounded-full bg-[#F1F4F8] px-[8px] py-[1px] text-xs text-[#9AA3B2]">
+                                        Pending
+                                      </span>
+                                    )}
+                                  </summary>
+                                  {row.evaluation && (
+                                    <div className="mt-[8px] flex flex-col gap-[4px] border-t border-[#EAEDF2] pt-[8px]">
+                                      {EVALUATION_CRITERIA.filter((c) => row.evaluation!.scores[c] !== undefined).map((c) => (
+                                        <div key={c} className="flex items-center justify-between gap-[8px]">
+                                          <span className="text-xs text-[#4B5468]">{EVALUATION_CRITERION_LABEL[c]}</span>
+                                          <span className="text-xs text-[#141B2E]">{row.evaluation!.scores[c]}/5</span>
+                                        </div>
+                                      ))}
+                                      {row.evaluation.notes && (
+                                        <p className="mt-[4px] whitespace-pre-line text-xs text-[#4B5468]">
+                                          {row.evaluation.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </details>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {!canSubmit && (
+                          <p className="mt-[10px] text-xs text-[#9AA3B2]">
+                            Only interviewers on this panel (or an Owner) can submit an evaluation.
+                          </p>
+                        )}
+
+                        {canSubmit && myEvaluation && evaluationLocked && (
+                          <button
+                            type="button"
+                            onClick={() => setEvaluationLocked(false)}
+                            className="mt-[10px] flex h-[32px] w-full items-center justify-center rounded-full border border-black/[0.1] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                          >
+                            Edit my evaluation
+                          </button>
+                        )}
+
+                        {currentUserIsOwner &&
+                          onCompleteEvaluation &&
+                          applicant.application.status === "evaluation" &&
+                          !panelComplete &&
+                          panelEvaluations.length > 0 && (
+                            <div className="mt-[10px] rounded-[10px] bg-[#FFF3D6] p-[10px]">
+                              <p className="text-xs text-brand-gold-dark">
+                                Not everyone has evaluated yet. As an Owner you can close this out now with the
+                                scorecards submitted so far.
+                              </p>
+                              <button
+                                type="button"
+                                disabled={savingEvaluation}
+                                onClick={onCompleteEvaluation}
+                                className="mt-[8px] flex h-[30px] w-full items-center justify-center rounded-full border border-brand-gold-dark text-sm text-brand-gold-dark hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Mark evaluation complete
+                              </button>
+                            </div>
+                          )}
                       </div>
                     );
                   })()}
 
-                {existing && onSaveEvaluation && canEvaluate && !evaluationLocked && (
+                {existing &&
+                  onSaveEvaluation &&
+                  canEvaluate &&
+                  // Also shown when locked but nothing of mine is saved — i.e.
+                  // a submit that failed — so the form doesn't just vanish.
+                  (!evaluationLocked || !myEvaluation) &&
+                  ((existing.interviewerUserIds ?? []).length === 0 ||
+                    (!!currentUserId && (existing.interviewerUserIds ?? []).includes(currentUserId)) ||
+                    currentUserIsOwner) && (
                   <div className="rounded-[14px] border border-[#EAEDF2] bg-white p-[14px]">
-                    <p className="text-xs text-[#141B2E]">Interview evaluation</p>
+                    <p className="text-xs text-[#141B2E]">Your evaluation</p>
                     <p className="mt-[1px] text-xs text-[#9AA3B2]">
-                      Rate the candidate on round {existing.round} and give a recommendation.
+                      Rate the candidate on round {existing.round} and give your recommendation.
                     </p>
 
                     <div className="mt-[10px] flex flex-col gap-[8px]">
@@ -1005,7 +1379,7 @@ export default function ApplicantDetailModal({
                       onClick={submitEvaluation}
                       className="mt-[10px] flex h-[32px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {applicant.evaluation ? "Save changes" : "Evaluate"}
+                      {myEvaluation ? "Save changes" : "Submit my evaluation"}
                     </button>
                   </div>
                 )}
@@ -1036,18 +1410,17 @@ export default function ApplicantDetailModal({
                     // the server rejects it from anywhere else too (see
                     // api/employer/applications/[id]/route.ts).
                     const needsAttendanceBeforeEvaluation = status === "evaluation" && applicant.application.status === "interview";
-                    // Evaluated only comes from actually saving scores via
-                    // onSaveEvaluation while in "Evaluation" — the server's
-                    // own SETTABLE_STATUSES rejects a direct update into
-                    // "evaluated", so a raw click here would always 400.
-                    const needsEvaluationFirst =
-                      status === "evaluated" && !isCurrent && !isPast && applicant.application.status !== "evaluation";
+                    // Evaluated is only reached by the panel finishing their
+                    // scorecards (or an Owner's "Mark evaluation complete") —
+                    // the server's SETTABLE_STATUSES rejects a direct update
+                    // into "evaluated", so a raw click here would always 400.
+                    const needsEvaluationFirst = status === "evaluated" && !isCurrent && !isPast;
                     const disabledReason = needsAttendanceFirst
                       ? "Mark attendance above first"
                       : needsAttendanceBeforeEvaluation
                         ? "Mark attendance above first"
                         : needsEvaluationFirst
-                          ? "Rate the candidate below first"
+                          ? "Moves here once every interviewer has submitted their evaluation"
                           : undefined;
                     return (
                       <button
@@ -1076,27 +1449,33 @@ export default function ApplicantDetailModal({
                   applicant.application.status === "evaluation" ||
                   applicant.application.status === "evaluated") && (
                   <div className="flex flex-col gap-[8px]">
-                    {onSetAttendance && applicant.application.status === "interview" && (
-                      <div className="flex flex-col gap-[6px]">
-                        <p className="text-xs text-[#141B2E]">Attendance</p>
-                        <button
-                          type="button"
-                          disabled={updating}
-                          onClick={() => onSetAttendance("attended")}
-                          className="flex h-[30px] w-full items-center justify-center rounded-full border border-black/[0.1] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Mark as attended
-                        </button>
-                        <button
-                          type="button"
-                          disabled={updating}
-                          onClick={() => onSetAttendance("no_show")}
-                          className="flex h-[30px] w-full items-center justify-center rounded-full border border-black/[0.1] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Mark as no-show
-                        </button>
-                      </div>
-                    )}
+                    {onSetAttendance &&
+                      applicant.application.status === "interview" &&
+                      (existing && new Date(existing.scheduledAt).getTime() <= openedAt ? (
+                        <div className="flex flex-col gap-[6px]">
+                          <p className="text-xs text-[#141B2E]">Attendance</p>
+                          <button
+                            type="button"
+                            disabled={updating}
+                            onClick={() => onSetAttendance("attended")}
+                            className="flex h-[30px] w-full items-center justify-center rounded-full border border-black/[0.1] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Mark as attended
+                          </button>
+                          <button
+                            type="button"
+                            disabled={updating}
+                            onClick={() => onSetAttendance("no_show")}
+                            className="flex h-[30px] w-full items-center justify-center rounded-full border border-black/[0.1] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Mark as no-show
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#9AA3B2]">
+                          Attendance can be marked once the scheduled interview time arrives.
+                        </p>
+                      ))}
                     <button
                       type="button"
                       onClick={() => {

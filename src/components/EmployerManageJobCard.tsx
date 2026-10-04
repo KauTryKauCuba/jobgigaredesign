@@ -4,7 +4,8 @@ import ManageJobMockup from "./ManageJobMockup";
 export default function EmployerManageJobCard() {
   return (
     <AssistantCard
-      eyebrow="For employers"
+      step={3}
+      eyebrow="Track every posting"
       headline="Every posting, tracked from day one"
       bullets={[
         {

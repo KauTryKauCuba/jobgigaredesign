@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import CompanyBadgesCard from "./CompanyBadgesCard";
+import CompanyBanner from "./CompanyBanner";
 import Dropdown from "./Dropdown";
 import { useDraftName } from "./DraftNameContext";
 import Field from "./Field";
@@ -18,6 +19,9 @@ import type { BadgeKey } from "@/lib/badge-definitions";
 import type { EmployerAddress, EmployerProfile } from "@/lib/employer-profile";
 import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
+import { POSITIONS } from "@/lib/positions";
+
+const OTHER_POSITION = "__other__" as const;
 
 const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"] as const;
 const COMPANY_TYPES = ["Startup", "SME", "MNC", "GLC", "Government"] as const;
@@ -74,9 +78,12 @@ type AddressEntry = {
   postcode: string;
 };
 
-function blankAddress(label = ""): AddressEntry {
+// `key` doubles as the inputs' id/htmlFor, so the address rendered on first
+// load needs a fixed one — a random key would differ between the server
+// render and hydration. Addresses added later (client-only) can be random.
+function blankAddress(label = "", key = Math.random().toString(36).slice(2)): AddressEntry {
   return {
-    key: Math.random().toString(36).slice(2),
+    key,
     label,
     addressLine1: "",
     addressLine2: "",
@@ -126,6 +133,9 @@ const AVATAR_ACCEPT = "image/*";
 const AVATAR_MAX_BYTES = 3 * 1024 * 1024;
 const LOGO_ACCEPT = "image/*";
 const LOGO_MAX_BYTES = 3 * 1024 * 1024;
+// A phone photo straight off the camera fits; the server shrinks it to a
+// light 1500x500 WebP anyway.
+const BANNER_MAX_BYTES = 8 * 1024 * 1024;
 
 const cardClass = gradientFrameClass("teal");
 const inputClass = formInputClass("teal");
@@ -134,6 +144,7 @@ type DraftData = {
   avatarUrl: string | null;
   contactName: string;
   contactRole: (typeof CONTACT_ROLES)[number] | "";
+  contactPosition: string;
   contactPhone: string;
   contactEmail: string;
   companyName: string;
@@ -199,19 +210,17 @@ export default function EmployerOnboardingForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  // Existing profile fields load locked — the user has to hit "Edit" before
-  // typing unlocks them. New (non-edit) profiles are never locked, since
-  // there's nothing to protect yet.
-  const [contactEditing, setContactEditing] = useState(mode !== "edit");
-  const [companyEditing, setCompanyEditing] = useState(mode !== "edit");
+  // Both sections (My Profile's contact fields, Company Profile's company
+  // fields) are always editable in edit mode — unsaved work is detected by
+  // dirtiness (isContactDirty / isCompanyDirty below), not an editing toggle.
 
   // Same "intercept sidebar navigation" pattern as Post a Job's unsaved-work
-  // guard and the jobseeker profile form — unlocking "Edit" here without
+  // guard and the jobseeker profile form — making changes here without
   // saving prompts a confirm dialog instead of silently discarding edits.
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [pendingProceed, setPendingProceed] = useState<(() => void) | null>(null);
   function guardNavigation(proceed: () => void) {
-    if (mode === "edit" && (contactEditing || companyEditing)) {
+    if (mode === "edit" && (isContactDirty || isCompanyDirty)) {
       setPendingProceed(() => proceed);
       setShowLeaveConfirm(true);
     } else {
@@ -258,10 +267,36 @@ export default function EmployerOnboardingForm({
       initialDraft?.contactRole ??
       "",
   );
+  // Position is stored as one plain string (`contactPosition`), but picked
+  // via a searchable standardized list + an "Other" free-text fallback — the
+  // split only exists in this component's own state, not persisted as two
+  // fields, so editing an existing custom ("Other") value still round-trips.
+  const initialContactPositionValue = initialProfile?.contactPosition ?? initialDraft?.contactPosition ?? "";
+  const [contactPositionChoice, setContactPositionChoice] = useState<(typeof POSITIONS)[number] | "" | "__other__">(
+    () => {
+      if (!initialContactPositionValue) return "";
+      return (POSITIONS as readonly string[]).includes(initialContactPositionValue)
+        ? (initialContactPositionValue as (typeof POSITIONS)[number])
+        : OTHER_POSITION;
+    },
+  );
+  const [contactPositionOther, setContactPositionOther] = useState(
+    contactPositionChoice === OTHER_POSITION ? initialContactPositionValue : "",
+  );
+  const contactPosition = contactPositionChoice === OTHER_POSITION ? contactPositionOther : contactPositionChoice;
   const [contactPhone, setContactPhone] = useState(initialProfile?.contactPhone ?? initialDraft?.contactPhone ?? "");
-  const [contactEmail, setContactEmail] = useState(
+  const [contactEmail] = useState(
     initialProfile?.contactEmail ?? initialDraft?.contactEmail ?? initialContactEmail ?? "",
   );
+  // Snapshot of the values the contact section loaded with, so edits to the
+  // always-editable fields can still be detected for the leave-confirm guard.
+  const initialContactSnapshot = useRef({ avatarUrl, contactName, contactRole, contactPosition, contactPhone });
+  const isContactDirty =
+    avatarUrl !== initialContactSnapshot.current.avatarUrl ||
+    contactName !== initialContactSnapshot.current.contactName ||
+    contactRole !== initialContactSnapshot.current.contactRole ||
+    contactPosition !== initialContactSnapshot.current.contactPosition ||
+    contactPhone !== initialContactSnapshot.current.contactPhone;
   const [companyName, setCompanyName] = useState(initialProfile?.companyName ?? initialDraft?.companyName ?? "");
   const [ssmNumber, setSsmNumber] = useState(initialProfile?.ssmNumber ?? initialDraft?.ssmNumber ?? "");
   const [industry, setIndustry] = useState(initialProfile?.industry ?? initialDraft?.industry ?? "");
@@ -281,7 +316,7 @@ export default function EmployerOnboardingForm({
   const [addresses, setAddresses] = useState<AddressEntry[]>(
     initialAddresses?.length
       ? initialAddresses.map(addressFromSaved)
-      : (initialDraft?.addresses?.length ? initialDraft.addresses : [blankAddress("Headquarters")]),
+      : (initialDraft?.addresses?.length ? initialDraft.addresses : [blankAddress("Headquarters", "address-initial")]),
   );
 
   function addAddress() {
@@ -324,6 +359,11 @@ export default function EmployerOnboardingForm({
   const [officePhotoUrl, setOfficePhotoUrl] = useState<string | null>(
     initialProfile?.officePhotoUrl ?? initialDraft?.officePhotoUrl ?? null,
   );
+  // Cover banner — a freshly picked image is a data URL until saved (the
+  // server crops it to 3:1 and stores it); not kept in the onboarding draft.
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(initialProfile?.bannerUrl ?? null);
+  const [bannerError, setBannerError] = useState<string | null>(null);
   const [recentNews, setRecentNews] = useState<{ title: string; url: string }[]>(
     initialProfile?.recentNews ?? initialDraft?.recentNews ?? [],
   );
@@ -332,6 +372,35 @@ export default function EmployerOnboardingForm({
     initialProfile?.benefits ?? initialDraft?.benefits ?? ["EPF", "SOCSO", "EIS"],
   );
   const [benefitInput, setBenefitInput] = useState("");
+
+  // Same idea as initialContactSnapshot — the company fields as they loaded
+  // (or were last saved), serialized so any edit, including to addresses,
+  // benefits or news entries, flips isCompanyDirty for the leave-confirm guard.
+  const companySnapshotValue = JSON.stringify({
+    companyName,
+    ssmNumber,
+    industry,
+    industryCategory,
+    companySize,
+    // `key` is a client-only React list id, not saved data — left out.
+    addresses: addresses.map((a) => [a.label, a.addressLine1, a.addressLine2, a.city, a.state, a.postcode]),
+    companyDescription,
+    websiteUrl,
+    companyEmail,
+    companyPhone,
+    companyLinkedin,
+    companyFacebook,
+    companyInstagram,
+    foundedYear,
+    companyType,
+    logoUrl,
+    officePhotoUrl,
+    bannerUrl,
+    recentNews,
+    benefits,
+  });
+  const initialCompanySnapshot = useRef(companySnapshotValue);
+  const isCompanyDirty = companySnapshotValue !== initialCompanySnapshot.current;
 
   // Editing an existing profile prefills every field from initialProfile
   // above and skips the draft fetch/autosave machinery below entirely —
@@ -411,6 +480,7 @@ export default function EmployerOnboardingForm({
         avatarUrl,
         contactName,
         contactRole,
+        contactPosition,
         contactPhone,
         contactEmail,
         companyName,
@@ -448,6 +518,7 @@ export default function EmployerOnboardingForm({
     avatarUrl,
     contactName,
     contactRole,
+    contactPosition,
     contactPhone,
     contactEmail,
     companyName,
@@ -482,6 +553,7 @@ export default function EmployerOnboardingForm({
   const formValid =
     contactName.trim().length > 0 &&
     contactRole.trim().length > 0 &&
+    contactPosition.trim().length > 0 &&
     contactPhone.trim().length > 0 &&
     isValidEmail(contactEmail) &&
     companyName.trim().length > 0 &&
@@ -498,6 +570,7 @@ export default function EmployerOnboardingForm({
   const contactRequiredChecklist = [
     { label: "Full name", done: contactName.trim().length > 0, fieldId: "contactName" },
     { label: "Your role", done: contactRole.trim().length > 0, fieldId: "contactRole" },
+    { label: "Position", done: contactPosition.trim().length > 0, fieldId: "contactPosition" },
     { label: "Phone number", done: contactPhone.trim().length > 0, fieldId: "contactPhone" },
   ];
   const companyRequiredChecklist = [
@@ -617,6 +690,25 @@ export default function EmployerOnboardingForm({
     const reader = new FileReader();
     reader.onload = () => setLogoUrl(typeof reader.result === "string" ? reader.result : null);
     reader.onerror = () => setLogoError("Couldn't read that image.");
+    reader.readAsDataURL(picked);
+  }
+
+  function handleBannerFile(files: FileList | null) {
+    const picked = files?.[0];
+    if (bannerInputRef.current) bannerInputRef.current.value = "";
+    if (!picked) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(picked.type)) {
+      setBannerError("Choose a JPG, PNG or WebP image.");
+      return;
+    }
+    if (picked.size > BANNER_MAX_BYTES) {
+      setBannerError("Image is too large — max 8 MB.");
+      return;
+    }
+    setBannerError(null);
+    const reader = new FileReader();
+    reader.onload = () => setBannerUrl(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setBannerError("Couldn't read that image.");
     reader.readAsDataURL(picked);
   }
 
@@ -944,6 +1036,7 @@ export default function EmployerOnboardingForm({
           avatarUrl,
           contactName,
           contactRole,
+          contactPosition,
           contactPhone,
           contactEmail,
           companyName,
@@ -971,6 +1064,7 @@ export default function EmployerOnboardingForm({
           foundedYear: foundedYear.trim() ? Number(foundedYear) : null,
           companyType: companyType || null,
           officePhotoUrl,
+          bannerUrl,
           recentNews: recentNews.filter((item) => item.title.trim() && item.url.trim()),
         }),
       });
@@ -983,8 +1077,12 @@ export default function EmployerOnboardingForm({
       if (!res.ok) throw new Error(data.error ?? "Couldn't save your company profile.");
       if (mode === "edit") {
         setSavedAt(Date.now());
-        setContactEditing(false);
-        setCompanyEditing(false);
+        initialContactSnapshot.current = { avatarUrl, contactName, contactRole, contactPosition, contactPhone };
+        // A freshly uploaded banner comes back as its stored path — use that
+        // from now on, and count it as the saved value.
+        const savedBannerUrl: string | null = data.bannerUrl !== undefined ? data.bannerUrl : bannerUrl;
+        setBannerUrl(savedBannerUrl);
+        initialCompanySnapshot.current = JSON.stringify({ ...JSON.parse(companySnapshotValue), bannerUrl: savedBannerUrl });
         router.refresh();
       } else {
         router.push("/employer/dashboard");
@@ -1046,7 +1144,6 @@ export default function EmployerOnboardingForm({
           </p>
 
           <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-            <fieldset disabled={mode === "edit" && !contactEditing} className="contents">
             <div className="col-span-full flex items-center gap-[14px]">
               <input
                 ref={avatarInputRef}
@@ -1114,6 +1211,33 @@ export default function EmployerOnboardingForm({
                 onChange={(value) => setContactRole(value as (typeof CONTACT_ROLES)[number] | "")}
               />
             </Field>
+            <Field required label="Position" htmlFor="contactPosition" className="col-span-full">
+              <Dropdown
+                id="contactPosition"
+                label="Position"
+                searchable
+                searchPlaceholder="Search positions..."
+                value={contactPositionChoice}
+                options={[
+                  { value: "" as const, label: "Select your position" },
+                  ...POSITIONS.map((p) => ({ value: p as (typeof POSITIONS)[number] | "" | "__other__", label: p })),
+                  { value: OTHER_POSITION, label: "Other" },
+                ]}
+                onChange={(value) => setContactPositionChoice(value)}
+              />
+            </Field>
+            {contactPositionChoice === OTHER_POSITION && (
+              <Field required label="Your position" htmlFor="contactPositionOther" className="col-span-full">
+                <input
+                  id="contactPositionOther"
+                  type="text"
+                  value={contactPositionOther}
+                  onChange={(e) => setContactPositionOther(e.target.value)}
+                  placeholder="e.g. Senior Graphic Designer"
+                  className={inputClass}
+                />
+              </Field>
+            )}
             <PhoneInput
               required
               id="contactPhone"
@@ -1133,29 +1257,18 @@ export default function EmployerOnboardingForm({
                 className={`${inputClass} cursor-not-allowed bg-[#F8FAFB] text-[#9AA3B2]`}
               />
             </Field>
-            </fieldset>
 
             {!showCompany && (
               <div className="col-span-full mt-[8px] flex flex-col gap-[8px]">
                 {error && <p className="text-xs text-red-500">{error}</p>}
-                {mode === "edit" && !contactEditing ? (
-                  <button
-                    type="button"
-                    onClick={() => setContactEditing(true)}
-                    className="flex h-[38px] w-full items-center justify-center rounded-full border border-brand-teal-dark text-sm text-brand-teal-dark transition-opacity hover:opacity-90"
-                  >
-                    Edit
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={!formValid || submitting}
-                    onClick={() => handleSubmit()}
-                    className="flex h-[38px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {submitting ? "Saving…" : saveLabel}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={!formValid || submitting}
+                  onClick={() => handleSubmit()}
+                  className="flex h-[38px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {submitting ? "Saving…" : saveLabel}
+                </button>
                 {savedAt && !error && <p className="text-xs text-[#008990]">Saved.</p>}
               </div>
             )}
@@ -1362,7 +1475,50 @@ export default function EmployerOnboardingForm({
           </p>
 
           <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-            <fieldset disabled={mode === "edit" && !companyEditing} className="contents">
+            <fieldset className="contents">
+            {/* Cover banner — shown as cropped (3:1) on the Find companies
+                card and the company page; the gradient is what visitors see
+                until one is uploaded. */}
+            <div className="col-span-full flex flex-col gap-[6px]">
+              <p className="text-xs text-[#4B5468]">Cover banner (optional)</p>
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => handleBannerFile(e.target.files)}
+              />
+              <div className="relative aspect-[3/1] w-full overflow-hidden rounded-[14px] border border-[#EAEDF2]">
+                <CompanyBanner url={bannerUrl} />
+                <div className="absolute bottom-[10px] right-[10px] flex items-center gap-[6px]">
+                  <button
+                    type="button"
+                    onClick={() => bannerInputRef.current?.click()}
+                    className="rounded-full bg-white/95 px-[12px] py-[6px] text-sm text-[#141B2E] shadow-[0_1px_3px_rgba(0,0,0,0.15)] hover:bg-white"
+                  >
+                    {bannerUrl ? "Change banner" : "Upload banner"}
+                  </button>
+                  {bannerUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBannerUrl(null);
+                        setBannerError(null);
+                      }}
+                      className="rounded-full bg-white/95 px-[12px] py-[6px] text-sm text-[#9AA3B2] shadow-[0_1px_3px_rgba(0,0,0,0.15)] hover:text-[#141B2E]"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-[#9AA3B2]">
+                Wide image, at least 1500 × 500 px (3:1) — it&rsquo;s cropped from the centre, so keep text away from
+                the edges. JPG, PNG or WebP, up to 8 MB.
+              </p>
+              {bannerError && <p className="text-xs text-red-500">{bannerError}</p>}
+            </div>
+
             <div className="col-span-full flex items-center gap-[14px]">
               <input
                 ref={logoInputRef}
@@ -1415,7 +1571,6 @@ export default function EmployerOnboardingForm({
                 value={companyDescription}
                 onChange={setCompanyDescription}
                 placeholder="What your company does, and what it's like to work there"
-                disabled={mode === "edit" && !companyEditing}
               />
             </Field>
 
@@ -1591,7 +1746,7 @@ export default function EmployerOnboardingForm({
           </p>
 
           <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-            <fieldset disabled={mode === "edit" && !companyEditing} className="contents">
+            <fieldset className="contents">
             <Field required label="SSM registration number" htmlFor="ssmNumber">
               <input
                 id="ssmNumber"
@@ -1827,24 +1982,14 @@ export default function EmployerOnboardingForm({
 
             {error && <p className="col-span-full text-xs text-red-500">{error}</p>}
 
-            {mode === "edit" && !companyEditing ? (
-              <button
-                type="button"
-                onClick={() => setCompanyEditing(true)}
-                className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full border border-brand-teal-dark text-sm text-brand-teal-dark transition-opacity hover:opacity-90"
-              >
-                Edit
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={!formValid || submitting}
-                onClick={() => handleSubmit()}
-                className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {submitting ? "Saving…" : saveLabel}
-              </button>
-            )}
+            <button
+              type="button"
+              disabled={!formValid || submitting}
+              onClick={() => handleSubmit()}
+              className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {submitting ? "Saving…" : saveLabel}
+            </button>
             {savedAt && !error && <p className="col-span-full text-xs text-[#008990]">Saved.</p>}
           </div>
         </div>

@@ -687,22 +687,24 @@ export default function OnboardingForm({
   accountEmail: initialAccountEmail,
   initialAvatarUrl,
   initialDraft,
+  topSlot,
 }: {
   mode?: "onboarding" | "edit";
   initialProfile?: JobseekerProfile;
   accountEmail?: string;
   initialAvatarUrl?: string | null;
   initialDraft?: Partial<DraftData> | null;
+  /** Rendered at the top of the main column, so it shares the form's width. */
+  topSlot?: React.ReactNode;
 } = {}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const saveLabel = mode === "edit" ? "Save changes" : "Finish";
-  // Existing profiles load locked — the user has to hit "Edit" before typing
-  // unlocks the form and autosave can kick in. A brand-new profile (the
-  // onboarding flow) is never locked, since there's nothing to protect yet.
-  const [isEditing, setIsEditing] = useState(mode !== "edit");
+  // Edit mode is always editable — same as the employer's My Profile/Company
+  // Profile. Unsaved work is detected by dirtiness (isProfileDirty below),
+  // not by an "Edit" unlock toggle.
 
   useEffect(() => {
     if (!savedAt) return;
@@ -712,13 +714,13 @@ export default function OnboardingForm({
 
   // Same "intercept sidebar navigation" pattern as Post a Job's unsaved-work
   // guard — the dashboard shell's sidebar links call whatever guard is
-  // provided via context before navigating away, so unlocking "Edit" here
-  // without saving prompts the same confirm dialog rather than silently
-  // discarding in-progress edits.
+  // provided via context before navigating away, so leaving with real
+  // unsaved changes prompts the same confirm dialog rather than silently
+  // discarding them (and leaving an untouched form never prompts).
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [pendingProceed, setPendingProceed] = useState<(() => void) | null>(null);
   function guardNavigation(proceed: () => void) {
-    if (mode === "edit" && isEditing) {
+    if (mode === "edit" && isProfileDirty) {
       setPendingProceed(() => proceed);
       setShowLeaveConfirm(true);
     } else {
@@ -976,6 +978,47 @@ export default function OnboardingForm({
       ? mapReferences(initialProfile.references)
       : (initialDraft?.references?.map((entry) => ({ ...entry, id: newId() })) ?? []),
   );
+
+  // Every saved field as it loaded (or was last saved), serialized — any
+  // edit, including adding/removing an experience, education, language or
+  // reference entry, flips isProfileDirty for the leave-confirm guard. Same
+  // approach as the employer form's initialCompanySnapshot. The resume isn't
+  // included: in edit mode it's managed separately from the sidebar card.
+  const profileSnapshotValue = JSON.stringify({
+    avatarUrl,
+    fullName,
+    dateOfBirth,
+    gender,
+    maritalStatus,
+    nationality,
+    phone,
+    drivingLicense,
+    city,
+    state,
+    targetRole,
+    preferredIndustry,
+    yearsExperience,
+    professionalSkills,
+    softSkills,
+    otherSkills,
+    employmentType,
+    expectedSalaryMin,
+    expectedSalaryMax,
+    bio,
+    linkedinUrl,
+    portfolioUrl,
+    githubUrl,
+    workArrangement,
+    workAuthorization,
+    noticePeriod,
+    workExperiences: workExperiences.map((e) => [e.company, e.title, e.startDate, e.endDate, e.isCurrent, e.achievements]),
+    education: education.map((e) => [e.institution, e.fieldOfStudy, e.qualificationTier, e.cgpa, e.graduationYear]),
+    certifications: certifications.map((e) => [e.name, e.issuer, e.year]),
+    languages: languages.map((e) => [e.language, e.spokenLevel, e.writtenLevel]),
+    references: references.map((e) => [e.fullName, e.jobTitle, e.company, e.phone, e.email]),
+  });
+  const initialProfileSnapshot = useRef(profileSnapshotValue);
+  const isProfileDirty = profileSnapshotValue !== initialProfileSnapshot.current;
 
   const [autosaveError, setAutosaveError] = useState(false);
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1950,7 +1993,7 @@ export default function OnboardingForm({
       if (!res.ok) throw new Error(data.error ?? "Couldn't save your profile.");
       if (mode === "edit") {
         setSavedAt(Date.now());
-        setIsEditing(false);
+        initialProfileSnapshot.current = profileSnapshotValue;
         router.refresh();
       } else {
         router.refresh();
@@ -2133,6 +2176,7 @@ export default function OnboardingForm({
       )}
 
       <div className={`flex min-w-0 flex-col gap-[20px] ${mode === "edit" ? "lg:flex-1" : "xl:flex-[2]"}`}>
+      {topSlot}
       <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${gradientFrameClass("gold")}`}>
         <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Set up your profile</h1>
@@ -2146,7 +2190,7 @@ export default function OnboardingForm({
           )}
 
           <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-          <fieldset disabled={mode === "edit" && !isEditing} className="contents">
+          <fieldset className="contents">
           <CategoryHeading label="Basic info" first />
           <div className="col-span-full flex items-center gap-[14px]">
             <input
@@ -2568,7 +2612,7 @@ export default function OnboardingForm({
           </p>
 
           <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-          <fieldset disabled={mode === "edit" && !isEditing} className="contents">
+          <fieldset className="contents">
           <Field required label="Employment type" htmlFor="employmentType">
             <Dropdown
               id="employmentType"
@@ -2654,7 +2698,7 @@ export default function OnboardingForm({
           </p>
 
           <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-          <fieldset disabled={mode === "edit" && !isEditing} className="contents">
+          <fieldset className="contents">
           <CategoryHeading label="About you" first />
           <Field label="Professional summary (optional)" htmlFor="bio" className="col-span-full">
             <RichTextEditor
@@ -2662,7 +2706,6 @@ export default function OnboardingForm({
               value={bio}
               onChange={setBio}
               placeholder="A couple sentences about your experience and what you're looking for"
-              disabled={mode === "edit" && !isEditing}
               accent="gold"
             />
           </Field>
@@ -2751,7 +2794,6 @@ export default function OnboardingForm({
                   value={entry.achievements}
                   onChange={(html) => updateWorkExperience(entry.id, { achievements: html })}
                   placeholder="Key achievements (optional)"
-                  disabled={mode === "edit" && !isEditing}
                   accent="gold"
                 />
               </div>
@@ -2946,24 +2988,14 @@ export default function OnboardingForm({
 
           {error && <p className="col-span-full text-xs text-red-500">{error}</p>}
 
-          {mode === "edit" && !isEditing ? (
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full border border-brand-gold-dark text-sm text-brand-gold-dark transition-opacity hover:opacity-90"
-            >
-              Edit
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={!formValid || submitting}
-              onClick={handleFinishClick}
-              className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {submitting ? "Saving…" : saveLabel}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={!formValid || submitting}
+            onClick={handleFinishClick}
+            className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? "Saving…" : saveLabel}
+          </button>
           {savedAt && !error && <p className="col-span-full text-xs text-brand-gold-dark">Saved.</p>}
           </div>
         </div>

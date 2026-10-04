@@ -2,6 +2,7 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { coverLetters } from "./db/schema";
+import { isUuid } from "./uuid";
 
 export async function getCoverLettersForProfile(jobseekerProfileId: string) {
   return db
@@ -11,7 +12,11 @@ export async function getCoverLettersForProfile(jobseekerProfileId: string) {
     .orderBy(desc(coverLetters.createdAt));
 }
 
+// The single-letter helpers take the id straight from the URL — a malformed
+// one is simply "not found" rather than a uuid cast error (500).
+
 export async function getCoverLetterForProfile(jobseekerProfileId: string, id: string) {
+  if (!isUuid(id)) return null;
   const [row] = await db
     .select()
     .from(coverLetters)
@@ -30,16 +35,22 @@ export async function createCoverLetter(params: {
   return row;
 }
 
-export async function updateCoverLetterContent(jobseekerProfileId: string, id: string, content: string) {
+export async function updateCoverLetter(
+  jobseekerProfileId: string,
+  id: string,
+  changes: { content?: string; companyName?: string; jobTitle?: string },
+) {
+  if (!isUuid(id)) return null;
   const [row] = await db
     .update(coverLetters)
-    .set({ content, updatedAt: new Date() })
+    .set({ ...changes, updatedAt: new Date() })
     .where(and(eq(coverLetters.id, id), eq(coverLetters.jobseekerProfileId, jobseekerProfileId)))
     .returning();
   return row ?? null;
 }
 
 export async function deleteCoverLetter(jobseekerProfileId: string, id: string) {
+  if (!isUuid(id)) return null;
   const [row] = await db
     .delete(coverLetters)
     .where(and(eq(coverLetters.id, id), eq(coverLetters.jobseekerProfileId, jobseekerProfileId)))

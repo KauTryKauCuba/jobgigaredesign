@@ -3,6 +3,9 @@ import JobseekerDashboardShell from "./JobseekerDashboardShell";
 import { gradientFrameClass } from "./formStyles";
 import { APPLICATION_STATUS_COLOR, APPLICATION_STATUS_LABEL, relativeTimeAgo } from "@/lib/applicationStatus";
 import type { AuthUser } from "./AuthModal";
+import ResponsivenessBadge from "./ResponsivenessBadge";
+import SaveJobButton from "./SaveJobButton";
+import type { EmployerResponsiveness } from "@/lib/responsiveness";
 
 type ActivePostingRow = {
   posting: {
@@ -18,6 +21,7 @@ type ActivePostingRow = {
     skills: string[];
   };
   companyName: string;
+  responsiveness: EmployerResponsiveness | null;
 };
 
 type ApplicationRow = {
@@ -53,12 +57,15 @@ export default function JobseekerDashboard({
   resume,
   activePostings,
   applications,
+  savedJobPostingIds = [],
 }: {
   authUser: AuthUser;
   resume: { fileName: string; fileSize: number | null } | null;
   activePostings: ActivePostingRow[];
   applications: ApplicationRow[];
+  savedJobPostingIds?: string[];
 }) {
+  const savedIds = new Set(savedJobPostingIds);
   const firstName = authUser.name?.split(" ")[0] ?? "there";
 
   return (
@@ -141,7 +148,7 @@ export default function JobseekerDashboard({
               </p>
             ) : (
               <div className="mt-[14px] flex flex-col gap-[10px]">
-                {activePostings.map(({ posting, companyName }) => (
+                {activePostings.map(({ posting, companyName, responsiveness }) => (
                   <Link
                     key={posting.id}
                     href={`/jobseeker/jobs/${posting.slug}`}
@@ -150,6 +157,7 @@ export default function JobseekerDashboard({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-[#141B2E]">{posting.title}</p>
                       <p className="mt-[2px] text-xs text-[#4B5468]">{companyName}</p>
+                      <ResponsivenessBadge responsiveness={responsiveness} className="mt-[6px]" />
                       <div className="mt-[6px] flex flex-wrap items-center gap-x-[8px] gap-y-[2px] text-xs text-[#4B5468]">
                         <span>{posting.location || "Location not set"}</span>
                         <span className="text-[#C7CDD7]">·</span>
@@ -176,6 +184,11 @@ export default function JobseekerDashboard({
                         </div>
                       )}
                     </div>
+                    <SaveJobButton
+                      jobPostingId={posting.id}
+                      initialSaved={savedIds.has(posting.id)}
+                      className="self-start sm:self-center"
+                    />
                   </Link>
                 ))}
               </div>

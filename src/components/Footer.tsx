@@ -16,7 +16,9 @@ export default function Footer({ accent = "teal" }: { accent?: "teal" | "gold" }
   const accentClass = accent === "gold" ? "text-brand-gold-dark" : "text-brand-teal-dark";
 
   return (
-    <footer className="bg-white">
+    // No background of its own — it sits on the page's colour (mint on the
+    // employer side, cream on the jobseeker side).
+    <footer>
       <div className="shell flex flex-col gap-[40px] pt-[56px] pb-[32px]">
         <div className="flex flex-col justify-between gap-[32px] sm:flex-row">
           <div className="max-w-[280px]">

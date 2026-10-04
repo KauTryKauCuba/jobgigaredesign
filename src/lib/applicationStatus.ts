@@ -39,7 +39,11 @@ export type InterviewDetails = {
   durationMinutes: number | null;
   location: string | null;
   meetingLink: string | null;
-  interviewerName: string | null;
+  // Panel-capable: zero or more interviewer names for this round.
+  interviewers: string[];
+  // Same panel as account ids (same order) — each one owes an evaluation.
+  // Absent on interviews scheduled before panel evaluations existed.
+  interviewerUserIds?: string[];
   notes: string | null;
 };
 

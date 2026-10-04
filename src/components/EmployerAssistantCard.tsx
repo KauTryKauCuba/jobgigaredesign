@@ -4,7 +4,8 @@ import AssistantCard from "./AssistantCard";
 export default function EmployerAssistantCard() {
   return (
     <AssistantCard
-      eyebrow="For employers"
+      step={1}
+      eyebrow="Set up in seconds"
       headline="Your company deserves to stand out"
       bullets={[
         {

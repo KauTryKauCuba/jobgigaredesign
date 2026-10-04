@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { recordStatusChange } from "@/lib/application-events";
+import { getApplicationNotificationContext, getEmployerTeamUserIds, notify } from "@/lib/notifications";
 import { db } from "@/lib/db";
 import { jobApplications, jobPostings, jobseekerProfiles } from "@/lib/db/schema";
 import { isLanguageArray, isOptionalInt, isOptionalString } from "@/lib/job-posting-validation";
@@ -109,11 +111,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, alreadyApplied: true });
   }
 
-  await db.insert(jobApplications).values({
-    jobPostingId,
-    jobseekerProfileId: profile.id,
-    screeningAnswers: storedAnswers,
-    screeningEligible: eligible,
-  });
+  const [created] = await db
+    .insert(jobApplications)
+    .values({
+      jobPostingId,
+      jobseekerProfileId: profile.id,
+      screeningAnswers: storedAnswers,
+      screeningEligible: eligible,
+    })
+    .returning({ id: jobApplications.id });
+  await recordStatusChange(created.id, null, "applied");
+
+  const ctx = await getApplicationNotificationContext(created.id);
+  if (ctx) {
+    await notify(await getEmployerTeamUserIds(ctx.employerProfileId, ctx.ownerUserId), "employer", {
+      type: "new_application",
+      title: `New applicant for ${ctx.postingTitle}`,
+      body: `${ctx.applicantName} just applied.`,
+      link: `/employer/applicants?jobId=${ctx.postingId}`,
+    });
+  }
   return NextResponse.json({ ok: true });
 }

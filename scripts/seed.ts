@@ -22,7 +22,9 @@ import {
   jobseekerEducation,
   jobseekerCertifications,
   jobseekerLanguages,
+  videoPitches,
 } from "../src/lib/db/schema";
+import { installSampleVideoPitch } from "../src/lib/video-pitch-storage";
 import { INDUSTRIES, type Industry } from "../src/lib/industries";
 import { DUMMY_SEED_EMAIL_DOMAIN, seedDummyCompanies } from "../src/lib/dummy-companies";
 
@@ -704,6 +706,7 @@ async function main() {
         avatarUrl: personAvatarUrl(i),
         contactName,
         contactRole: pick(["HR Manager", "Talent Acquisition Lead", "Founder", "Operations Manager", "HR Executive"]),
+        contactPosition: pick(["HR Manager", "Talent Acquisition Manager", "Founder", "Operations Manager", "HR Executive"]),
         contactPhone: randomPhone(),
         contactEmail: email,
         companyName,
@@ -732,6 +735,8 @@ async function main() {
   }
 
   console.log(`Seeding ${JOBSEEKER_COUNT} jobseekers...`);
+  // Every third jobseeker gets a video pitch, all sharing one sample clip.
+  const samplePitch = await installSampleVideoPitch();
   for (let i = 0; i < JOBSEEKER_COUNT; i++) {
     const industry = INDUSTRIES[i % INDUSTRIES.length];
     const fullName = randomFullName();
@@ -739,6 +744,7 @@ async function main() {
     const yearsExperience = randInt(0, 15);
     const salaryMin = randInt(2500, 8000);
     const jobseekerAddress = pick(COMPANY_ADDRESSES);
+    const professionalSkills = pickN(SKILL_POOLS[industry], randInt(3, 6));
 
     const [user] = await db
       .insert(users)
@@ -763,7 +769,7 @@ async function main() {
         targetRole: pick(ROLE_POOLS[industry]),
         preferredIndustry: industry,
         yearsExperience,
-        professionalSkills: pickN(SKILL_POOLS[industry], randInt(3, 6)),
+        professionalSkills,
         softSkills: pickN(SOFT_SKILLS_POOL, randInt(2, 4)),
         employmentType: pick(EMPLOYMENT_TYPES),
         expectedSalaryMin: salaryMin,
@@ -774,6 +780,15 @@ async function main() {
         workAuthorization: pick(WORK_AUTHORIZATIONS),
       })
       .returning({ id: jobseekerProfiles.id });
+
+    if (i % 3 === 0) {
+      await db.insert(videoPitches).values({
+        jobseekerProfileId: profile.id,
+        ...samplePitch,
+        intro: `${yearsExperience} year${yearsExperience === 1 ? "" : "s"} in ${industry.toLowerCase()}, based in ${jobseekerAddress.city}.`,
+        strengths: professionalSkills.slice(0, 3),
+      });
+    }
 
     if (yearsExperience > 0) {
       const experienceCount = randInt(1, Math.min(3, Math.max(1, Math.ceil(yearsExperience / 3))));

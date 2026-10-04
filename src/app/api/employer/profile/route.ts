@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { employerAddresses, employerOnboardingDrafts, employerProfiles } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
@@ -8,7 +8,7 @@ import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import { getSession } from "@/lib/session";
-import { isBase64DataUrl, saveBase64Upload } from "@/lib/uploads";
+import { isBase64DataUrl, saveBannerUpload, saveBase64Upload } from "@/lib/uploads";
 
 const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"] as const;
 const COMPANY_TYPES = ["Startup", "SME", "MNC", "GLC", "Government"] as const;
@@ -88,6 +88,7 @@ export async function POST(request: Request) {
     avatarUrl,
     contactName,
     contactRole,
+    contactPosition,
     contactPhone,
     contactEmail,
     companyName,
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
     foundedYear,
     companyType,
     officePhotoUrl,
+    bannerUrl,
     recentNews,
   } = (body ?? {}) as Record<string, unknown>;
 
@@ -158,6 +160,20 @@ export async function POST(request: Request) {
   if (!isOptionalString(officePhotoUrl) || (typeof officePhotoUrl === "string" && officePhotoUrl.length > 6_000_000)) {
     return NextResponse.json({ error: "Invalid office photo." }, { status: 400 });
   }
+  // Cover banner: a freshly picked image (data URL), the already-saved one
+  // (our own /uploads/banners/ path), null to remove it, or omitted to leave
+  // it as it is — never an arbitrary outside URL.
+  if (
+    bannerUrl !== undefined &&
+    bannerUrl !== null &&
+    !(
+      typeof bannerUrl === "string" &&
+      ((isBase64DataUrl(bannerUrl) && bannerUrl.startsWith("data:image/") && bannerUrl.length <= 14_000_000) ||
+        /^\/uploads\/banners\/[\w-]+\.webp$/.test(bannerUrl))
+    )
+  ) {
+    return NextResponse.json({ error: "Invalid cover banner." }, { status: 400 });
+  }
   if (recentNews !== undefined && recentNews !== null && !isNewsItemArray(recentNews)) {
     return NextResponse.json({ error: "Invalid recent news." }, { status: 400 });
   }
@@ -166,6 +182,9 @@ export async function POST(request: Request) {
   }
   if (!isNonEmptyString(contactRole)) {
     return NextResponse.json({ error: "Enter your role at the company." }, { status: 400 });
+  }
+  if (!isNonEmptyString(contactPosition)) {
+    return NextResponse.json({ error: "Enter your position at the company." }, { status: 400 });
   }
   if (!isNonEmptyString(contactPhone)) {
     return NextResponse.json({ error: "Enter your phone number." }, { status: 400 });
@@ -208,12 +227,19 @@ export async function POST(request: Request) {
   const resolvedOfficePhotoUrl = isBase64DataUrl(officePhotoUrl)
     ? await saveBase64Upload(officePhotoUrl, "office-photos")
     : officePhotoUrl;
+  let resolvedBannerUrl: string | null | undefined;
+  try {
+    resolvedBannerUrl = isBase64DataUrl(bannerUrl) ? await saveBannerUpload(bannerUrl) : (bannerUrl as string | null | undefined);
+  } catch {
+    return NextResponse.json({ error: "Couldn't read that cover banner — try a JPG or PNG." }, { status: 400 });
+  }
 
   const values = {
     userId: session.userId,
     avatarUrl: isNonEmptyString(resolvedAvatarUrl) ? resolvedAvatarUrl.trim() : null,
     contactName: contactName.trim(),
     contactRole: contactRole.trim(),
+    contactPosition: contactPosition.trim(),
     contactPhone: contactPhone.trim(),
     contactEmail: contactEmail.trim().toLowerCase(),
     companyName: companyName.trim(),
@@ -235,6 +261,8 @@ export async function POST(request: Request) {
     foundedYear: typeof foundedYear === "number" ? foundedYear : null,
     companyType: isNonEmptyString(companyType) ? companyType : null,
     officePhotoUrl: isNonEmptyString(resolvedOfficePhotoUrl) ? resolvedOfficePhotoUrl.trim() : null,
+    // Omitted = keep the current banner (spreading `undefined` leaves the column untouched).
+    ...(resolvedBannerUrl !== undefined ? { bannerUrl: resolvedBannerUrl } : {}),
     recentNews: isNewsItemArray(recentNews)
       ? recentNews.map((item) => ({ title: item.title.trim(), url: item.url.trim() }))
       : [],
@@ -261,6 +289,30 @@ export async function POST(request: Request) {
         .where(eq(employerProfiles.id, access.profile.id))
         .returning({ id: employerProfiles.id });
       profileId = updated.id;
+
+      // Interview panels store interviewer *names* as a snapshot
+      // (job_applications.interview_details.interviewers), so a rename here
+      // would otherwise leave every already-scheduled interview showing the
+      // old name. Swap old -> new in place, preserving each panel's order.
+      const oldName = access.profile.contactName.trim();
+      if (oldName && oldName !== values.contactName) {
+        await tx.execute(sql`
+          UPDATE job_applications AS ja
+          SET interview_details = jsonb_set(
+            ja.interview_details,
+            '{interviewers}',
+            (
+              SELECT jsonb_agg(CASE WHEN e.value = to_jsonb(${oldName}::text) THEN to_jsonb(${values.contactName}::text) ELSE e.value END ORDER BY e.ord)
+              FROM jsonb_array_elements(ja.interview_details->'interviewers') WITH ORDINALITY AS e(value, ord)
+            )
+          )
+          FROM job_postings AS jp
+          WHERE ja.job_posting_id = jp.id
+            AND jp.employer_profile_id = ${profileId}
+            AND jsonb_typeof(ja.interview_details->'interviewers') = 'array'
+            AND ja.interview_details->'interviewers' ? ${oldName}
+        `);
+      }
     } else {
       // First-time onboarding — this user becomes the new company's owner.
       const [inserted] = await tx.insert(employerProfiles).values(values).returning({ id: employerProfiles.id });
@@ -295,5 +347,7 @@ export async function POST(request: Request) {
   if (values.logoUrl) await awardBadge(profileId, "logo_added");
   if (isProfileBoosted(values)) await awardBadge(profileId, "profile_boosted");
 
-  return NextResponse.json({ ok: true });
+  // The stored banner path, so the form can swap the just-uploaded image data
+  // for it (and not re-upload the same picture on its next save).
+  return NextResponse.json({ ok: true, ...(resolvedBannerUrl !== undefined ? { bannerUrl: resolvedBannerUrl } : {}) });
 }

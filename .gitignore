@@ -47,3 +47,6 @@ Irfan Muhaimin.pdf
 # user-uploaded files (logos, posters, resumes, avatars) — written at
 # runtime to a persistent Docker volume on the VPS, never committed
 /public/uploads/
+# private uploads (video pitches) — same, but served only through
+# permission-checked routes, never as public files
+/storage/

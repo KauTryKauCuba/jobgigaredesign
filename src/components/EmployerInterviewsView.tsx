@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import AnimatedRibbon from "./AnimatedRibbon";
 import ApplicantDetailModal from "./ApplicantDetailModal";
-import type { EmployerAddress } from "@/lib/employer-profile";
-import { COMPANIES_CHANGED_EVENT } from "./CompanySwitcher";
+import VideoPitchBadge, { type ApplicantVideoPitch } from "./VideoPitchBadge";
+import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import EmployerDashboardShell from "./EmployerDashboardShell";
 import InterviewCalendarCard from "./InterviewCalendarCard";
 import InterviewBigCalendar from "./InterviewBigCalendar";
@@ -22,8 +21,12 @@ import {
 import { CalendarIcon, CheckCircleIcon, ChevronDownIcon, ClockIcon, FlagIcon, SearchIcon, UserIcon, XCircleIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 import type { ComponentType } from "react";
-import type { EvaluationCriterion, InterviewEvaluation, InterviewRecommendation } from "@/lib/interviewEvaluation";
-import { DUMMY_APPLICANT_NAMES } from "@/lib/dummy-applicants";
+import type {
+  EvaluationCriterion,
+  InterviewEvaluation,
+  InterviewRecommendation,
+  PanelEvaluation,
+} from "@/lib/interviewEvaluation";
 
 const INTERVIEW_RESPONSE_STATUS_ORDER: InterviewResponseStatus[] = [
   "pending",
@@ -82,6 +85,8 @@ type ApplicationRow = {
   applicantNoticePeriod: string;
   applicantResumeFileName: string | null;
   evaluation?: InterviewEvaluation | null;
+  evaluations?: PanelEvaluation[];
+  videoPitch?: ApplicantVideoPitch | null;
 };
 
 function ApplicantAvatar({ url }: { url: string | null }) {
@@ -131,7 +136,10 @@ function InterviewRow({
         <div className="flex min-w-0 flex-1 items-start gap-[10px]">
           <ApplicantAvatar url={applicant.applicantAvatarUrl} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm text-[#141B2E]">{applicant.applicantName}</p>
+            <p className="flex min-w-0 items-center gap-[6px] text-sm text-[#141B2E]">
+              <span className="truncate">{applicant.applicantName}</span>
+              <VideoPitchBadge pitch={applicant.videoPitch} />
+            </p>
             <p className="mt-[1px] truncate text-xs text-[#4B5468]">
               {applicant.applicantTargetRole} · {applicant.jobPostingTitle}
             </p>
@@ -185,13 +193,16 @@ export default function EmployerInterviewsView({
   applications,
   shortlisted,
   addresses,
+  currentUserRole,
+  teamMembers = [],
 }: {
   authUser: AuthUser;
   applications: ApplicationRow[];
   shortlisted: ApplicationRow[];
   addresses: EmployerAddress[];
+  currentUserRole?: string | null;
+  teamMembers?: EmployerTeamMember[];
 }) {
-  const router = useRouter();
   // Shortlisted applicants aren't scheduled yet, so they're excluded from
   // the Scheduled/Interviewed/Evaluated sections below (those filter on
   // status), but merging them into the same rows array lets the "Schedule
@@ -202,7 +213,6 @@ export default function EmployerInterviewsView({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
-  const [dummyBusy, setDummyBusy] = useState(false);
   const [view, setView] = useState<"list" | "kanban" | "calendar">("list");
   // Kanban drag state — dragOverKey highlights the column under the
   // pointer, draggingId dims the card being dragged.
@@ -232,7 +242,6 @@ export default function EmployerInterviewsView({
     setPickerOpen(true);
   }
   const viewingApplicant = rows.find((r) => r.application.id === viewingId) ?? null;
-  const hasDummyData = rows.some((r) => DUMMY_APPLICANT_NAMES.includes(r.applicantName));
   const shortlistedRows = rows.filter((row) => row.application.status === "shortlisted");
   const shortlistedJobPostings = Array.from(
     new Map(shortlistedRows.map((row) => [row.jobPostingId, row.jobPostingTitle])).entries(),
@@ -258,24 +267,6 @@ export default function EmployerInterviewsView({
     setRows([...applications, ...shortlisted]);
   }
 
-  async function toggleDummyData() {
-    setDummyBusy(true);
-    try {
-      if (hasDummyData) {
-        await fetch("/api/employer/applications/dummy", { method: "DELETE" });
-        await fetch("/api/employer/job-postings/dummy", { method: "DELETE" });
-        await fetch("/api/employer/dummy-companies", { method: "DELETE" });
-      } else {
-        await fetch("/api/employer/job-postings/dummy", { method: "POST" });
-        await fetch("/api/employer/applications/dummy", { method: "POST" });
-        await fetch("/api/employer/dummy-companies", { method: "POST" });
-      }
-      window.dispatchEvent(new Event(COMPANIES_CHANGED_EVENT));
-      router.refresh();
-    } finally {
-      setDummyBusy(false);
-    }
-  }
   const calendarInterviews = rows
     .filter((row) => row.application.interviewDetails)
     .map((row) => ({
@@ -357,27 +348,46 @@ export default function EmployerInterviewsView({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't save this evaluation.");
-      setRows((prev) =>
-        prev.map((row) =>
-          row.application.id === applicationId
-            ? {
-                ...row,
-                application: { ...row.application, status: data.status },
-                evaluation: {
-                  round: data.evaluation.round,
-                  scores: data.evaluation.scores,
-                  recommendation: data.evaluation.recommendation,
-                  notes: data.evaluation.notes,
-                },
-              }
-            : row,
-        ),
-      );
+      applyEvaluationResponse(applicationId, data);
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : "Couldn't save this evaluation.");
     } finally {
       setUpdatingId(null);
     }
+  }
+
+  // Owner override — close out the evaluation before the whole panel has submitted.
+  async function completeEvaluation(applicationId: string) {
+    setStatusError(null);
+    setUpdatingId(applicationId);
+    try {
+      const res = await fetch(`/api/employer/applications/${applicationId}/evaluation`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't complete this evaluation.");
+      applyEvaluationResponse(applicationId, data);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Couldn't complete this evaluation.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function applyEvaluationResponse(
+    applicationId: string,
+    data: { status: string; evaluation: InterviewEvaluation | null; evaluations: PanelEvaluation[] },
+  ) {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.application.id === applicationId
+          ? {
+              ...row,
+              application: { ...row.application, status: data.status },
+              evaluation: data.evaluation,
+              evaluations: data.evaluations,
+            }
+          : row,
+      ),
+    );
   }
 
   // Today / this week / this month counts for the at-a-glance tiles above
@@ -463,14 +473,6 @@ export default function EmployerInterviewsView({
             className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[16px] text-sm text-white hover:opacity-90"
           >
             Schedule interview
-          </button>
-          <button
-            type="button"
-            disabled={dummyBusy}
-            onClick={toggleDummyData}
-            className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[16px] text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {hasDummyData ? "Remove dummy data" : "Get dummy data"}
           </button>
         </div>
       }
@@ -582,14 +584,15 @@ export default function EmployerInterviewsView({
           className="animate-fade-in-up mx-auto mt-[20px] flex w-full max-w-[1440px] flex-wrap items-center gap-[8px]"
           style={{ animationDelay: "90ms" }}
         >
-          <div className="flex h-[38px] flex-1 min-w-[200px] items-center gap-[6px] rounded-full border border-black/[0.1] bg-white px-[14px]">
+          <div className="flex min-w-[200px] flex-1 items-center gap-[8px] rounded-[12px] border border-black/[0.1] bg-white px-[12px] focus-within:border-brand-teal-dark">
             <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
             <input
-              type="text"
+              type="search"
               value={nameQuery}
               onChange={(e) => setNameQuery(e.target.value)}
-              placeholder="Search by applicant name..."
-              className="w-full bg-transparent text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2]"
+              placeholder="Search interviews by applicant name..."
+              aria-label="Search interviews by applicant name"
+              className="h-[38px] w-full bg-transparent text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2]"
             />
           </div>
           {hasActiveFilter && (
@@ -880,8 +883,15 @@ export default function EmployerInterviewsView({
           onSaveEvaluation={(scores, recommendation, notes) =>
             saveEvaluation(viewingApplicant.application.id, scores, recommendation, notes)
           }
+          onCompleteEvaluation={() => completeEvaluation(viewingApplicant.application.id)}
           savingEvaluation={updatingId === viewingApplicant.application.id}
           addresses={addresses}
+          currentUserId={authUser.id}
+          currentUserIsOwner={authUser.teamRole === "owner"}
+          currentUserName={authUser.name}
+          currentUserAvatarUrl={authUser.avatarUrl}
+          currentUserRole={currentUserRole}
+          teamMembers={teamMembers}
           onClose={() => {
             setViewingId(null);
             setPickerDate(null);

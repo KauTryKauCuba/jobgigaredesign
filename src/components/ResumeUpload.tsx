@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthModal from "./AuthModal";
 import { gradientFrameClass, inputClass, textareaClass } from "./formStyles";
-import { FileIcon, PencilIcon, UploadIcon, XIcon } from "./icons";
+import { DraftIcon, FileIcon, PencilIcon, UploadIcon, XIcon } from "./icons";
 import SiriOrb from "./SiriOrb";
 
 const ACCEPT = ".pdf,.doc,.docx";
@@ -194,12 +195,23 @@ export default function ResumeUpload({
                 <PencilIcon className="h-[14px] w-[14px]" />
                 Write my cover letter
               </button>
+              <Link
+                href="/jobseeker/resume-designer"
+                className="flex h-[42px] items-center justify-center gap-[7px] rounded-[12px] border border-black/[0.1] bg-white text-sm text-[#141B2E] transition-colors hover:bg-black/[0.03]"
+              >
+                <DraftIcon className="h-[14px] w-[14px]" />
+                Redesign my resume
+              </Link>
+              {/* The AI glow-up isn't built yet — shown so jobseekers know it's coming. */}
               <button
                 type="button"
-                className="flex h-[42px] items-center justify-center gap-[7px] rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] text-sm text-white transition-opacity hover:opacity-90"
+                disabled
+                aria-disabled
+                className="flex h-[42px] cursor-not-allowed items-center justify-center gap-[7px] rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] text-sm text-white opacity-60"
               >
                 <SiriOrb className="h-[14px] w-[14px]" active />
                 Give my resume a glow-up
+                <span className="rounded-full bg-white/90 px-[8px] py-[1px] text-[11px] text-brand-teal-dark">Coming soon</span>
               </button>
             </div>
           </>

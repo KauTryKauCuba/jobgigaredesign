@@ -1,0 +1,1 @@
+ALTER TABLE "employer_team_members" ADD COLUMN "position" text;

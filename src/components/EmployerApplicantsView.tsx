@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, type ReactElement } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import AnimatedRibbon from "./AnimatedRibbon";
 import ApplicantDetailModal from "./ApplicantDetailModal";
-import type { EmployerAddress } from "@/lib/employer-profile";
-import { COMPANIES_CHANGED_EVENT } from "./CompanySwitcher";
+import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import EmployerDashboardShell from "./EmployerDashboardShell";
 import { gradientFrameClass } from "./formStyles";
+import { STATUS_ICON, STATUS_TILE_GRADIENT } from "./applicationStatusTiles";
 import {
   APPLICATION_STATUS_COLOR,
   APPLICATION_STATUS_LABEL,
@@ -15,24 +16,19 @@ import {
   type InterviewDetails,
   type InterviewResponseStatus,
 } from "@/lib/applicationStatus";
-import {
-  BoltIcon,
-  CheckCircleIcon,
-  ChevronDownIcon,
-  ClockIcon,
-  DraftIcon,
-  FlagIcon,
-  PencilIcon,
-  SearchIcon,
-  StackIcon,
-  UserIcon,
-  XCircleIcon,
-} from "./icons";
+import { ChevronDownIcon, SearchIcon, UserIcon } from "./icons";
 import TopMatchesCard from "./TopMatchesCard";
+import VideoPitchBadge, { type ApplicantVideoPitch } from "./VideoPitchBadge";
+import EmployerResponsivenessCard from "./EmployerResponsivenessCard";
+import type { EmployerResponsiveness } from "@/lib/responsiveness";
 import type { CriteriaFlags } from "./MatchSettingsModal";
 import type { AuthUser } from "./AuthModal";
-import type { EvaluationCriterion, InterviewEvaluation, InterviewRecommendation } from "@/lib/interviewEvaluation";
-import { DUMMY_APPLICANT_NAMES } from "@/lib/dummy-applicants";
+import type {
+  EvaluationCriterion,
+  InterviewEvaluation,
+  InterviewRecommendation,
+  PanelEvaluation,
+} from "@/lib/interviewEvaluation";
 
 // Matches application_status exactly (see the finalized pipeline design).
 const STATUS_ORDER = [
@@ -49,42 +45,6 @@ const STATUS_ORDER = [
   "rejected",
   "withdrawn",
 ];
-
-const STATUS_ICON: Record<
-  string,
-  (props: { className?: string; strokeWidth?: number; style?: React.CSSProperties }) => ReactElement
-> = {
-  applied: StackIcon,
-  screened: ClockIcon,
-  shortlisted: BoltIcon,
-  interview: ClockIcon,
-  interviewed: CheckCircleIcon,
-  evaluation: PencilIcon,
-  evaluated: CheckCircleIcon,
-  kiv: FlagIcon,
-  offer: DraftIcon,
-  hired: CheckCircleIcon,
-  rejected: XCircleIcon,
-  withdrawn: XCircleIcon,
-};
-
-// Same deeper/saturated pastel each status's APPLICATION_STATUS_COLOR.bg
-// approximates — used as the gradient-to-white start color + the watermark
-// icon's --icon-accent, matching the Manage Job pipeline tiles' treatment.
-const STATUS_TILE_GRADIENT: Record<string, string> = {
-  applied: "#C9CFDA",
-  screened: "#FFE1A1",
-  shortlisted: "#8CE6D9",
-  interview: "#D4C6F7",
-  interviewed: "#A5C6F7",
-  evaluation: "#FFCFA3",
-  evaluated: "#A5EBCD",
-  kiv: "#B9C3F9",
-  offer: "#FFCDA1",
-  hired: "#A5EBB9",
-  rejected: "#F9B9B9",
-  withdrawn: "#D4D7DC",
-};
 
 const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   full_time: "Full-time",
@@ -130,6 +90,8 @@ type ApplicationRow = {
   applicantNoticePeriod: string;
   applicantResumeFileName: string | null;
   evaluation?: InterviewEvaluation | null;
+  evaluations?: PanelEvaluation[];
+  videoPitch?: ApplicantVideoPitch | null;
 };
 
 function ApplicantAvatar({ url }: { url: string | null }) {
@@ -152,21 +114,29 @@ export default function EmployerApplicantsView({
   initialSmartMatchEnabled,
   initialCriteria,
   addresses,
+  currentUserRole,
+  teamMembers = [],
+  responsiveness = null,
+  waitingLong = 0,
 }: {
   authUser: AuthUser;
   applications: ApplicationRow[];
   initialSmartMatchEnabled: boolean;
   initialCriteria: CriteriaFlags;
   addresses: EmployerAddress[];
+  currentUserRole?: string | null;
+  teamMembers?: EmployerTeamMember[];
+  // This company's reply-speed badge (null until there's enough history) and
+  // how many applicants have waited 3+ days for a first reply.
+  responsiveness?: EmployerResponsiveness | null;
+  waitingLong?: number;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const initialJobId = searchParams.get("jobId") ?? undefined;
   const [rows, setRows] = useState(applications);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
-  const [dummyBusy, setDummyBusy] = useState(false);
   const [collapsedPostings, setCollapsedPostings] = useState<Set<string>>(() => new Set());
   const [howStagesWorkOpen, setHowStagesWorkOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -216,7 +186,6 @@ export default function EmployerApplicantsView({
     });
   }
   const viewingApplicant = rows.find((r) => r.application.id === viewingId) ?? null;
-  const hasDummyApplicants = rows.some((r) => DUMMY_APPLICANT_NAMES.includes(r.applicantName));
 
   // router.refresh() re-fetches the server component and passes a new
   // `applications` prop down, but useState only reads its initializer once
@@ -235,31 +204,6 @@ export default function EmployerApplicantsView({
     document.getElementById(`posting-${initialJobId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [initialJobId]);
 
-  async function toggleDummyApplicants() {
-    setDummyBusy(true);
-    try {
-      if (hasDummyApplicants) {
-        // Mirrors the Manage Job button: removing dummy data clears both
-        // the dummy applicants and the dummy postings they applied to, so
-        // the two pages never fall out of sync with each other.
-        await fetch("/api/employer/applications/dummy", { method: "DELETE" });
-        await fetch("/api/employer/job-postings/dummy", { method: "DELETE" });
-        await fetch("/api/employer/dummy-companies", { method: "DELETE" });
-      } else {
-        await fetch("/api/employer/job-postings/dummy", { method: "POST" });
-        await fetch("/api/employer/dummy-companies", { method: "POST" });
-        const res = await fetch("/api/employer/applications/dummy", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Couldn't add dummy applicants.");
-      }
-      window.dispatchEvent(new Event(COMPANIES_CHANGED_EVENT));
-      router.refresh();
-    } catch (err) {
-      setStatusError(err instanceof Error ? err.message : "Couldn't update dummy applicants.");
-    } finally {
-      setDummyBusy(false);
-    }
-  }
 
   async function updateStatus(applicationId: string, status: string, interviewDetails?: InterviewDetails) {
     setStatusError(null);
@@ -341,27 +285,46 @@ export default function EmployerApplicantsView({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't save this evaluation.");
-      setRows((prev) =>
-        prev.map((row) =>
-          row.application.id === applicationId
-            ? {
-                ...row,
-                application: { ...row.application, status: data.status },
-                evaluation: {
-                  round: data.evaluation.round,
-                  scores: data.evaluation.scores,
-                  recommendation: data.evaluation.recommendation,
-                  notes: data.evaluation.notes,
-                },
-              }
-            : row,
-        ),
-      );
+      applyEvaluationResponse(applicationId, data);
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : "Couldn't save this evaluation.");
     } finally {
       setUpdatingId(null);
     }
+  }
+
+  // Owner override — close out the evaluation before the whole panel has submitted.
+  async function completeEvaluation(applicationId: string) {
+    setStatusError(null);
+    setUpdatingId(applicationId);
+    try {
+      const res = await fetch(`/api/employer/applications/${applicationId}/evaluation`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't complete this evaluation.");
+      applyEvaluationResponse(applicationId, data);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Couldn't complete this evaluation.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function applyEvaluationResponse(
+    applicationId: string,
+    data: { status: string; evaluation: InterviewEvaluation | null; evaluations: PanelEvaluation[] },
+  ) {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.application.id === applicationId
+          ? {
+              ...row,
+              application: { ...row.application, status: data.status },
+              evaluation: data.evaluation,
+              evaluations: data.evaluations,
+            }
+          : row,
+      ),
+    );
   }
 
   const trimmedNameQuery = nameQuery.trim().toLowerCase();
@@ -389,14 +352,12 @@ export default function EmployerApplicantsView({
       active="applicants"
       heading="Applicants"
       headerAction={
-        <button
-          type="button"
-          disabled={dummyBusy}
-          onClick={toggleDummyApplicants}
-          className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[16px] text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
+        <Link
+          href="/employer/jobs/postajob"
+          className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[22px] text-sm text-white transition-opacity hover:opacity-90"
         >
-          {hasDummyApplicants ? "Remove dummy data" : "Get dummy data"}
-        </button>
+          Post a job
+        </Link>
       }
       subheading="See who's applied, and where they stand, across every job posting."
     >
@@ -544,33 +505,32 @@ export default function EmployerApplicantsView({
             })}
           </div>
 
-          <div className="mt-[24px]">
+          <div id="applicants-list" className="mt-[24px] scroll-mt-[100px]">
             <div className="flex flex-wrap items-center justify-between gap-[8px]">
               <p className="text-sm text-[#141B2E]">Applicants, grouped by job posting</p>
-              <div className="flex items-center gap-[8px]">
-                <div className="flex h-[38px] w-[180px] items-center gap-[6px] rounded-full border border-black/[0.1] px-[12px] focus-within:border-brand-teal-dark">
-                  <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
-                  <input
-                    type="text"
-                    value={nameQuery}
-                    onChange={(e) => setNameQuery(e.target.value)}
-                    placeholder="Search by name..."
-                    className="h-full w-full bg-transparent text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2]"
-                  />
-                </div>
-                {hasActiveFilter && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatusFilter(null);
-                      setNameQuery("");
-                    }}
-                    className="text-sm text-brand-teal-dark hover:underline"
-                  >
-                    Clear filter
-                  </button>
-                )}
-              </div>
+              {hasActiveFilter && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(null);
+                    setNameQuery("");
+                  }}
+                  className="text-sm text-brand-teal-dark hover:underline"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+            <div className="mt-[10px] flex items-center gap-[8px] rounded-[12px] border border-black/[0.1] px-[12px] focus-within:border-brand-teal-dark">
+              <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
+              <input
+                type="search"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                placeholder="Search applicants by name..."
+                aria-label="Search applicants by name"
+                className="h-[38px] w-full bg-transparent text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2]"
+              />
             </div>
             {statusFilter && (
               <p className="mt-[6px] text-xs text-[#9AA3B2]">
@@ -643,8 +603,9 @@ export default function EmployerApplicantsView({
                             <div className="flex min-w-0 flex-1 items-start gap-[10px]">
                               <ApplicantAvatar url={applicant.applicantAvatarUrl} />
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm text-[#141B2E]">
-                                  {applicant.applicantName}
+                                <p className="flex min-w-0 items-center gap-[6px] text-sm text-[#141B2E]">
+                                  <span className="truncate">{applicant.applicantName}</span>
+                                  <VideoPitchBadge pitch={applicant.videoPitch} />
                                 </p>
                                 <p className="mt-[1px] truncate text-xs text-[#4B5468]">
                                   {applicant.applicantTargetRole}
@@ -745,6 +706,14 @@ export default function EmployerApplicantsView({
       </div>
 
       <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:max-h-[calc(100svh-105px)] lg:w-[300px] lg:shrink-0 lg:overflow-y-auto">
+        <EmployerResponsivenessCard
+          responsiveness={responsiveness}
+          waitingLong={waitingLong}
+          onShowWaiting={() => {
+            setStatusFilter("applied");
+            document.getElementById("applicants-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
         <div className={gradientFrameClass("teal")}>
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <TopMatchesCard initialEnabled={initialSmartMatchEnabled} initialCriteria={initialCriteria} />
@@ -764,8 +733,15 @@ export default function EmployerApplicantsView({
           onSaveEvaluation={(scores, recommendation, notes) =>
             saveEvaluation(viewingApplicant.application.id, scores, recommendation, notes)
           }
+          onCompleteEvaluation={() => completeEvaluation(viewingApplicant.application.id)}
           savingEvaluation={updatingId === viewingApplicant.application.id}
           addresses={addresses}
+          currentUserId={authUser.id}
+          currentUserIsOwner={authUser.teamRole === "owner"}
+          currentUserName={authUser.name}
+          currentUserAvatarUrl={authUser.avatarUrl}
+          currentUserRole={currentUserRole}
+          teamMembers={teamMembers}
           onClose={() => setViewingId(null)}
         />
       )}

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/auth-user";
 import { db } from "@/lib/db";
 import { jobPostingReports, jobPostings } from "@/lib/db/schema";
+import { sendJobAlertsForPosting } from "@/lib/job-alerts";
 import { getJobPostingById } from "@/lib/job-postings";
 import { isSuperadminEmail } from "@/lib/superadmin";
 
@@ -44,6 +45,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .set({ status: "active", rejectionReason: null, flagReason: null, flaggedAt: null, updatedAt: new Date() })
       .where(eq(jobPostings.id, id))
       .returning();
+    // The posting is live — tell jobseekers it's a strong match for.
+    await sendJobAlertsForPosting(id);
     return NextResponse.json({ posting: updated });
   }
 

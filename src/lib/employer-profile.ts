@@ -173,6 +173,7 @@ export async function getEmployerTeamMembers(employerProfileId: string, ownerUse
       userId: employerTeamMembers.userId,
       email: employerTeamMembers.email,
       role: employerTeamMembers.role,
+      position: employerTeamMembers.position,
       status: employerTeamMembers.status,
       invitedAt: employerTeamMembers.invitedAt,
       joinedAt: employerTeamMembers.joinedAt,
@@ -184,7 +185,22 @@ export async function getEmployerTeamMembers(employerProfileId: string, ownerUse
     .where(eq(employerTeamMembers.employerProfileId, employerProfileId))
     .orderBy(asc(employerTeamMembers.invitedAt));
 
-  return rows.sort((a, b) => (a.role === b.role ? 0 : a.role === "owner" ? -1 : 1));
+  // The company's registrant (ownerUserId) goes by employerProfiles.contactName
+  // on this side of the app (set on My Profile/onboarding) — `users.name` is
+  // only the Google-sign-in/account-level fallback, which can drift stale
+  // once someone edits their employer contact name, same distinction
+  // resolveNameForRole makes for Navbar/My Profile.
+  const [ownerProfile] = await db
+    .select({ contactName: employerProfiles.contactName })
+    .from(employerProfiles)
+    .where(eq(employerProfiles.id, employerProfileId))
+    .limit(1);
+
+  const withOwnerName = ownerProfile
+    ? rows.map((row) => (row.userId === ownerUserId ? { ...row, name: ownerProfile.contactName } : row))
+    : rows;
+
+  return withOwnerName.sort((a, b) => (a.role === b.role ? 0 : a.role === "owner" ? -1 : 1));
 }
 
 export type EmployerTeamMember = Awaited<ReturnType<typeof getEmployerTeamMembers>>[number];

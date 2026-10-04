@@ -4,16 +4,17 @@ import Link from "next/link";
 import { useCenterActiveTab } from "./useCenterActiveTab";
 import AnimatedRibbon from "./AnimatedRibbon";
 import Navbar from "./Navbar";
-import { BriefcaseIcon, HomeIcon, UserIcon, UsersIcon } from "./icons";
+import { BriefcaseIcon, HomeIcon, TrendUpIcon, UserIcon, UsersIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
-export type SuperadminNavKey = "overview" | "job-postings" | "jobseekers" | "employers";
+export type SuperadminNavKey = "overview" | "job-postings" | "jobseekers" | "employers" | "ai-usage";
 
 const NAV_ITEMS = [
   { key: "overview", href: "/superadmin/dashboard", label: "Dashboard", icon: HomeIcon },
   { key: "job-postings", href: "/superadmin/job-postings", label: "Job Postings", icon: BriefcaseIcon },
   { key: "jobseekers", href: "/superadmin/jobseekers", label: "Jobseekers", icon: UserIcon },
   { key: "employers", href: "/superadmin/employers", label: "Employers", icon: UsersIcon },
+  { key: "ai-usage", href: "/superadmin/ai-usage", label: "AI Usage", icon: TrendUpIcon },
 ] as const;
 
 // Deliberately mirrors EmployerDashboardShell (same sidebar/shell/ribbon

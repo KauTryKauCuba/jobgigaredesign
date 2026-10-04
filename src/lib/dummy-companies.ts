@@ -11,6 +11,7 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { employerAddresses, employerProfiles, employerTeamMembers, users } from "./db/schema";
+import { DUMMY_TEAM_ROSTER, slugifyName } from "./dummy-team";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = NodePgDatabase<any>;
@@ -24,9 +25,17 @@ type DummyCompanyDef = {
   ownerEmail: string;
   ownerName: string;
   ownerContactRole: string;
+  ownerContactPosition: string;
   ownerContactPhone: string;
-  company: Omit<typeof employerProfiles.$inferInsert, "userId" | "contactName" | "contactRole" | "contactPhone" | "contactEmail">;
+  company: Omit<
+    typeof employerProfiles.$inferInsert,
+    "userId" | "contactName" | "contactRole" | "contactPosition" | "contactPhone" | "contactEmail"
+  >;
   address: Omit<typeof employerAddresses.$inferInsert, "employerProfileId">;
+  // Email prefix for this company's 10-person team roster (shared
+  // DUMMY_TEAM_ROSTER from dummy-team.ts) — e.g. "parceltracker" produces
+  // "parceltracker-aisyah.rahman@seed.jobgiga.test".
+  teammateEmailPrefix: string;
 };
 
 const DUMMY_COMPANIES: DummyCompanyDef[] = [
@@ -35,6 +44,7 @@ const DUMMY_COMPANIES: DummyCompanyDef[] = [
     ownerEmail: PARCELTRACKER_OWNER_EMAIL,
     ownerName: "Rui Hao Chan",
     ownerContactRole: "Founder",
+    ownerContactPosition: "Founder",
     ownerContactPhone: "+60 12-345 6789",
     company: {
       companyName: "ParcelTracker",
@@ -60,12 +70,14 @@ const DUMMY_COMPANIES: DummyCompanyDef[] = [
       state: "Wilayah Persekutuan Kuala Lumpur",
       postcode: "50450",
     },
+    teammateEmailPrefix: "parceltracker",
   },
   {
     targetRole: "admin",
     ownerEmail: WHALE_OWNER_EMAIL,
     ownerName: "Mei Lin Tan",
     ownerContactRole: "Operations Director",
+    ownerContactPosition: "Operations Director",
     ownerContactPhone: "+60 16-789 0123",
     company: {
       companyName: "WHALE",
@@ -90,6 +102,7 @@ const DUMMY_COMPANIES: DummyCompanyDef[] = [
       state: "Selangor",
       postcode: "46200",
     },
+    teammateEmailPrefix: "whale",
   },
 ];
 
@@ -97,25 +110,33 @@ const DUMMY_COMPANIES: DummyCompanyDef[] = [
 // the whole company (cascading its address and every team member row,
 // including the dummy owner's own), not just this user's membership, since
 // these only ever exist as a fully synthetic, wholesale-replaceable fixture.
-// Also removes the dummy owner accounts themselves (safe once their
-// employerProfiles row is gone) — otherwise a later seedDummyCompanies call
-// would hit users.email's unique constraint trying to recreate them.
+// Also removes every dummy user account tied to these companies' team
+// (owner + any other seeded teammate with its own account, e.g. the "active"
+// dummy teammates below) — otherwise a later seedDummyCompanies call would
+// hit users.email's unique constraint trying to recreate them, or they'd
+// pile up as orphaned rows once employerTeamMembers cascade-deletes.
 // Returns how many companies were removed.
 export async function removeDummyCompanies(db: AnyDb, targetUserId: string): Promise<number> {
   const rows = await db
-    .select({ profileId: employerProfiles.id, ownerUserId: employerProfiles.userId })
+    .select({ profileId: employerProfiles.id })
     .from(employerTeamMembers)
     .innerJoin(employerProfiles, eq(employerProfiles.id, employerTeamMembers.employerProfileId))
     .innerJoin(users, eq(users.id, employerProfiles.userId))
     .where(and(eq(employerTeamMembers.userId, targetUserId), like(users.email, `%@${DUMMY_SEED_EMAIL_DOMAIN}`)));
 
   const profileIds = [...new Set(rows.map((r) => r.profileId))];
-  const ownerUserIds = [...new Set(rows.map((r) => r.ownerUserId))];
-  if (profileIds.length > 0) {
-    await db.delete(employerProfiles).where(inArray(employerProfiles.id, profileIds));
-  }
-  if (ownerUserIds.length > 0) {
-    await db.delete(users).where(inArray(users.id, ownerUserIds));
+  if (profileIds.length === 0) return 0;
+
+  const seedUserRows = await db
+    .select({ userId: users.id })
+    .from(employerTeamMembers)
+    .innerJoin(users, eq(users.id, employerTeamMembers.userId))
+    .where(and(inArray(employerTeamMembers.employerProfileId, profileIds), like(users.email, `%@${DUMMY_SEED_EMAIL_DOMAIN}`)));
+  const seedUserIds = [...new Set(seedUserRows.map((r) => r.userId))];
+
+  await db.delete(employerProfiles).where(inArray(employerProfiles.id, profileIds));
+  if (seedUserIds.length > 0) {
+    await db.delete(users).where(inArray(users.id, seedUserIds));
   }
   return profileIds.length;
 }
@@ -140,12 +161,41 @@ export async function seedDummyCompanies(db: AnyDb, targetUser: { id: string; na
         userId: owner.id,
         contactName: def.ownerName,
         contactRole: def.ownerContactRole,
+        contactPosition: def.ownerContactPosition,
         contactPhone: def.ownerContactPhone,
         contactEmail: def.ownerEmail,
       })
       .returning();
 
     await db.insert(employerAddresses).values({ ...def.address, employerProfileId: company.id });
+
+    const teammateRows = [];
+    for (const teammate of DUMMY_TEAM_ROSTER) {
+      const email = `${def.teammateEmailPrefix}-${slugifyName(teammate.name)}@${DUMMY_SEED_EMAIL_DOMAIN}`;
+      if (teammate.status === "active") {
+        const [account] = await db
+          .insert(users)
+          .values({ email, name: teammate.name, avatarUrl: teammate.avatarUrl, role: "employer" })
+          .returning();
+        teammateRows.push({
+          employerProfileId: company.id,
+          userId: account.id,
+          email,
+          role: "admin" as const,
+          position: teammate.position,
+          status: "active" as const,
+          joinedAt: new Date(),
+        });
+      } else {
+        teammateRows.push({
+          employerProfileId: company.id,
+          email,
+          role: "admin" as const,
+          position: teammate.position,
+          status: "pending" as const,
+        });
+      }
+    }
 
     await db.insert(employerTeamMembers).values([
       { employerProfileId: company.id, userId: owner.id, email: owner.email, role: "owner", status: "active", joinedAt: new Date() },
@@ -157,6 +207,7 @@ export async function seedDummyCompanies(db: AnyDb, targetUser: { id: string; na
         status: "active",
         joinedAt: new Date(),
       },
+      ...teammateRows,
     ]);
   }
 }

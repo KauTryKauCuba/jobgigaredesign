@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  const { email, role } = (body ?? {}) as Record<string, unknown>;
+  const { email, role, position } = (body ?? {}) as Record<string, unknown>;
 
   if (typeof email !== "string" || !email.trim().includes("@")) {
     return NextResponse.json({ error: "Enter a valid email." }, { status: 400 });
@@ -52,6 +52,10 @@ export async function POST(request: Request) {
   if (!(TEAM_ROLES as readonly string[]).includes(normalizedRole)) {
     return NextResponse.json({ error: "Invalid role." }, { status: 400 });
   }
+  if (position !== undefined && position !== null && typeof position !== "string") {
+    return NextResponse.json({ error: "Invalid position." }, { status: 400 });
+  }
+  const normalizedPosition = typeof position === "string" && position.trim() ? position.trim() : null;
   // Only an existing Owner can hand out Owner — an Admin can invite anyone,
   // just not at that top tier.
   if (normalizedRole === "owner" && auth.role !== "owner") {
@@ -69,6 +73,7 @@ export async function POST(request: Request) {
       employerProfileId: auth.profile.id,
       email: normalizedEmail,
       role: normalizedRole as (typeof TEAM_ROLES)[number],
+      position: normalizedPosition,
       status: "pending",
     });
   } catch {

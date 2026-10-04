@@ -3,6 +3,7 @@ import { eq, inArray, like } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   interviewEvaluations,
+  jobApplicationEvents,
   jobApplications,
   jobPostings,
   jobseekerCertifications,
@@ -11,7 +12,10 @@ import {
   jobseekerProfiles,
   jobseekerWorkExperiences,
   users,
+  videoPitches,
+  videoPitchViews,
 } from "@/lib/db/schema";
+import { installSampleVideoPitch } from "@/lib/video-pitch-storage";
 import { getEmployerAccess } from "@/lib/employer-profile";
 import { screeningEligibilityCheck } from "@/lib/matching";
 import { getSession } from "@/lib/session";
@@ -102,7 +106,7 @@ function fakeInterviewDetails(round: number, scheduleIndex: number): InterviewDe
     durationMinutes: 45,
     location: null,
     meetingLink: "https://meet.google.com/dummy-interview",
-    interviewerName: null,
+    interviewers: [],
     notes: null,
   };
 }
@@ -162,6 +166,11 @@ export async function POST() {
   // Interviews page response-status tile — pending / accepted / declined /
   // reschedule_requested / attended / no_show — gets at least one row,
   // regardless of how the DUMMY_APPLICANTS statuses happen to be ordered.
+  // Every other dummy applicant gets a video pitch — all sharing the one
+  // sample clip — so the "Video pitch" badge and panel have data to demo
+  // next to applicants without one.
+  const samplePitch = await installSampleVideoPitch();
+
   const INTERVIEW_STAGE_RESPONSES = ["accepted", "pending", "declined", "reschedule_requested"] as const;
   const PAST_INTERVIEW_RESPONSES = ["attended", "attended", "attended", "no_show"] as const;
   let interviewStageIndex = 0;
@@ -257,6 +266,23 @@ export async function POST() {
       })),
     );
 
+    if (i % 2 === 0) {
+      const years = applicant.yearsExperience;
+      const [pitch] = await db
+        .insert(videoPitches)
+        .values({
+          jobseekerProfileId: profile.id,
+          ...samplePitch,
+          intro: `${applicant.targetRole} with ${years} year${years === 1 ? "" : "s"} of experience, based in ${applicant.location}.`.slice(0, 150),
+          strengths: extras.skills.slice(0, 3),
+        })
+        .returning({ id: videoPitches.id });
+      // Some already watched by this company, to demo the "Watched" mark.
+      if (i % 4 === 0) {
+        await db.insert(videoPitchViews).values({ videoPitchId: pitch.id, employerProfileId });
+      }
+    }
+
     const hasInterview =
       applicant.status === "interview" ||
       applicant.status === "interviewed" ||
@@ -342,6 +368,20 @@ export async function POST() {
         hiredAt: applicant.status === "hired" ? hiredAtFor(appliedAt, i) : null,
       })
       .returning({ id: jobApplications.id });
+
+    // History for the jobseeker's tracker and the employer's reply-time
+    // badge: the application itself, then (if it's moved on) one step to its
+    // current stage, 1–3 days later — never in the future.
+    const events: (typeof jobApplicationEvents.$inferInsert)[] = [
+      { jobApplicationId: application.id, fromStatus: null, toStatus: "applied", createdAt: appliedAt },
+    ];
+    if (applicant.status !== "applied") {
+      const respondedAt = new Date(
+        Math.min(Date.now(), appliedAt.getTime() + (1 + (i % 3)) * 24 * 60 * 60 * 1000),
+      );
+      events.push({ jobApplicationId: application.id, fromStatus: "applied", toStatus: applicant.status, createdAt: respondedAt });
+    }
+    await db.insert(jobApplicationEvents).values(events);
 
     if (applicant.status === "evaluated") {
       await db.insert(interviewEvaluations).values({

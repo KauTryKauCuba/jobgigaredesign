@@ -3,11 +3,14 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import JobseekerDashboardShell from "./JobseekerDashboardShell";
+import ResponsivenessBadge from "./ResponsivenessBadge";
+import SaveJobButton from "./SaveJobButton";
 import RichTextContent from "./RichTextContent";
 import { gradientFrameClass } from "./formStyles";
 import { CheckIcon, XIcon } from "./icons";
 import { relativeTimeAgo } from "@/lib/applicationStatus";
 import { fullPostingAddress } from "@/lib/postingLocation";
+import type { EmployerResponsiveness } from "@/lib/responsiveness";
 import type { AuthUser } from "./AuthModal";
 
 type Posting = {
@@ -108,6 +111,8 @@ export default function JobPostingDetailView({
   companyName,
   companyLogoUrl,
   match,
+  responsiveness,
+  initialSaved = false,
 }: {
   authUser: AuthUser;
   resume: { fileName: string; fileSize: number | null } | null;
@@ -115,6 +120,10 @@ export default function JobPostingDetailView({
   companyName: string;
   companyLogoUrl: string | null;
   match: Match | null;
+  // How quickly this employer usually replies — null until there's enough history.
+  responsiveness?: EmployerResponsiveness | null;
+  // Whether this jobseeker has already saved (hearted) this posting.
+  initialSaved?: boolean;
 }) {
   useEffect(() => {
     fetch(`/api/jobseeker/job-postings/${posting.id}/view`, { method: "POST" }).catch(() => {});
@@ -186,9 +195,13 @@ export default function JobPostingDetailView({
             <div>
               <p className="text-lg text-[#141B2E]">{posting.title}</p>
               <p className="mt-[4px] text-sm text-[#4B5468]">{companyName}</p>
+              <ResponsivenessBadge responsiveness={responsiveness} showRate className="mt-[8px]" />
             </div>
-            <div className="flex h-[56px] w-[56px] shrink-0 items-center justify-center">
-              <CompanyLogo url={companyLogoUrl} className="h-[44px] w-[56px]" />
+            <div className="flex shrink-0 items-center gap-[10px]">
+              <SaveJobButton jobPostingId={posting.id} initialSaved={initialSaved} />
+              <div className="flex h-[56px] w-[56px] items-center justify-center">
+                <CompanyLogo url={companyLogoUrl} className="h-[44px] w-[56px]" />
+              </div>
             </div>
           </div>
 

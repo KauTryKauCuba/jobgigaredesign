@@ -5,7 +5,9 @@ export default function EmployerJobPostCard() {
   return (
     <AssistantCard
       reverse
-      eyebrow="For employers"
+      step={2}
+      background="#E3F2EB"
+      eyebrow="Write jobs with AI"
       headline="Create jobs without starting from scratch"
       bullets={[
         {

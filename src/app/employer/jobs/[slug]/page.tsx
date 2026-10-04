@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import EmployerJobPostingView from "@/components/EmployerJobPostingView";
 import { getAuthUser } from "@/lib/auth-user";
-import { getEmployerAddresses, getEmployerProfileForUser } from "@/lib/employer-profile";
+import { getEmployerAddresses, getEmployerProfileForUser, getEmployerTeamMembers } from "@/lib/employer-profile";
 import { getApplicationsForJobPosting } from "@/lib/job-applications";
 import { getJobPostingForEmployerBySlug } from "@/lib/job-postings";
 import { getOnboardingRedirect } from "@/lib/onboarding";
@@ -31,9 +31,10 @@ export default async function EmployerJobPostingPage({ params }: { params: Promi
   // Manage Job list's lighter details modal covers those instead.
   if (!posting || !["active", "filled", "closed", "flagged"].includes(posting.status)) notFound();
 
-  const [applications, addresses] = await Promise.all([
+  const [applications, addresses, teamMembers] = await Promise.all([
     getApplicationsForJobPosting(profile.id, posting.id),
     getEmployerAddresses(profile.id),
+    getEmployerTeamMembers(profile.id, profile.userId),
   ]);
 
   return (
@@ -44,6 +45,8 @@ export default async function EmployerJobPostingPage({ params }: { params: Promi
       posting={JSON.parse(JSON.stringify(posting))}
       applications={JSON.parse(JSON.stringify(applications))}
       addresses={JSON.parse(JSON.stringify(addresses))}
+      currentUserRole={profile.contactPosition ?? profile.contactRole}
+      teamMembers={JSON.parse(JSON.stringify(teamMembers))}
     />
   );
 }

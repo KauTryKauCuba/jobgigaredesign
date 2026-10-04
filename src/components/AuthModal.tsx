@@ -9,7 +9,18 @@ import Modal from "./Modal";
 
 export type AuthMode = "sign-in" | "get-started";
 export type Role = "employer" | "jobseeker";
-export type AuthUser = { email: string; name: string | null; avatarUrl?: string | null; role: Role };
+export type AuthUser = {
+  // The signed-in account's own id — e.g. to tell "me" apart on an interview panel.
+  id?: string;
+  email: string;
+  name: string | null;
+  avatarUrl?: string | null;
+  role: Role;
+  // Employer-only: job title and team role at the company they're currently
+  // acting for — shown under the name in the navbar account menu.
+  position?: string | null;
+  teamRole?: "owner" | "admin" | null;
+};
 
 const OTP_LENGTH = 6;
 
@@ -233,7 +244,7 @@ export default function AuthModal({
     <Modal onClose={onClose} ariaLabel={isSignIn ? "Sign in" : "Get started"}>
       <>
         <div className="flex items-start justify-between">
-          <Image src="/jg-logo.svg" alt="JobGiga" width={111} height={28} priority />
+          <Image src="/jg-logo.svg" alt="JobGiga" width={111} height={28} loading="eager" />
           <button
             type="button"
             onClick={onClose}

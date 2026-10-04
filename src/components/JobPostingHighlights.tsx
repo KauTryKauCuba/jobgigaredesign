@@ -7,6 +7,7 @@ import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
 import { SearchIcon } from "./icons";
 import Modal from "./Modal";
 import RichTextContent from "./RichTextContent";
+import SaveJobButton from "./SaveJobButton";
 import { getRevealOffset, getRevealStyle } from "@/lib/cardReveal";
 import { fullPostingAddress } from "@/lib/postingLocation";
 
@@ -477,15 +478,23 @@ export default function JobPostingHighlights({
   postings,
   canApply,
   appliedJobPostingIds,
+  savedJobPostingIds = [],
+  hasVideoPitch = false,
 }: {
   postings: ActivePostingRow[];
   canApply: boolean;
   appliedJobPostingIds: string[];
+  savedJobPostingIds?: string[];
+  // Without one, a nudge to record a pitch appears right after applying.
+  hasVideoPitch?: boolean;
 }) {
   const { ref, progress } = useScrollReveal();
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
   const [appliedIds, setAppliedIds] = useState(() => new Set(appliedJobPostingIds));
+  // Kept here (not just inside each heart) so switching between postings in
+  // the detail panel shows each one's current saved state.
+  const [savedIds, setSavedIds] = useState(() => new Set(savedJobPostingIds));
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   // Only opened for a posting with screeningEnabled — everything else keeps
@@ -975,15 +984,40 @@ export default function JobPostingHighlights({
                 }
                 return (
                   <>
-                    <button
-                      type="button"
-                      disabled={applied || applying}
-                      onClick={() => startApply(selectedPosting)}
-                      className="mt-[24px] flex h-[42px] items-center rounded-full bg-[#FFE9A6] px-[22px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {applied ? "Applied" : applying ? "Applying…" : "Apply now"}
-                    </button>
+                    <div className="mt-[24px] flex flex-wrap items-center gap-[8px]">
+                      <button
+                        type="button"
+                        disabled={applied || applying}
+                        onClick={() => startApply(selectedPosting)}
+                        className="flex h-[42px] items-center rounded-full bg-[#FFE9A6] px-[22px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {applied ? "Applied" : applying ? "Applying…" : "Apply now"}
+                      </button>
+                      <SaveJobButton
+                        // Remount per posting so the heart reflects that posting.
+                        key={selectedPosting.id}
+                        variant="pill"
+                        jobPostingId={selectedPosting.id}
+                        initialSaved={savedIds.has(selectedPosting.id)}
+                        onChange={(saved) =>
+                          setSavedIds((prev) => {
+                            const next = new Set(prev);
+                            if (saved) next.add(selectedPosting.id);
+                            else next.delete(selectedPosting.id);
+                            return next;
+                          })
+                        }
+                      />
+                    </div>
                     {applyError && <p className="mt-[8px] text-xs text-red-500">{applyError}</p>}
+                    {applied && !hasVideoPitch && (
+                      <p className="mt-[10px] rounded-[12px] bg-[#FFF3D6] px-[12px] py-[8px] text-xs text-[#4B5468]">
+                        🎥 Want to stand out? Add a 60-second video pitch — employers see it first.{" "}
+                        <a href="/jobseeker/profile#video-pitch" className="text-brand-gold-dark underline">
+                          Record it now
+                        </a>
+                      </p>
+                    )}
                   </>
                 );
               })()}

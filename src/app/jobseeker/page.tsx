@@ -12,6 +12,8 @@ import { getAuthUser, getJobseekerResumeInfo } from "@/lib/auth-user";
 import { getAppliedJobPostingIds, getJobseekerProfileId } from "@/lib/job-applications";
 import { getJobPostingsByStatus, stripCustomQuestionAnswers } from "@/lib/job-postings";
 import { getOnboardingRedirect } from "@/lib/onboarding";
+import { getSavedJobPostingIds } from "@/lib/saved-jobs";
+import { getVideoPitchForProfile } from "@/lib/video-pitch";
 import { getSession } from "@/lib/session";
 
 export default async function JobseekerPage() {
@@ -33,7 +35,13 @@ export default async function JobseekerPage() {
   const session = authUser?.role === "jobseeker" ? await getSession() : null;
   const existingResume = session ? await getJobseekerResumeInfo(session.userId) : null;
   const jobseekerProfileId = session ? await getJobseekerProfileId(session.userId) : null;
-  const appliedJobPostingIds = jobseekerProfileId ? await getAppliedJobPostingIds(jobseekerProfileId) : [];
+  const [appliedJobPostingIds, savedJobPostingIds, videoPitch] = jobseekerProfileId
+    ? await Promise.all([
+        getAppliedJobPostingIds(jobseekerProfileId),
+        getSavedJobPostingIds(jobseekerProfileId),
+        getVideoPitchForProfile(jobseekerProfileId),
+      ])
+    : [[], [], null];
 
   return (
     <main id="top" className="flex min-h-[100svh] flex-col overflow-x-clip bg-[#FDFAF0] pb-[92px]">
@@ -58,13 +66,15 @@ export default async function JobseekerPage() {
         )}
         canApply={authUser?.role === "jobseeker"}
         appliedJobPostingIds={appliedJobPostingIds}
+        savedJobPostingIds={savedJobPostingIds}
+        hasVideoPitch={!!videoPitch}
       />
       <Footer accent="gold" />
       {/* Clipped to its top half and pulled down past the floating-chat
           clearance (-mb cancels the <main> padding reserved for it) so the
           ribbon reads as bleeding off the bottom edge, same treatment as the
           jobseeker dashboard shell. */}
-      <div className="-mb-[92px] h-[80px] overflow-hidden bg-white sm:h-[110px] lg:h-[150px]">
+      <div className="-mb-[92px] h-[80px] overflow-hidden sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon accent="gold" />
       </div>
       {/* FloatingAssistant is fixed to the viewport bottom, like the navbar

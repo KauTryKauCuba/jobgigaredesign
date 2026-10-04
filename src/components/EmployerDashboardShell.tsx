@@ -7,6 +7,7 @@ import CompanySwitcher from "./CompanySwitcher";
 import FloatingAssistant from "./FloatingAssistant";
 import Navbar from "./Navbar";
 import PosterGeneratorTeaser from "./PosterGeneratorTeaser";
+import SampleDataBanner from "./SampleDataBanner";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
 import { BriefcaseIcon, BuildingIcon, CalendarIcon, HomeIcon, UserIcon, UsersIcon } from "./icons";
@@ -84,6 +85,7 @@ export default function EmployerDashboardShell({
       <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-[#F2FAF5]">
         <Navbar initialUser={authUser} hideProfileLinks appShell />
       </div>
+      <SampleDataBanner />
 
       <div className="app-shell pt-[20px]">
         <div className="flex flex-col gap-[24px] xl:flex-row xl:items-start">

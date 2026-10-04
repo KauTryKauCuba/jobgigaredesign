@@ -1,22 +1,102 @@
 import "server-only";
 import { and, desc, eq, getTableColumns, inArray, notInArray } from "drizzle-orm";
 import { db } from "./db";
-import { employerProfiles, interviewEvaluations, jobApplications, jobPostings, jobseekerProfiles } from "./db/schema";
-import type { InterviewEvaluation } from "./interviewEvaluation";
+import {
+  employerProfiles,
+  interviewEvaluations,
+  jobApplications,
+  jobPostings,
+  jobseekerProfiles,
+  users,
+} from "./db/schema";
+import { summarizeEvaluations, type InterviewEvaluation, type PanelEvaluation } from "./interviewEvaluation";
+import { getPitchSummariesForEmployer } from "./video-pitch";
+import { stripCustomQuestionAnswers } from "./job-postings";
 
-function toEvaluation(row: {
-  evaluationRound: number | null;
-  evaluationScores: Record<string, number> | null;
-  evaluationRecommendation: string | null;
-  evaluationNotes: string | null;
-}): InterviewEvaluation | null {
-  if (!row.evaluationRecommendation || row.evaluationRound === null || !row.evaluationScores) return null;
-  return {
-    round: row.evaluationRound,
-    scores: row.evaluationScores,
-    recommendation: row.evaluationRecommendation as InterviewEvaluation["recommendation"],
-    notes: row.evaluationNotes,
-  };
+/**
+ * Every panelist's scorecard for each application's *current* interview
+ * round (a scorecard from an earlier round is stale once a new round is
+ * scheduled), keyed by application id. Names follow the same rule as the
+ * Team page: the company's owner goes by their profile's contactName,
+ * everyone else by their account name.
+ */
+export async function getPanelEvaluations(
+  employerProfileId: string,
+  applications: { id: string; interviewDetails: { round: number } | null }[],
+): Promise<Map<string, PanelEvaluation[]>> {
+  const result = new Map<string, PanelEvaluation[]>();
+  const ids = applications.map((a) => a.id);
+  if (ids.length === 0) return result;
+
+  const [rows, [owner]] = await Promise.all([
+    db
+      .select({
+        jobApplicationId: interviewEvaluations.jobApplicationId,
+        evaluatorUserId: interviewEvaluations.evaluatorUserId,
+        evaluatorAccountName: users.name,
+        round: interviewEvaluations.round,
+        scores: interviewEvaluations.scores,
+        recommendation: interviewEvaluations.recommendation,
+        notes: interviewEvaluations.notes,
+      })
+      .from(interviewEvaluations)
+      .leftJoin(users, eq(users.id, interviewEvaluations.evaluatorUserId))
+      .where(inArray(interviewEvaluations.jobApplicationId, ids))
+      .orderBy(interviewEvaluations.createdAt),
+    db
+      .select({ userId: employerProfiles.userId, contactName: employerProfiles.contactName })
+      .from(employerProfiles)
+      .where(eq(employerProfiles.id, employerProfileId))
+      .limit(1),
+  ]);
+
+  const currentRound = new Map(applications.map((a) => [a.id, a.interviewDetails?.round ?? null]));
+  for (const row of rows) {
+    if (row.round !== currentRound.get(row.jobApplicationId)) continue;
+    const evaluatorName =
+      row.evaluatorUserId && owner && row.evaluatorUserId === owner.userId
+        ? owner.contactName
+        : row.evaluatorAccountName;
+    const list = result.get(row.jobApplicationId) ?? [];
+    list.push({
+      evaluatorUserId: row.evaluatorUserId,
+      evaluatorName,
+      round: row.round,
+      scores: row.scores,
+      recommendation: row.recommendation as InterviewEvaluation["recommendation"],
+      notes: row.notes,
+    });
+    result.set(row.jobApplicationId, list);
+  }
+  return result;
+}
+
+// Adds `evaluations` (each panelist's own scorecard), `evaluation` (the
+// combined summary every list/badge already renders), and `videoPitch` (the
+// applicant's visible pitch, as this company sees it — null if none) to
+// loader rows.
+async function withEvaluations<
+  T extends { application: { id: string; jobseekerProfileId: string; interviewDetails: { round: number } | null } },
+>(employerProfileId: string, rows: T[]) {
+  const [byApplication, pitches] = await Promise.all([
+    getPanelEvaluations(
+      employerProfileId,
+      rows.map((r) => r.application),
+    ),
+    getPitchSummariesForEmployer(
+      employerProfileId,
+      rows.map((r) => r.application.jobseekerProfileId),
+    ),
+  ]);
+  return rows.map((row) => {
+    const evaluations = byApplication.get(row.application.id) ?? [];
+    return {
+      ...row,
+      evaluations,
+      evaluation: summarizeEvaluations(evaluations),
+      videoPitch: pitches.get(row.application.jobseekerProfileId) ?? null,
+    };
+  });
 }
 
 export async function getApplicationsForEmployer(employerProfileId: string) {
@@ -37,22 +117,14 @@ export async function getApplicationsForEmployer(employerProfileId: string) {
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
-      evaluationRound: interviewEvaluations.round,
-      evaluationScores: interviewEvaluations.scores,
-      evaluationRecommendation: interviewEvaluations.recommendation,
-      evaluationNotes: interviewEvaluations.notes,
     })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .leftJoin(interviewEvaluations, eq(interviewEvaluations.jobApplicationId, jobApplications.id))
     .where(eq(jobPostings.employerProfileId, employerProfileId))
     .orderBy(desc(jobApplications.appliedAt));
 
-  return rows.map(({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes, ...row }) => ({
-    ...row,
-    evaluation: toEvaluation({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes }),
-  }));
+  return withEvaluations(employerProfileId, rows);
 }
 
 // Same shape as getApplicationsForEmployer, scoped to one posting — for the
@@ -77,22 +149,14 @@ export async function getApplicationsForJobPosting(employerProfileId: string, jo
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
-      evaluationRound: interviewEvaluations.round,
-      evaluationScores: interviewEvaluations.scores,
-      evaluationRecommendation: interviewEvaluations.recommendation,
-      evaluationNotes: interviewEvaluations.notes,
     })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .leftJoin(interviewEvaluations, eq(interviewEvaluations.jobApplicationId, jobApplications.id))
     .where(and(eq(jobPostings.employerProfileId, employerProfileId), eq(jobPostings.id, jobPostingId)))
     .orderBy(desc(jobApplications.appliedAt));
 
-  return rows.map(({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes, ...row }) => ({
-    ...row,
-    evaluation: toEvaluation({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes }),
-  }));
+  return withEvaluations(employerProfileId, rows);
 }
 
 // For the "Top Matches" AI matching endpoint — every non-terminal
@@ -165,15 +229,10 @@ export async function getInterviewApplicationsForEmployer(employerProfileId: str
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
-      evaluationRound: interviewEvaluations.round,
-      evaluationScores: interviewEvaluations.scores,
-      evaluationRecommendation: interviewEvaluations.recommendation,
-      evaluationNotes: interviewEvaluations.notes,
     })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .leftJoin(interviewEvaluations, eq(interviewEvaluations.jobApplicationId, jobApplications.id))
     .where(
       and(
         eq(jobPostings.employerProfileId, employerProfileId),
@@ -182,10 +241,7 @@ export async function getInterviewApplicationsForEmployer(employerProfileId: str
     )
     .orderBy(desc(jobApplications.appliedAt));
 
-  return rows.map(({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes, ...row }) => ({
-    ...row,
-    evaluation: toEvaluation({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes }),
-  }));
+  return withEvaluations(employerProfileId, rows);
 }
 
 // For the Interviews page's "Schedule interview" picker — shortlisted
@@ -211,22 +267,14 @@ export async function getShortlistedApplicationsForEmployer(employerProfileId: s
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
       applicantResumeFileName: jobseekerProfiles.resumeFileName,
-      evaluationRound: interviewEvaluations.round,
-      evaluationScores: interviewEvaluations.scores,
-      evaluationRecommendation: interviewEvaluations.recommendation,
-      evaluationNotes: interviewEvaluations.notes,
     })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .leftJoin(interviewEvaluations, eq(interviewEvaluations.jobApplicationId, jobApplications.id))
     .where(and(eq(jobPostings.employerProfileId, employerProfileId), eq(jobApplications.status, "shortlisted")))
     .orderBy(desc(jobApplications.appliedAt));
 
-  return rows.map(({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes, ...row }) => ({
-    ...row,
-    evaluation: toEvaluation({ evaluationRound, evaluationScores, evaluationRecommendation, evaluationNotes }),
-  }));
+  return withEvaluations(employerProfileId, rows);
 }
 
 export async function getJobseekerProfileId(userId: string): Promise<string | null> {
@@ -254,7 +302,7 @@ export async function getApplicationsForJobseeker(jobseekerProfileId: string) {
   // this list never renders a poster image, same bug/fix as
   // jobPostingListColumns in job-postings.ts.
   const { posterUrl: _posterUrl, ...postingColumns } = getTableColumns(jobPostings);
-  return db
+  const rows = await db
     .select({
       application: jobApplications,
       posting: postingColumns,
@@ -266,4 +314,6 @@ export async function getApplicationsForJobseeker(jobseekerProfileId: string) {
     .innerJoin(employerProfiles, eq(jobPostings.employerProfileId, employerProfiles.id))
     .where(eq(jobApplications.jobseekerProfileId, jobseekerProfileId))
     .orderBy(desc(jobApplications.appliedAt));
+  // Goes to the jobseeker's browser — screening answers stay server-side.
+  return rows.map((row) => ({ ...row, posting: stripCustomQuestionAnswers(row.posting) }));
 }

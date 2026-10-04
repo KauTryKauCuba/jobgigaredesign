@@ -12,7 +12,7 @@ async function requireEmployerUser() {
   return user ?? null;
 }
 
-// Wired into the "Get dummy data" button (Jobs/Applicants/Interviews pages)
+// Wired into My Profile's "Add sample data" card (DummyDataCard)
 // alongside its existing dummy-postings/dummy-applicants creation — grants
 // the current user access to the two ParcelTracker/WHALE dummy companies
 // (same fixtures `npm run db:seed` creates), so clicking it after a

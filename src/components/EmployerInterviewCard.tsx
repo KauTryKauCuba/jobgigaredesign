@@ -5,7 +5,9 @@ export default function EmployerInterviewCard() {
   return (
     <AssistantCard
       reverse
-      eyebrow="For employers"
+      step={4}
+      background="#E3F2EB"
+      eyebrow="Interview your way"
       headline="Interviews, organized your way"
       bullets={[
         {

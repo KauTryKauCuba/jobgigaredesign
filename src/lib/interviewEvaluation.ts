@@ -47,3 +47,63 @@ export function averageScore(scores: Partial<Record<EvaluationCriterion, number>
   if (values.length === 0) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
+
+// One interviewer's own scorecard on a panel. `evaluatorUserId` is null only
+// for a scorecard saved before per-interviewer evaluations existed.
+export type PanelEvaluation = InterviewEvaluation & {
+  evaluatorUserId: string | null;
+  evaluatorName: string | null;
+};
+
+const RECOMMENDATION_RANK: Record<InterviewRecommendation, number> = {
+  strong_no_hire: 1,
+  no_hire: 2,
+  hire: 3,
+  strong_hire: 4,
+};
+const RECOMMENDATION_BY_RANK: InterviewRecommendation[] = ["strong_no_hire", "no_hire", "hire", "strong_hire"];
+
+/**
+ * The panel's combined result, in the same single-scorecard shape lists and
+ * badges already render: each criterion averaged across everyone who scored
+ * it (to one decimal), and the recommendation from the average rank.
+ */
+export function summarizeEvaluations(evaluations: PanelEvaluation[]): InterviewEvaluation | null {
+  if (evaluations.length === 0) return null;
+  if (evaluations.length === 1) {
+    const [only] = evaluations;
+    return { round: only.round, scores: only.scores, recommendation: only.recommendation, notes: only.notes };
+  }
+  const scores: Partial<Record<EvaluationCriterion, number>> = {};
+  for (const criterion of EVALUATION_CRITERIA) {
+    const values = evaluations
+      .map((e) => e.scores[criterion])
+      .filter((v): v is number => typeof v === "number");
+    if (values.length > 0) {
+      scores[criterion] = Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 10) / 10;
+    }
+  }
+  const meanRank =
+    evaluations.reduce((sum, e) => sum + RECOMMENDATION_RANK[e.recommendation], 0) / evaluations.length;
+  return {
+    round: evaluations[0].round,
+    scores,
+    recommendation: RECOMMENDATION_BY_RANK[Math.min(3, Math.max(0, Math.round(meanRank) - 1))],
+    notes: null,
+  };
+}
+
+/**
+ * Whether every required panelist has a scorecard for the current round.
+ * An interview with no account-linked panel (scheduled before panel
+ * evaluations existed) is complete as soon as anyone has scored it — the
+ * old one-scorecard behavior.
+ */
+export function isPanelEvaluationComplete(
+  interviewerUserIds: string[] | undefined,
+  evaluations: PanelEvaluation[],
+): boolean {
+  if (!interviewerUserIds || interviewerUserIds.length === 0) return evaluations.length > 0;
+  const submitted = new Set(evaluations.map((e) => e.evaluatorUserId));
+  return interviewerUserIds.every((id) => submitted.has(id));
+}

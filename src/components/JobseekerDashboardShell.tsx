@@ -8,15 +8,17 @@ import Navbar from "./Navbar";
 import SidebarResumeCard from "./SidebarResumeCard";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
-import { BriefcaseIcon, FileIcon, HomeIcon, UserIcon } from "./icons";
+import { BriefcaseIcon, DraftIcon, FileIcon, HeartIcon, HomeIcon, UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
-export type JobseekerNavKey = "overview" | "applications" | "coverLetters" | "profile";
+export type JobseekerNavKey = "overview" | "applications" | "saved" | "coverLetters" | "resumeDesigner" | "profile";
 
 const NAV_ITEMS = [
   { key: "overview", href: "/jobseeker/dashboard", label: "Dashboard", icon: HomeIcon },
   { key: "applications", href: "/jobseeker/applications", label: "My Applications", icon: BriefcaseIcon },
+  { key: "saved", href: "/jobseeker/saved", label: "Saved Jobs", icon: HeartIcon },
   { key: "coverLetters", href: "/jobseeker/cover-letters", label: "Cover Letters", icon: FileIcon },
+  { key: "resumeDesigner", href: "/jobseeker/resume-designer", label: "Resume Designer", icon: DraftIcon },
   { key: "profile", href: "/jobseeker/profile", label: "My Profile", icon: UserIcon },
 ] as const;
 

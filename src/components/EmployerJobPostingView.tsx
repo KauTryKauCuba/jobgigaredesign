@@ -4,7 +4,8 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ApplicantDetailModal from "./ApplicantDetailModal";
-import type { EmployerAddress } from "@/lib/employer-profile";
+import VideoPitchBadge, { type ApplicantVideoPitch } from "./VideoPitchBadge";
+import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import EmployerDashboardShell from "./EmployerDashboardShell";
 import RichTextContent from "./RichTextContent";
 import { gradientFrameClass } from "./formStyles";
@@ -17,7 +18,12 @@ import {
 } from "@/lib/applicationStatus";
 import { UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
-import type { EvaluationCriterion, InterviewEvaluation, InterviewRecommendation } from "@/lib/interviewEvaluation";
+import type {
+  EvaluationCriterion,
+  InterviewEvaluation,
+  InterviewRecommendation,
+  PanelEvaluation,
+} from "@/lib/interviewEvaluation";
 import { fullPostingAddress } from "@/lib/postingLocation";
 
 const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
@@ -168,6 +174,8 @@ type ApplicationRow = {
   applicantNoticePeriod: string;
   applicantResumeFileName: string | null;
   evaluation?: InterviewEvaluation | null;
+  evaluations?: PanelEvaluation[];
+  videoPitch?: ApplicantVideoPitch | null;
 };
 
 function ApplicantAvatar({ url }: { url: string | null }) {
@@ -205,7 +213,10 @@ function ApplicantRow({
         <ApplicantAvatar url={applicant.applicantAvatarUrl} />
         <div className="flex min-w-0 flex-1 flex-col gap-[6px] @[30rem]:flex-row @[30rem]:items-center @[30rem]:gap-[10px]">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm text-[#141B2E]">{applicant.applicantName}</p>
+            <p className="flex min-w-0 items-center gap-[6px] text-sm text-[#141B2E]">
+              <span className="truncate">{applicant.applicantName}</span>
+              <VideoPitchBadge pitch={applicant.videoPitch} />
+            </p>
             <p className="mt-[1px] truncate text-xs text-[#4B5468]">
               {applicant.applicantTargetRole} · Applied {relativeTimeAgo(applicant.application.appliedAt)}
             </p>
@@ -585,11 +596,15 @@ export default function EmployerJobPostingView({
   posting,
   applications,
   addresses,
+  currentUserRole,
+  teamMembers = [],
 }: {
   authUser: AuthUser;
   posting: Posting;
   applications: ApplicationRow[];
   addresses: EmployerAddress[];
+  currentUserRole?: string | null;
+  teamMembers?: EmployerTeamMember[];
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(applications);
@@ -725,27 +740,46 @@ export default function EmployerJobPostingView({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't save this evaluation.");
-      setRows((prev) =>
-        prev.map((row) =>
-          row.application.id === applicationId
-            ? {
-                ...row,
-                application: { ...row.application, status: data.status },
-                evaluation: {
-                  round: data.evaluation.round,
-                  scores: data.evaluation.scores,
-                  recommendation: data.evaluation.recommendation,
-                  notes: data.evaluation.notes,
-                },
-              }
-            : row,
-        ),
-      );
+      applyEvaluationResponse(applicationId, data);
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : "Couldn't save this evaluation.");
     } finally {
       setUpdatingId(null);
     }
+  }
+
+  // Owner override — close out the evaluation before the whole panel has submitted.
+  async function completeEvaluation(applicationId: string) {
+    setStatusError(null);
+    setUpdatingId(applicationId);
+    try {
+      const res = await fetch(`/api/employer/applications/${applicationId}/evaluation`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't complete this evaluation.");
+      applyEvaluationResponse(applicationId, data);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Couldn't complete this evaluation.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function applyEvaluationResponse(
+    applicationId: string,
+    data: { status: string; evaluation: InterviewEvaluation | null; evaluations: PanelEvaluation[] },
+  ) {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.application.id === applicationId
+          ? {
+              ...row,
+              application: { ...row.application, status: data.status },
+              evaluation: data.evaluation,
+              evaluations: data.evaluations,
+            }
+          : row,
+      ),
+    );
   }
 
   const salary =
@@ -987,8 +1021,15 @@ export default function EmployerJobPostingView({
           onSaveEvaluation={(scores, recommendation, notes) =>
             saveEvaluation(viewingApplicant.application.id, scores, recommendation, notes)
           }
+          onCompleteEvaluation={() => completeEvaluation(viewingApplicant.application.id)}
           savingEvaluation={updatingId === viewingApplicant.application.id}
           addresses={addresses}
+          currentUserId={authUser.id}
+          currentUserIsOwner={authUser.teamRole === "owner"}
+          currentUserName={authUser.name}
+          currentUserAvatarUrl={authUser.avatarUrl}
+          currentUserRole={currentUserRole}
+          teamMembers={teamMembers}
           onClose={() => setViewingId(null)}
         />
       )}

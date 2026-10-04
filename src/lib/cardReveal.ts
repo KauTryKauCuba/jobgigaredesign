@@ -32,6 +32,23 @@ export function getRevealOffset(index: number): RevealOffset {
   return REVEAL_OFFSETS[index % REVEAL_OFFSETS.length];
 }
 
+/**
+ * The Find companies page's version, run the other way: at rest (progress 0)
+ * the cards sit in their grid, and as the page scrolls they drop down, shrink
+ * and fade, tucking in behind the directory card below them.
+ */
+export function getTuckStyle(progress: number, offset: RevealOffset): React.CSSProperties {
+  const local = Math.min(1, Math.max(0, (progress - offset.phase) / (1 - offset.phase)));
+  const eased = easeOut(local);
+
+  return {
+    transform: `translate3d(${offset.dx * eased}px, ${-offset.dy * 0.7 * eased}px, 0) scale(${1 - 0.3 * eased}) rotate(${offset.rot * eased}deg)`,
+    // Mostly hidden by the directory card sliding over them; the late fade
+    // covers narrow screens, where the top cards have further to travel.
+    opacity: 1 - eased * eased,
+  };
+}
+
 export function getRevealStyle(progress: number, offset: RevealOffset): React.CSSProperties {
   const local = Math.min(1, Math.max(0, (progress - offset.phase) / (1 - offset.phase)));
   const eased = easeOut(local);

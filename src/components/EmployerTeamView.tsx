@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Dropdown from "./Dropdown";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
-import { UserIcon, XIcon } from "./icons";
+import { SearchIcon, UserIcon, XIcon } from "./icons";
 import type { EmployerTeamActivityEntry, EmployerTeamMember } from "@/lib/employer-profile";
+import { POSITIONS } from "@/lib/positions";
 
 const inputClass = formInputClass("teal");
+const OTHER_POSITION = "__other__" as const;
 
 const ROLE_LABEL: Record<string, string> = { owner: "Owner", admin: "Admin" };
 const ROLE_PILL: Record<string, { bg: string; text: string }> = {
@@ -58,15 +60,23 @@ export default function EmployerTeamView({
   initialMembers,
   initialActivity,
   currentUserId,
+  ownerPosition,
 }: {
   initialMembers: EmployerTeamMember[];
   initialActivity: EmployerTeamActivityEntry[];
   currentUserId: string;
+  // The owner's own job title (employerProfiles.contactPosition, set on My
+  // Profile) — displayed for their row instead of a `position` column value,
+  // since the owner's row has no reason to duplicate that field.
+  ownerPosition?: string | null;
 }) {
   const [members, setMembers] = useState(initialMembers);
   const [activity, setActivity] = useState(initialActivity);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"owner" | "admin">("admin");
+  const [invitePositionChoice, setInvitePositionChoice] = useState<(typeof POSITIONS)[number] | "" | "__other__">("");
+  const [invitePositionOther, setInvitePositionOther] = useState("");
+  const invitePosition = invitePositionChoice === OTHER_POSITION ? invitePositionOther : invitePositionChoice;
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -74,6 +84,14 @@ export default function EmployerTeamView({
   const [resentIds, setResentIds] = useState<Set<string>>(() => new Set());
 
   const ownerCount = members.filter((m) => m.role === "owner").length;
+  const [search, setSearch] = useState("");
+  const searchTerm = search.trim().toLowerCase();
+  const visibleMembers = searchTerm
+    ? members.filter((m) => {
+        const position = m.role === "owner" ? ownerPosition : m.position;
+        return [m.name, m.email, position].some((v) => (v ?? "").toLowerCase().includes(searchTerm));
+      })
+    : members;
 
   async function refresh() {
     const res = await fetch("/api/employer/team");
@@ -123,7 +141,7 @@ export default function EmployerTeamView({
       const res = await fetch("/api/employer/team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole, position: invitePosition.trim() || null }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -133,6 +151,8 @@ export default function EmployerTeamView({
       setMembers(data.members);
       setInviteEmail("");
       setInviteRole("admin");
+      setInvitePositionChoice("");
+      setInvitePositionOther("");
       await refresh();
     } catch {
       setError("Couldn't send that invite — check your connection.");
@@ -183,7 +203,7 @@ export default function EmployerTeamView({
 
   return (
     <div className="flex flex-col gap-[20px]">
-      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
+      <div className={`relative z-10 animate-fade-in-up ${gradientFrameClass("teal")}`}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <div>
             <p className="text-sm text-[#141B2E]">Invite a teammate</p>
@@ -191,35 +211,61 @@ export default function EmployerTeamView({
               They&rsquo;ll need to sign up or log in with this email to join.
             </p>
           </div>
-          <form onSubmit={handleInvite} className="flex flex-col gap-[10px] sm:flex-row sm:items-end">
-            <div className="sm:flex-1">
+          <form onSubmit={handleInvite} className="flex flex-col gap-[10px]">
+            <div className="flex flex-col gap-[10px] sm:flex-row sm:items-end">
+              <div className="sm:flex-1">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="teammate@company.com"
+                  className={inputClass}
+                />
+              </div>
+              <div className="w-full sm:w-[200px]">
+                <Dropdown
+                  id="invitePosition"
+                  label="Position"
+                  searchable
+                  searchPlaceholder="Search positions..."
+                  value={invitePositionChoice}
+                  options={[
+                    { value: "" as const, label: "Position (optional)" },
+                    ...POSITIONS.map((p) => ({ value: p as (typeof POSITIONS)[number] | "" | "__other__", label: p })),
+                    { value: OTHER_POSITION, label: "Other" },
+                  ]}
+                  onChange={(v) => setInvitePositionChoice(v)}
+                />
+              </div>
+              <div className="w-full sm:w-[140px]">
+                <Dropdown
+                  id="inviteRole"
+                  label="Role"
+                  value={inviteRole}
+                  options={[
+                    { value: "admin", label: "Admin" },
+                    { value: "owner", label: "Owner" },
+                  ]}
+                  onChange={(v) => setInviteRole(v as "owner" | "admin")}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={inviting || !inviteEmail.trim()}
+                className="flex h-[38px] items-center justify-center rounded-[12px] bg-brand-teal-dark px-[18px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {inviting ? "Sending…" : "Send invite"}
+              </button>
+            </div>
+            {invitePositionChoice === OTHER_POSITION && (
               <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="teammate@company.com"
-                className={inputClass}
+                type="text"
+                value={invitePositionOther}
+                onChange={(e) => setInvitePositionOther(e.target.value)}
+                placeholder="Their position, e.g. Senior Graphic Designer"
+                className={`${inputClass} sm:max-w-[320px]`}
               />
-            </div>
-            <div className="w-full sm:w-[160px]">
-              <Dropdown
-                id="inviteRole"
-                label="Role"
-                value={inviteRole}
-                options={[
-                  { value: "admin", label: "Admin" },
-                  { value: "owner", label: "Owner" },
-                ]}
-                onChange={(v) => setInviteRole(v as "owner" | "admin")}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={inviting || !inviteEmail.trim()}
-              className="flex h-[38px] items-center justify-center rounded-[12px] bg-brand-teal-dark px-[18px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {inviting ? "Sending…" : "Send invite"}
-            </button>
+            )}
           </form>
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
@@ -228,13 +274,31 @@ export default function EmployerTeamView({
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="text-sm text-[#141B2E]">
-            {members.length} member{members.length === 1 ? "" : "s"}
+            {searchTerm ? `${visibleMembers.length} of ${members.length}` : members.length} member
+            {(searchTerm ? visibleMembers.length : members.length) === 1 ? "" : "s"}
           </p>
+          <div className="flex items-center gap-[8px] rounded-[12px] border border-black/[0.1] px-[12px] focus-within:border-brand-teal-dark">
+            <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search team by name, email or position..."
+              aria-label="Search team members"
+              className="h-[38px] w-full bg-transparent text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2]"
+            />
+          </div>
+          {searchTerm && visibleMembers.length === 0 && (
+            <p className="text-sm text-[#9AA3B2]">No team members match &ldquo;{search.trim()}&rdquo;.</p>
+          )}
           <div className="flex flex-col gap-[8px]">
-            {members.map((member) => {
+            {visibleMembers.map((member) => {
               const pill = ROLE_PILL[member.role] ?? ROLE_PILL.admin;
               const isSelf = member.userId === currentUserId;
               const isLastOwner = member.role === "owner" && ownerCount === 1;
+              // The owner's own row has no `position` of its own — it shows
+              // My Profile's contactPosition instead (see `ownerPosition` prop).
+              const displayPosition = member.role === "owner" ? ownerPosition : member.position;
               return (
                 <div
                   key={member.id}
@@ -247,7 +311,9 @@ export default function EmployerTeamView({
                         {member.name || member.email}
                         {isSelf && <span className="text-[#9AA3B2]"> (you)</span>}
                       </p>
-                      <p className="truncate text-xs text-[#9AA3B2]">{member.email}</p>
+                      <p className="truncate text-xs text-[#9AA3B2]">
+                        {displayPosition ? `${displayPosition} · ${member.email}` : member.email}
+                      </p>
                     </div>
 
                     <div className="order-last flex w-full flex-wrap items-center gap-[8px] @[34rem]:order-none @[34rem]:w-auto">

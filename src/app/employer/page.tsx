@@ -6,6 +6,7 @@ import EmployerFloatingBadges from "@/components/EmployerFloatingBadges";
 import EmployerInterviewCard from "@/components/EmployerInterviewCard";
 import EmployerJobPostCard from "@/components/EmployerJobPostCard";
 import EmployerManageJobCard from "@/components/EmployerManageJobCard";
+import EmployerPosterCard from "@/components/EmployerPosterCard";
 import FloatingAssistant from "@/components/FloatingAssistant";
 import Footer from "@/components/Footer";
 import Hero from "@/components/Hero";
@@ -65,12 +66,13 @@ export default async function EmployerPage() {
       <EmployerJobPostCard />
       <EmployerManageJobCard />
       <EmployerInterviewCard />
+      <EmployerPosterCard />
       <Footer accent="teal" />
       {/* Clipped to its top half and pulled down past the floating-chat
           clearance (-mb cancels the <main> padding reserved for it) so the
           ribbon reads as bleeding off the bottom edge, same treatment as the
           employer dashboard shell. */}
-      <div className="-mb-[92px] h-[80px] overflow-hidden bg-white sm:h-[110px] lg:h-[150px]">
+      <div className="-mb-[92px] h-[80px] overflow-hidden sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon />
       </div>
       {/* FloatingAssistant is fixed to the viewport bottom, like the navbar

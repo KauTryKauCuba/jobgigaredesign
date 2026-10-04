@@ -33,5 +33,11 @@ export default async function EmployerJobsPage() {
   const serializedPostings = JSON.parse(JSON.stringify(postingsWithCounts));
 
   // key forces a remount on company switch — see dashboard/page.tsx's comment.
-  return <EmployerJobsView key={profile?.id ?? "none"} authUser={authUser} initialPostings={serializedPostings} />;
+  return (
+    <EmployerJobsView
+      key={profile?.id ?? "none"}
+      authUser={authUser}
+      initialPostings={serializedPostings}
+    />
+  );
 }

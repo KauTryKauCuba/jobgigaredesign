@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobApplications, jobseekerProfiles } from "@/lib/db/schema";
+import { getApplicationNotificationContext, getEmployerTeamUserIds, notify } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 
 const RESPONSES = ["accepted", "declined", "reschedule_requested"] as const;
@@ -50,6 +51,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .set({ interviewResponseStatus: response as (typeof RESPONSES)[number], updatedAt: new Date() })
     .where(eq(jobApplications.id, id))
     .returning();
+
+  // Tell whoever's running the interview — the panel if there is one,
+  // otherwise the whole hiring team.
+  const ctx = await getApplicationNotificationContext(id);
+  if (ctx) {
+    const panel = updated.interviewDetails?.interviewerUserIds ?? [];
+    const recipients = panel.length > 0 ? panel : await getEmployerTeamUserIds(ctx.employerProfileId, ctx.ownerUserId);
+    const verb =
+      response === "accepted"
+        ? "accepted"
+        : response === "declined"
+          ? "declined"
+          : "asked to reschedule";
+    await notify(recipients, "employer", {
+      type: `interview_${response}`,
+      title: `${ctx.applicantName} ${verb} the interview`,
+      body: ctx.postingTitle,
+      link: "/employer/interviews",
+    });
+  }
 
   return NextResponse.json({ application: updated });
 }

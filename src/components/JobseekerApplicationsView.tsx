@@ -13,9 +13,12 @@ import {
   type InterviewDetails,
   type InterviewResponseStatus,
 } from "@/lib/applicationStatus";
-import { CalendarIcon } from "./icons";
+import { CalendarIcon, UserIcon } from "./icons";
+import { STATUS_ICON, STATUS_TILE_GRADIENT } from "./applicationStatusTiles";
 import InterviewCountdown from "./InterviewCountdown";
 import type { AuthUser } from "./AuthModal";
+import ApplicationTracker from "./ApplicationTracker";
+import type { ApplicationEvent, EmployerResponsiveness } from "@/lib/responsiveness";
 
 type ApplicationRow = {
   application: {
@@ -32,6 +35,9 @@ type ApplicationRow = {
     location: string;
   };
   companyName: string;
+  // Step-by-step history and the employer's typical reply time, for the tracker.
+  events: ApplicationEvent[];
+  responsiveness: EmployerResponsiveness | null;
 };
 
 const STATUS_ORDER = [
@@ -59,6 +65,8 @@ export default function JobseekerApplicationsView({
   applications: ApplicationRow[];
 }) {
   const [rows, setRows] = useState(applications);
+  // Captured once — calling Date.now() during render is impure.
+  const [now] = useState(() => Date.now());
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [responseError, setResponseError] = useState<string | null>(null);
 
@@ -119,21 +127,52 @@ export default function JobseekerApplicationsView({
       <div className={`animate-fade-in-up ${gradientFrameClass("gold")}`}>
         <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           <p className="mb-[12px] text-sm text-[#141B2E]">Applications at a glance</p>
-          <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
-            <div className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
-              <span className="text-xl text-[#141B2E]">{rows.length}</span>
-              <span className="text-xs text-[#4B5468]">Total</span>
+          <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4 lg:grid-cols-5">
+            {/* Same tile treatment as the employer's "Applicants at a glance". */}
+            <div
+              style={{ backgroundImage: "linear-gradient(to bottom, #C9CFDA, white 90%)" }}
+              className={`gradient-noise relative flex flex-col gap-[4px] overflow-hidden rounded-[14px] p-[14px] ${
+                rows.length > 0 ? "" : "opacity-60"
+              }`}
+            >
+              <span aria-hidden className="pointer-events-none absolute -top-[10%] -right-[10%]">
+                <UserIcon
+                  className="icon-gradient-color h-[48px] w-[48px] opacity-40"
+                  strokeWidth={0.7}
+                  style={{ "--icon-accent": "#C9CFDA" } as React.CSSProperties}
+                />
+              </span>
+              <div className="relative flex items-start justify-between">
+                <span className="text-xl text-[#141B2E]">{rows.length}</span>
+                <UserIcon className="h-[16px] w-[16px] text-[#9AA3B2]" />
+              </div>
+              <span className="relative text-xs text-[#4B5468]">Total applications</span>
             </div>
             {STATUS_ORDER.map((status) => {
               const count = rows.filter((a) => a.application.status === status).length;
               const color = APPLICATION_STATUS_COLOR[status] ?? APPLICATION_STATUS_COLOR.applied;
+              const Icon = STATUS_ICON[status];
+              const gradient = STATUS_TILE_GRADIENT[status];
               return (
                 <div
                   key={status}
-                  className={`flex flex-col gap-[4px] rounded-[14px] border p-[14px] ${color.bg} border-transparent`}
+                  style={{ backgroundImage: `linear-gradient(to bottom, ${gradient}, white 90%)` }}
+                  className={`gradient-noise relative flex flex-col gap-[4px] overflow-hidden rounded-[14px] p-[14px] ${
+                    count > 0 ? "" : "opacity-60"
+                  }`}
                 >
-                  <span className="text-xl text-[#141B2E]">{count}</span>
-                  <span className={`text-xs ${color.text}`}>
+                  <span aria-hidden className="pointer-events-none absolute -top-[10%] -right-[10%]">
+                    <Icon
+                      className="icon-gradient-color h-[48px] w-[48px] opacity-40"
+                      strokeWidth={0.7}
+                      style={{ "--icon-accent": gradient } as React.CSSProperties}
+                    />
+                  </span>
+                  <div className="relative flex items-start justify-between">
+                    <span className="text-xl text-[#141B2E]">{count}</span>
+                    <Icon className={`h-[16px] w-[16px] ${color.text}`} />
+                  </div>
+                  <span className={`relative text-xs ${color.text}`}>
                     {APPLICATION_STATUS_LABEL[status] ?? status}
                   </span>
                 </div>
@@ -151,12 +190,12 @@ export default function JobseekerApplicationsView({
               </p>
             ) : (
               <div className="mt-[10px] flex flex-col gap-[10px]">
-                {rows.map(({ application, posting, companyName }) => {
+                {rows.map(({ application, posting, companyName, events, responsiveness }) => {
                   const color = APPLICATION_STATUS_COLOR[application.status] ?? APPLICATION_STATUS_COLOR.applied;
                   const details = application.interviewDetails;
                   const responseStatus = application.interviewResponseStatus;
                   const responseColor = responseStatus ? INTERVIEW_RESPONSE_STATUS_COLOR[responseStatus] : null;
-                  const interviewTimeHasPassed = !!details && new Date(details.scheduledAt).getTime() <= new Date().getTime();
+                  const interviewTimeHasPassed = !!details && new Date(details.scheduledAt).getTime() <= now;
                   return (
                     <div
                       key={application.id}
@@ -180,6 +219,15 @@ export default function JobseekerApplicationsView({
                           </span>
                         </div>
                       </div>
+
+                      <ApplicationTracker
+                        status={application.status}
+                        appliedAt={application.appliedAt}
+                        events={events}
+                        companyName={companyName}
+                        responsiveness={responsiveness}
+                        now={now}
+                      />
 
                       {(application.status === "interview" ||
                         application.status === "interviewed" ||

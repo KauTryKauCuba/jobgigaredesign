@@ -561,6 +561,76 @@
       "when": 1790642998005,
       "tag": "0079_sparkling_nocturne",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1791018722030,
+      "tag": "0080_fair_electro",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1791019051764,
+      "tag": "0081_long_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1791019531551,
+      "tag": "0082_greedy_forge",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1791032705286,
+      "tag": "0083_milky_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1791034456680,
+      "tag": "0084_equal_roland_deschain",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1791034850355,
+      "tag": "0085_brave_amazoness",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1791035907744,
+      "tag": "0086_unknown_lilandra",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791039976888,
+      "tag": "0087_graceful_colonel_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1791076754542,
+      "tag": "0088_orange_colossus",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1791079096814,
+      "tag": "0089_last_impossible_man",
+      "breakpoints": true
     }
   ]
 }

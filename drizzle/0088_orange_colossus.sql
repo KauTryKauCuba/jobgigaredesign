@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "sample_data_banner_dismissed_at" timestamp with time zone;

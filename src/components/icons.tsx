@@ -483,6 +483,25 @@ export function BoltIcon({
   );
 }
 
+export function BellIcon({ className = "", strokeWidth = 1.4 }: { className?: string; strokeWidth?: number }) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M3.4 10.2V6.3a3.6 3.6 0 0 1 7.2 0v3.9l1 1H2.4l1-1Z" />
+      <path d="M5.8 12.4a1.3 1.3 0 0 0 2.4 0" />
+    </svg>
+  );
+}
+
 export function ClockIcon({
   className = "",
   strokeWidth = 1.4,
@@ -647,6 +666,24 @@ export function FlagIcon({
     >
       <path d="M3.4 1.4v11.2" />
       <path d="M3.4 2.2h6.8l-1.8 2.4 1.8 2.4H3.4" />
+    </svg>
+  );
+}
+
+export function HeartIcon({ className = "", filled = false }: { className?: string; filled?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className={className}
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M7 12.2S1.4 8.9 1.4 5.1A2.9 2.9 0 0 1 7 3.6a2.9 2.9 0 0 1 5.6 1.5C12.6 8.9 7 12.2 7 12.2Z" />
     </svg>
   );
 }

@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { recordStatusChange } from "@/lib/application-events";
 import { db } from "@/lib/db";
 import { interviewEvaluations, jobApplications, jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
 import { getSession } from "@/lib/session";
-import { EVALUATION_CRITERIA } from "@/lib/interviewEvaluation";
+import { isUuid } from "@/lib/uuid";
+import { getPanelEvaluations } from "@/lib/job-applications";
+import { EVALUATION_CRITERIA, isPanelEvaluationComplete, summarizeEvaluations } from "@/lib/interviewEvaluation";
 
 const RECOMMENDATIONS = ["strong_hire", "hire", "no_hire", "strong_no_hire"] as const;
 
@@ -21,15 +24,44 @@ function parseScores(value: unknown): Record<string, number> | "invalid" {
   return scores;
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+// Shared by both handlers: the caller's company access plus the application,
+// which must belong to one of that company's own postings.
+async function loadContext(id: string) {
   const session = await getSession();
   if (!session || session.role !== "employer") {
-    return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
+    return { error: NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 }) } as const;
   }
-
   const access = await getEmployerAccess(session.userId);
-  if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const profile = access.profile;
+  if (!access || !isUuid(id)) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) } as const;
+
+  const [application] = await db
+    .select({
+      id: jobApplications.id,
+      status: jobApplications.status,
+      interviewDetails: jobApplications.interviewDetails,
+    })
+    .from(jobApplications)
+    .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
+    .where(and(eq(jobApplications.id, id), eq(jobPostings.employerProfileId, access.profile.id)))
+    .limit(1);
+  if (!application) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) } as const;
+
+  return { userId: session.userId, access, application } as const;
+}
+
+async function panelState(employerProfileId: string, application: { id: string; interviewDetails: { round: number } | null }) {
+  const evaluations = (await getPanelEvaluations(employerProfileId, [application])).get(application.id) ?? [];
+  return { evaluations, evaluation: summarizeEvaluations(evaluations) };
+}
+
+// Submit (or update) the caller's own scorecard. Allowed for anyone on the
+// interview panel, plus the company's Owners. The application only moves to
+// "evaluated" once every panelist has submitted (see isPanelEvaluationComplete).
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const ctx = await loadContext(id);
+  if ("error" in ctx) return ctx.error;
+  const { userId, access, application } = ctx;
 
   let body: unknown;
   try {
@@ -50,53 +82,74 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid notes." }, { status: 400 });
   }
 
-  const { id } = await params;
-
-  // Application must belong to one of this employer's own postings, and
-  // must have had an interview scheduled at some point — evaluating a
-  // candidate who was never interviewed doesn't make sense.
-  const [existing] = await db
-    .select({ id: jobApplications.id, status: jobApplications.status, round: jobApplications.interviewDetails })
-    .from(jobApplications)
-    .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
-    .where(and(eq(jobApplications.id, id), eq(jobPostings.employerProfileId, profile.id)))
-    .limit(1);
-  if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  if (!existing.round) {
+  // Evaluating a candidate who was never interviewed doesn't make sense.
+  const details = application.interviewDetails;
+  if (!details) {
     return NextResponse.json({ error: "Schedule an interview before evaluating this candidate." }, { status: 400 });
   }
 
-  const [evaluation] = await db
-    .insert(interviewEvaluations)
-    .values({
-      jobApplicationId: id,
-      round: existing.round.round,
-      scores: parsedScores,
-      recommendation: recommendation as (typeof RECOMMENDATIONS)[number],
-      notes: notes ? (notes as string).trim() || null : null,
-    })
-    .onConflictDoUpdate({
-      target: interviewEvaluations.jobApplicationId,
-      set: {
-        round: existing.round.round,
-        scores: parsedScores,
-        recommendation: recommendation as (typeof RECOMMENDATIONS)[number],
-        notes: notes ? (notes as string).trim() || null : null,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-
-  // Saving an evaluation is what closes out "evaluation" — advance the
-  // pipeline stage automatically, same pattern as marking attendance closes
-  // out "interview". Only when actually at "evaluation" though: don't drag
-  // a KIV'd or already-decided application backward into "evaluated", and
-  // don't let a save short-circuit past the explicit "start evaluation"
-  // step from "interviewed".
-  const advancesToEvaluated = existing.status === "evaluation";
-  if (advancesToEvaluated) {
-    await db.update(jobApplications).set({ status: "evaluated", updatedAt: new Date() }).where(eq(jobApplications.id, id));
+  // An interview scheduled before panel evaluations existed has no linked
+  // panel — anyone at the company may score it, as before.
+  const panel = details.interviewerUserIds ?? [];
+  const onPanel = panel.includes(userId);
+  if (panel.length > 0 && !onPanel && access.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only interviewers on this panel (or an Owner) can evaluate this candidate." },
+      { status: 403 },
+    );
   }
 
-  return NextResponse.json({ evaluation, status: advancesToEvaluated ? "evaluated" : existing.status });
+  const values = {
+    round: details.round,
+    scores: parsedScores,
+    recommendation: recommendation as (typeof RECOMMENDATIONS)[number],
+    notes: notes ? (notes as string).trim() || null : null,
+  };
+  await db
+    .insert(interviewEvaluations)
+    .values({ jobApplicationId: id, evaluatorUserId: userId, ...values })
+    .onConflictDoUpdate({
+      target: [interviewEvaluations.jobApplicationId, interviewEvaluations.evaluatorUserId],
+      set: { ...values, updatedAt: new Date() },
+    });
+
+  const state = await panelState(access.profile.id, application);
+
+  // Only advance from "evaluation" itself: don't drag a KIV'd or
+  // already-decided application backward, and don't skip past the explicit
+  // "start evaluation" step from "interviewed".
+  let status = application.status;
+  if (application.status === "evaluation" && isPanelEvaluationComplete(details.interviewerUserIds, state.evaluations)) {
+    await db.update(jobApplications).set({ status: "evaluated", updatedAt: new Date() }).where(eq(jobApplications.id, id));
+    await recordStatusChange(id, "evaluation", "evaluated");
+    status = "evaluated";
+  }
+
+  return NextResponse.json({ ...state, status });
+}
+
+// Owner override: close out the evaluation now, without waiting for the rest
+// of the panel (e.g. an interviewer left the company). Needs at least one
+// scorecard, so "evaluated" never means "nobody evaluated".
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const ctx = await loadContext(id);
+  if ("error" in ctx) return ctx.error;
+  const { access, application } = ctx;
+
+  if (access.role !== "owner") {
+    return NextResponse.json({ error: "Only an Owner can complete an evaluation early." }, { status: 403 });
+  }
+  if (application.status !== "evaluation") {
+    return NextResponse.json({ error: "This candidate isn't in the evaluation stage." }, { status: 400 });
+  }
+
+  const state = await panelState(access.profile.id, application);
+  if (state.evaluations.length === 0) {
+    return NextResponse.json({ error: "At least one interviewer needs to submit an evaluation first." }, { status: 400 });
+  }
+
+  await db.update(jobApplications).set({ status: "evaluated", updatedAt: new Date() }).where(eq(jobApplications.id, id));
+  await recordStatusChange(id, "evaluation", "evaluated");
+  return NextResponse.json({ ...state, status: "evaluated" });
 }

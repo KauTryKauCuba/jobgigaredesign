@@ -445,153 +445,79 @@ body {
   }
 }
 
-/* InterviewMockup.tsx — cycles through List/Kanban/Calendar, crossfading
-   the three absolutely-stacked panels and highlighting the matching tab in
-   the decorative toggle above them, all on one shared 12s timeline so the
-   panel and its tab always switch in lockstep (no JS — same "no hydration
-   risk" reasoning as the other .ai-fill-* mockup animations, just three
-   phases instead of one). */
-@keyframes mockup-view-list {
-  0%,
-  4% {
-    opacity: 0;
-  }
-  8%,
-  29% {
-    opacity: 1;
-  }
-  33%,
-  100% {
-    opacity: 0;
-  }
+/* PosterMockup.tsx — alternates between the two poster styles on one
+   shared 8s timeline: the style picker's selection (border + check) moves,
+   the matching poster lifts forward while the other recedes, and a soft
+   shine sweeps across the poster as it becomes active ("just generated").
+   No JS, same reasoning as the other mockup animations. */
+@keyframes poster-mock-style-a {
+  0%, 45% { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  50%, 95% { border-color: rgba(0, 0, 0, 0.06); background-color: #ffffff; }
+  100% { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
 }
-@keyframes mockup-view-kanban {
-  0%,
-  33% {
-    opacity: 0;
-  }
-  37%,
-  62% {
-    opacity: 1;
-  }
-  66%,
-  100% {
-    opacity: 0;
-  }
+@keyframes poster-mock-style-b {
+  0%, 45% { border-color: rgba(0, 0, 0, 0.06); background-color: #ffffff; }
+  50%, 95% { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  100% { border-color: rgba(0, 0, 0, 0.06); background-color: #ffffff; }
 }
-@keyframes mockup-view-calendar {
-  0%,
-  66% {
-    opacity: 0;
-  }
-  70%,
-  95% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
+@keyframes poster-mock-check-a {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
 }
-.mockup-view-list {
-  animation: mockup-view-list 12s ease-in-out infinite;
+@keyframes poster-mock-check-b {
+  0%, 45% { opacity: 0; }
+  50%, 95% { opacity: 1; }
+  100% { opacity: 0; }
 }
-.mockup-view-kanban {
-  animation: mockup-view-kanban 12s ease-in-out infinite;
+@keyframes poster-mock-card-a {
+  0%, 45% { transform: translateY(-6px) scale(1.06) rotate(-2deg); opacity: 1; }
+  50%, 95% { transform: translateY(0) scale(0.94) rotate(-2deg); opacity: 0.55; }
+  100% { transform: translateY(-6px) scale(1.06) rotate(-2deg); opacity: 1; }
 }
-.mockup-view-calendar {
-  animation: mockup-view-calendar 12s ease-in-out infinite;
+@keyframes poster-mock-card-b {
+  0%, 45% { transform: translateY(0) scale(0.94) rotate(2deg); opacity: 0.55; }
+  50%, 95% { transform: translateY(-6px) scale(1.06) rotate(2deg); opacity: 1; }
+  100% { transform: translateY(0) scale(0.94) rotate(2deg); opacity: 0.55; }
 }
-
-@keyframes mockup-tab-list {
-  0%,
-  4% {
-    background-color: transparent;
-    color: #4b5468;
-  }
-  8%,
-  29% {
-    background-color: var(--color-brand-teal-dark);
-    color: #ffffff;
-  }
-  33%,
-  100% {
-    background-color: transparent;
-    color: #4b5468;
-  }
+@keyframes poster-mock-shine-a {
+  0% { transform: translateX(-130%) skewX(-20deg); }
+  15%, 100% { transform: translateX(230%) skewX(-20deg); }
 }
-@keyframes mockup-tab-kanban {
-  0%,
-  33% {
-    background-color: transparent;
-    color: #4b5468;
-  }
-  37%,
-  62% {
-    background-color: var(--color-brand-teal-dark);
-    color: #ffffff;
-  }
-  66%,
-  100% {
-    background-color: transparent;
-    color: #4b5468;
-  }
+@keyframes poster-mock-shine-b {
+  0%, 50% { transform: translateX(-130%) skewX(-20deg); }
+  65%, 100% { transform: translateX(230%) skewX(-20deg); }
 }
-@keyframes mockup-tab-calendar {
-  0%,
-  66% {
-    background-color: transparent;
-    color: #4b5468;
-  }
-  70%,
-  95% {
-    background-color: var(--color-brand-teal-dark);
-    color: #ffffff;
-  }
-  100% {
-    background-color: transparent;
-    color: #4b5468;
-  }
-}
-.mockup-tab-list {
-  animation: mockup-tab-list 12s ease-in-out infinite;
-}
-.mockup-tab-kanban {
-  animation: mockup-tab-kanban 12s ease-in-out infinite;
-}
-.mockup-tab-calendar {
-  animation: mockup-tab-calendar 12s ease-in-out infinite;
-}
-
+.poster-mock-style-a { animation: poster-mock-style-a 8s ease-in-out infinite; }
+.poster-mock-style-b { animation: poster-mock-style-b 8s ease-in-out infinite; }
+.poster-mock-check-a { animation: poster-mock-check-a 8s ease-in-out infinite; }
+.poster-mock-check-b { animation: poster-mock-check-b 8s ease-in-out infinite; }
+.poster-mock-card-a { animation: poster-mock-card-a 8s ease-in-out infinite; }
+.poster-mock-card-b { animation: poster-mock-card-b 8s ease-in-out infinite; }
+.poster-mock-shine-a { animation: poster-mock-shine-a 8s ease-out infinite; }
+.poster-mock-shine-b { animation: poster-mock-shine-b 8s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .mockup-view-list,
-  .mockup-view-kanban,
-  .mockup-view-calendar,
-  .mockup-tab-list,
-  .mockup-tab-kanban,
-  .mockup-tab-calendar {
+  .poster-mock-style-a,
+  .poster-mock-style-b,
+  .poster-mock-check-a,
+  .poster-mock-check-b,
+  .poster-mock-card-a,
+  .poster-mock-card-b,
+  .poster-mock-shine-a,
+  .poster-mock-shine-b {
     animation: none;
   }
-  .mockup-view-list {
-    opacity: 1;
-  }
-  .mockup-view-kanban,
-  .mockup-view-calendar {
-    opacity: 0;
-  }
-  .mockup-tab-list {
-    background-color: var(--color-brand-teal-dark);
-    color: #ffffff;
-  }
-  .mockup-tab-kanban,
-  .mockup-tab-calendar {
-    background-color: transparent;
-    color: #4b5468;
-  }
+  /* Freeze on the first phase: Playful selected and in front. */
+  .poster-mock-style-a { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  .poster-mock-check-b { opacity: 0; }
+  .poster-mock-card-a { transform: translateY(-6px) scale(1.06) rotate(-2deg); }
+  .poster-mock-card-b { transform: scale(0.94) rotate(2deg); opacity: 0.55; }
+  .poster-mock-shine-a,
+  .poster-mock-shine-b { display: none; }
 }
 
 /* PosterGeneratorTeaser.tsx — two absolutely-stacked mini cards (a job
-   posting summary, a 9:16 poster) crossfading on one shared timeline, same
-   "no JS/no hydration risk" approach as the .mockup-view-* panels above:
+   posting summary, a 9:16 poster) crossfading on one shared timeline —
    pure CSS keyframes rather than a JS interval, so there's nothing to
    hydrate or get out of sync between server and client render. */
 @keyframes poster-teaser-posting {
@@ -797,3 +723,65 @@ body {
   }
 }
 
+
+/* AiFillMockup — blinking caret while the company name "types" itself in. */
+@keyframes ai-fill-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.ai-fill-caret {
+  animation: ai-fill-caret 0.9s step-end infinite;
+}
+
+/* Landing-page mockups — a live number briefly pops and flashes teal when it
+   changes (the element is re-keyed on each new value, so this replays). */
+@keyframes mock-bump {
+  0% {
+    transform: translateY(3px) scale(0.9);
+    color: var(--color-brand-teal-dark);
+    opacity: 0.3;
+  }
+  45% {
+    transform: translateY(0) scale(1.12);
+    color: var(--color-brand-teal-dark);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.mock-bump {
+  animation: mock-bump 0.55s ease-out;
+}
+
+/* An item arriving somewhere new (e.g. a Kanban card moving columns). */
+@keyframes mock-slide-in {
+  0% {
+    transform: translateX(-14px);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.mock-slide-in {
+  animation: mock-slide-in 0.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-fill-caret,
+  .mock-bump,
+  .mock-slide-in {
+    animation: none;
+  }
+}
