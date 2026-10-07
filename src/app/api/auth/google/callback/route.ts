@@ -12,6 +12,29 @@ import { ACCOUNT_NOT_FOUND_MESSAGE } from "@/lib/auth-messages";
 const STATE_COOKIE = "google_oauth_state";
 const ERROR_COOKIE = "google_auth_error";
 
+/**
+ * This VPS's outbound DNS is intermittently flaky (a `fetch` to Google can
+ * throw with `getaddrinfo EAI_AGAIN` even though the same lookup succeeds a
+ * second later) — same class of issue as resume-parser.ts's callProvider,
+ * just a connectivity blip rather than a slow upstream. A short retry turns
+ * that into an invisible hiccup instead of a dead sign-in for the user.
+ * Only retries actual network failures (fetch throwing) — an HTTP response
+ * from Google, even an error one, is returned as-is on the first try, since
+ * retrying a real rejection (bad code, bad credentials) would never help.
+ */
+async function fetchWithRetry(input: string, init: RequestInit, attempts = 3): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((r) => setTimeout(r, 300 * attempt));
+    }
+  }
+  throw lastError;
+}
+
 type GoogleTokenResponse = { access_token?: string; error?: string; error_description?: string };
 type GoogleUserInfo = { sub: string; email?: string; email_verified?: boolean; name?: string; picture?: string };
 
@@ -70,27 +93,37 @@ export async function GET(request: Request) {
 
   const redirectUri = `${siteUrl}/api/auth/google/callback`;
 
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }),
-  });
+  let tokenRes: Response;
+  let userRes: Response;
+  try {
+    tokenRes = await fetchWithRetry("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+  } catch {
+    return fail("Couldn't reach Google — please try again.", parsedState.role);
+  }
   const tokenData = (await tokenRes.json()) as GoogleTokenResponse;
   if (!tokenRes.ok || !tokenData.access_token) {
     return fail(tokenData.error_description ?? "Couldn't complete Google sign-in.", parsedState.role);
   }
 
-  const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${tokenData.access_token}` },
-  });
+  try {
+    userRes = await fetchWithRetry("https://www.googleapis.com/oauth2/v3/userinfo", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+  } catch {
+    return fail("Couldn't reach Google — please try again.", parsedState.role);
+  }
   if (!userRes.ok) return fail("Couldn't fetch your Google account details.", parsedState.role);
   const googleUser = (await userRes.json()) as GoogleUserInfo;
 
