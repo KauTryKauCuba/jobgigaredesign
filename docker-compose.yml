@@ -48,6 +48,16 @@ services:
       dockerfile: Dockerfile
     container_name: jobgiga-app
     restart: unless-stopped
+    # Explicit public DNS — without this, containers inherit the host's
+    # /etc/resolv.conf, which on Ubuntu (systemd-resolved) typically points
+    # to the 127.0.0.53 stub resolver. That address only works on the host
+    # itself; it's unreachable from inside a container's network namespace,
+    # so outbound lookups (Google OAuth, any other external API) can fail
+    # with "getaddrinfo EAI_AGAIN" at runtime even though the host resolves
+    # fine. This sidesteps that regardless of the host's own DNS setup.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     env_file:
       - .env.local
     depends_on:
