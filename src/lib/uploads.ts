@@ -3,10 +3,14 @@ import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
-// Where uploaded files actually live: `public/uploads/<category>/<file>`,
-// served automatically by Next's built-in static file handling (this app
-// runs a plain `next start`, which reads `public/` from disk on every
-// request — no custom serving route needed). On the VPS this directory is
+// Where uploaded files actually live: `public/uploads/<category>/<file>`.
+// Next's own public-folder static handling serves most of these (same
+// `/uploads/...` URL), but in production (`next start`) that only works for
+// files that existed when the server booted — it scans public/ once at
+// startup and never re-checks disk after. A fallback route handler at
+// src/app/uploads/[...path]/route.ts catches everything uploaded after
+// that, which in practice is every file a user uploads on the running app.
+// See that route's comment for the full story. On the VPS this directory is
 // a mounted Docker volume so files survive redeploys; in local dev it's
 // just a folder on disk. Either way, files land in the same relative path.
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
