@@ -22,4 +22,10 @@ COPY . .
 RUN npm run build
 
 EXPOSE 4100
-CMD ["npm", "run", "start"]
+# Apply any pending database migrations before the app starts, so a deploy
+# can never go live against an out-of-date schema (that once 500'd Google
+# sign-in). Already-applied migrations are skipped, so this is a no-op on
+# most restarts. DATABASE_URL comes from the container's env (.env.local
+# via docker-compose). If a migration fails, the app doesn't start — the
+# error shows in `docker compose logs app` instead of a half-broken site.
+CMD ["sh", "-c", "npx drizzle-kit migrate && exec npm run start"]
