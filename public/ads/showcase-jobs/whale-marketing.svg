@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#E7E9F5"/>
+  <g fill="none" stroke="#121A52">
+    <circle cx="900" cy="180" r="140" stroke-width="22" opacity="0.16"/>
+    <circle cx="900" cy="180" r="230" stroke-width="22" opacity="0.1"/>
+    <circle cx="900" cy="180" r="320" stroke-width="22" opacity="0.06"/>
+  </g>
+  <circle cx="110" cy="1010" r="240" fill="#121A52" opacity="0.05"/>
+  <g font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="96" y="300" width="262" height="56" rx="28" fill="#121A52" fill-opacity="0.08"/>
+    <text x="227" y="337" text-anchor="middle" font-size="26" font-weight="600" letter-spacing="3" fill="#121A52">WE&#8217;RE HIRING</text>
+    <text x="96" y="476" font-size="96" font-weight="700" fill="#121A52">Marketing</text>
+    <text x="96" y="582" font-size="96" font-weight="700" fill="#121A52">Lead</text>
+    <text x="96" y="660" font-size="36" fill="#121A52" fill-opacity="0.7">Bangsar South · RM 7,000 – RM 10,000</text>
+    <rect x="96" y="830" width="372" height="88" rx="44" fill="#121A52"/>
+    <text x="282" y="886" text-anchor="middle" font-size="34" font-weight="600" fill="#E7E9F5">Apply on JobGiga</text>
+  </g>
+</svg>

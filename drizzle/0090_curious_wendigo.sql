@@ -1,0 +1,1 @@
+ALTER TABLE "employer_addresses" ADD COLUMN "is_job_default" boolean DEFAULT false NOT NULL;

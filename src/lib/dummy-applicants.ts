@@ -1,3 +1,6 @@
+import { MALAYSIA_STATES } from "./malaysia";
+import type { WorkPlace } from "./work-locations";
+
 // Shared marker for dummy applicant data ("Get dummy data" on the
 // Applicants page). Distinct from DUMMY_POSTING_MARKER and from
 // scripts/seed.ts's @seed.jobgiga.test domain — this one is scoped
@@ -29,6 +32,14 @@ export function cityStateForDummyLocation(location: string): { city: string; sta
   return { city, state: explicitState || DUMMY_LOCATION_STATE[city] || "Selangor" };
 }
 
+// A single preferred work place matching the applicant's own city — real
+// jobseekers must pick at least one (see OnboardingForm/work-locations.ts),
+// so a dummy applicant with none would look stale next to real ones.
+export function dummyPreferredWorkPlaces(location: string): WorkPlace[] {
+  const { city, state } = cityStateForDummyLocation(location);
+  return [{ area: null, city, state: state as (typeof MALAYSIA_STATES)[number], lat: null, lng: null }];
+}
+
 export type DummyApplicantDefinition = {
   fullName: string;
   targetRole: string;
@@ -38,7 +49,7 @@ export type DummyApplicantDefinition = {
   softSkills: string[];
   expectedSalaryMin: number;
   expectedSalaryMax: number;
-  employmentType: "full_time" | "part_time" | "contract" | "internship";
+  employmentType: "full_time" | "part_time" | "contract" | "internship" | "freelance" | "temporary";
   workArrangement: "remote" | "hybrid" | "onsite";
   noticePeriod: "immediate" | "one_week" | "two_weeks" | "one_month" | "two_months" | "more_than_two_months";
   workAuthorization: "citizen" | "permanent_resident" | "work_pass_holder" | "needs_sponsorship";
@@ -314,7 +325,7 @@ export function buildDummyApplicantProfile(applicant: DummyApplicantDefinition, 
 
   return {
     phone: phoneFromIndex(index),
-    dateOfBirth: `${birthYear}-0${(index % 9) + 1}-1${index % 9}`,
+    birthYear,
     gender: (index % 2 === 0 ? "female" : "male") as "male" | "female",
     maritalStatus: (index % 3 === 0 ? "married" : "single") as "single" | "married",
     nationality: "Malaysian",
@@ -341,13 +352,16 @@ export function buildDummyApplicantProfile(applicant: DummyApplicantDefinition, 
         ? { name: CERTIFICATIONS[applicant.targetRole] ?? "Professional Certificate", issuer: "Online", year: graduationYear + 1 }
         : null,
     languages: [
-      { language: "English", spokenLevel: "fluent" as const, writtenLevel: "fluent" as const },
-      // "Malay" (not "Bahasa Malaysia") to match the name every dummy job
-      // posting's language requirement uses (src/lib/dummy-job-postings.ts)
-      // — screeningEligibilityCheck matches languages by exact name, so a
-      // mismatched name here silently failed every dummy applicant's
-      // screening against any posting that requires Malay.
-      { language: "Malay", spokenLevel: "native" as const, writtenLevel: "native" as const },
+      { language: "English", dialects: [] as string[], spokenLevel: "fluent" as const, writtenLevel: "fluent" as const },
+      // Every third applicant also speaks Kelantanese — so the Telesales
+      // posting's Kelantanese requirement (dummy-job-postings.ts) screens
+      // some applicants in and some out, like real applications would.
+      {
+        language: "Malay",
+        dialects: index % 3 === 0 ? ["Kelantanese"] : ([] as string[]),
+        spokenLevel: "native" as const,
+        writtenLevel: "native" as const,
+      },
     ],
   };
 }
@@ -2049,5 +2063,37 @@ export const DUMMY_APPLICANTS: DummyApplicantDefinition[] = [
     bio: "Comfortable pairing with backend engineers to shape clean, well-typed API contracts.",
     status: "interview",
     interviewRound: 1,
+  },
+  {
+    fullName: "Mei Xin Lau",
+    targetRole: "Freelance UI/UX Designer",
+    location: "Petaling Jaya",
+    yearsExperience: 5,
+    skills: ["Figma", "UI design", "Prototyping"],
+    softSkills: ["Self-direction", "Communication"],
+    expectedSalaryMin: 2000,
+    expectedSalaryMax: 4000,
+    employmentType: "freelance",
+    workArrangement: "remote",
+    noticePeriod: "immediate",
+    workAuthorization: "citizen",
+    bio: "Independent product designer who's run several project-based engagements for SaaS startups.",
+    status: "applied",
+  },
+  {
+    fullName: "Shamsul Anuar",
+    targetRole: "Temporary Event Crew",
+    location: "Shah Alam",
+    yearsExperience: 2,
+    skills: ["Customer service", "Event setup"],
+    softSkills: ["Reliability", "Energy"],
+    expectedSalaryMin: 100,
+    expectedSalaryMax: 150,
+    employmentType: "temporary",
+    workArrangement: "onsite",
+    noticePeriod: "immediate",
+    workAuthorization: "citizen",
+    bio: "Has crewed several roadshow and promo events across the Klang Valley.",
+    status: "applied",
   },
 ];

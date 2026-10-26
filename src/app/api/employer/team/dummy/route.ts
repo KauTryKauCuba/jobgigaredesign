@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { and, eq, inArray, isNotNull, like } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { employerTeamMembers, users } from "@/lib/db/schema";
+import { employerTeamMembers, jobPostingHiringManagers, jobPostings, users } from "@/lib/db/schema";
+import { DUMMY_POSTING_MARKER } from "@/lib/dummy-job-postings";
 import { buildDummyTeamEmail, buildDummyTeamLoginEmail, DUMMY_TEAM_EMAIL_DOMAIN, DUMMY_TEAM_ROSTER, slugifyName } from "@/lib/dummy-team";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { getSession } from "@/lib/session";
 
 async function getEmployerProfileId(userId: string) {
-  const access = await getEmployerAccess(userId);
+  const access = await getFullEmployerAccess(userId);
   return access?.profile.id ?? null;
 }
 
@@ -71,16 +72,47 @@ export async function POST() {
         employerProfileId,
         userId: account.id,
         email: displayEmail,
-        role: "admin",
+        role: member.role ?? "admin",
         position: member.position,
+        hiringRole: member.hiringRole,
+        phone: member.phone,
         status: "active",
         joinedAt: new Date(),
+        profileCompletedAt: new Date(),
       });
     } else {
-      rows.push({ employerProfileId, email: displayEmail, role: "admin", position: member.position, status: "pending" });
+      rows.push({
+        employerProfileId,
+        email: displayEmail,
+        role: member.role ?? "admin",
+        position: member.position,
+        status: "pending",
+      });
     }
   }
-  await db.insert(employerTeamMembers).values(rows);
+  const inserted = await db
+    .insert(employerTeamMembers)
+    .values(rows)
+    .returning({ id: employerTeamMembers.id, role: employerTeamMembers.role, email: employerTeamMembers.email });
+
+  // Each sample Hiring manager gets the sample postings in their own area
+  // (DUMMY_TEAM_ROSTER jobTitles), so the Team page, job pages and their own
+  // limited view show what an assignment looks like. Only sample postings —
+  // a company's real jobs are never assigned to a sample teammate.
+  const dummyPostings = await db
+    .select({ id: jobPostings.id, title: jobPostings.title })
+    .from(jobPostings)
+    .where(and(eq(jobPostings.employerProfileId, employerProfileId), eq(jobPostings.postingName, DUMMY_POSTING_MARKER)));
+  const assignments = inserted.flatMap((member) => {
+    if (member.role !== "hiring_manager") return [];
+    const roster = DUMMY_TEAM_ROSTER.find((m) => buildDummyTeamEmail(slugifyName(m.name)) === member.email);
+    return dummyPostings
+      .filter((p) => roster?.jobTitles?.includes(p.title))
+      .map((p) => ({ jobPostingId: p.id, teamMemberId: member.id }));
+  });
+  if (assignments.length > 0) {
+    await db.insert(jobPostingHiringManagers).values(assignments).onConflictDoNothing();
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -7,6 +7,7 @@ import Dropdown from "./Dropdown";
 import { gradientFrameClass } from "./formStyles";
 import { BuildingIcon, SearchIcon } from "./icons";
 import BadgeMedal from "./BadgeMedal";
+import VerifiedBadge from "./VerifiedBadge";
 import { BADGE_DEFINITIONS, type BadgeKey } from "@/lib/badge-definitions";
 import { curatedFill, type CuratedCompany } from "@/lib/curated-companies";
 
@@ -20,6 +21,7 @@ export type DirectoryCompanyRow = {
   location: string | null;
   openRoles: number;
   badgeKeys: BadgeKey[];
+  ssmVerified?: boolean;
 };
 
 const MAX_CARD_BADGES = 5;
@@ -51,25 +53,19 @@ type DirectoryEntry = DirectoryCompanyRow & { curated: CuratedCompany | null };
 
 const ALL = "__all__";
 
-export function CompanyLogo({ url, size = 48 }: { url: string | null; size?: number }) {
-  if (!url) {
-    return (
-      <div
-        className="flex shrink-0 items-center justify-center rounded-[12px] bg-[#E6F9FA] text-brand-teal-dark"
-        style={{ width: size, height: size }}
-      >
-        <BuildingIcon className="h-[45%] w-[45%]" />
-      </div>
-    );
-  }
+export function CompanyLogo({ url, size = 48, verified = false }: { url: string | null; size?: number; verified?: boolean }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt=""
-      className="shrink-0 rounded-[12px] bg-white object-contain p-[4px]"
-      style={{ width: size, height: size }}
-    />
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="h-full w-full rounded-[12px] bg-white object-contain p-[4px]" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center rounded-[12px] bg-brand-teal-soft text-brand-teal-dark">
+          <BuildingIcon className="h-[45%] w-[45%]" />
+        </div>
+      )}
+      {verified && <VerifiedBadge size={Math.max(14, Math.round(size * 0.32))} />}
+    </div>
   );
 }
 
@@ -93,7 +89,7 @@ export default function CompanyDirectoryView({ companies }: { companies: Directo
         id: `curated-${c.name}`,
         companyName: c.name,
         logoUrl: c.src,
-        bannerUrl: null,
+        bannerUrl: c.banner,
         industry: c.industry,
         companySize: c.companySize,
         location: c.location,
@@ -175,7 +171,7 @@ export default function CompanyDirectoryView({ companies }: { companies: Directo
                   </div>
                   <div className="flex items-end gap-[12px] px-[16px]">
                     <div className="relative -mt-[34px] shrink-0 rounded-[14px] bg-white p-[3px] shadow-[0_1px_3px_rgba(0,0,0,0.12)]">
-                      <CompanyLogo url={c.logoUrl} size={58} />
+                      <CompanyLogo url={c.logoUrl} size={58} verified={c.ssmVerified} />
                     </div>
                     <div className="min-w-0 pb-[1px]">
                       <p className="truncate text-sm font-semibold text-[#141B2E] group-hover:text-brand-teal-dark">

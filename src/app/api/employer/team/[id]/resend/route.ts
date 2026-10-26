@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { employerTeamMembers } from "@/lib/db/schema";
-import { getActorLabel, getEmployerAccess, logTeamActivity } from "@/lib/employer-profile";
+import { getActorLabel, getFullEmployerAccess, logTeamActivity } from "@/lib/employer-profile";
 import { sendTeamInviteEmail } from "@/lib/email";
 import { getSession } from "@/lib/session";
+import { newInviteToken } from "@/lib/team-invite";
 
 async function requireTeamAccess() {
   const session = await getSession();
   if (!session || session.role !== "employer") return null;
-  const access = await getEmployerAccess(session.userId);
+  const access = await getFullEmployerAccess(session.userId);
   return access ? { ...access, userId: session.userId } : null;
 }
 
@@ -32,9 +33,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "That person has already joined." }, { status: 400 });
   }
 
+  // A fresh link and a fresh 7 days — the previous link stops working.
+  const invite = newInviteToken();
+  await db
+    .update(employerTeamMembers)
+    .set({ inviteTokenHash: invite.hash, inviteExpiresAt: invite.expiresAt, invitedByUserId: auth.userId })
+    .where(eq(employerTeamMembers.id, member.id));
+
   const actorLabel = await getActorLabel(auth.userId);
   try {
-    await sendTeamInviteEmail(member.email, auth.profile.companyName, actorLabel, member.role);
+    await sendTeamInviteEmail(member.email, auth.profile.companyName, actorLabel, member.role, invite.token);
   } catch (err) {
     console.error("Failed to resend team invite email:", err);
     return NextResponse.json({ error: "Couldn't send the invite email — try again shortly." }, { status: 502 });

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+  <defs><clipPath id="frame"><rect width="1600" height="900"/></clipPath></defs>
+  <g clip-path="url(#frame)">
+    <rect width="1600" height="900" fill="#141414"/>
+    <g fill="#F1F0EC">
+      <rect x="520" y="-200" width="70" height="1300" opacity="0.95" transform="rotate(-24 555 450)"/>
+      <rect x="660" y="-200" width="70" height="1300" opacity="0.2" transform="rotate(-24 695 450)"/>
+      <rect x="800" y="-200" width="70" height="1300" opacity="0.95" transform="rotate(-24 835 450)"/>
+      <rect x="940" y="-200" width="70" height="1300" opacity="0.2" transform="rotate(-24 975 450)"/>
+      <rect x="1080" y="-200" width="70" height="1300" opacity="0.95" transform="rotate(-24 1115 450)"/>
+    </g>
+    <circle cx="1420" cy="180" r="90" fill="#34D186"/>
+  </g>
+</svg>

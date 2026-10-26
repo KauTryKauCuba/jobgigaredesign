@@ -484,7 +484,7 @@ export default function FloatingAssistant() {
   const headerButton =
     "flex h-[28px] w-[28px] items-center justify-center rounded-full text-[#9AA3B2] transition-colors hover:bg-black/[0.05] hover:text-[#141B2E] disabled:opacity-40 disabled:hover:bg-transparent";
   const chipButton =
-    "w-fit rounded-full border border-brand-teal/40 bg-[#F0FCFD] px-[12px] py-[5px] text-[11px] text-[#008990] transition-colors hover:bg-[#E6F9FA]";
+    "w-fit rounded-full border border-brand-teal/40 bg-[#F0FCFD] px-[12px] py-[5px] text-[11px] text-brand-teal-dark transition-colors hover:bg-brand-teal-soft";
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[24px] z-30 flex flex-col items-center gap-[10px] px-4">

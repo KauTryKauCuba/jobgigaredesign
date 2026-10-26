@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { ageFromDate, birthYearFromAge, parseAge } from "@/lib/age";
 import { logAiUsage } from "@/lib/ai-usage";
 import { db } from "@/lib/db";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/lib/resume-parser";
 import { getSession } from "@/lib/session";
 import { isBase64DataUrl, saveBase64Upload, saveBufferUpload } from "@/lib/uploads";
+import { normalizeSpokenLanguages } from "@/lib/languages";
 
 // Fills only fields the profile doesn't already have, never overwrites
 // something the jobseeker already filled in — same rule the onboarding
@@ -82,7 +84,9 @@ export async function POST(request: Request) {
   };
 
   const fullName = mergeScalar(profile.fullName, parsed.fullName);
-  const dateOfBirth = mergeScalar(profile.dateOfBirth, parsed.dateOfBirth);
+  // A date of birth on the resume only gives the age — the date itself isn't kept.
+  const parsedAge = ageFromDate(parsed.dateOfBirth);
+  const birthYear = mergeScalar(profile.birthYear, parsedAge !== null && parseAge(parsedAge) !== null ? birthYearFromAge(parsedAge) : null);
   const gender = mergeScalar(profile.gender, parsed.gender);
   const maritalStatus = mergeScalar(profile.maritalStatus, parsed.maritalStatus);
   const nationality = mergeScalar(profile.nationality, parsed.nationality);
@@ -101,7 +105,7 @@ export async function POST(request: Request) {
   const avatarUrl = mergeScalar(profile.avatarUrl, result.photoUrl);
   [
     fullName,
-    dateOfBirth,
+    birthYear,
     gender,
     maritalStatus,
     nationality,
@@ -162,14 +166,17 @@ export async function POST(request: Request) {
   ];
   if (parsed.certifications.length > 0) mark(true);
 
-  const languages = [
+  // The profile's own entries win (they come first); a résumé's dialects are
+  // added to a language already listed rather than starting a second one.
+  const languages = normalizeSpokenLanguages([
     ...profile.languages.map((e) => ({
       language: e.language,
+      dialects: e.dialects,
       spokenLevel: e.spokenLevel,
       writtenLevel: e.writtenLevel,
     })),
     ...parsed.languages,
-  ];
+  ]);
   if (parsed.languages.length > 0) mark(true);
 
   const references = [
@@ -199,7 +206,7 @@ export async function POST(request: Request) {
       .set({
         avatarUrl: resolvedAvatarUrl ?? null,
         fullName: fullName.value ?? profile.fullName,
-        dateOfBirth: dateOfBirth.value ?? profile.dateOfBirth,
+        birthYear: birthYear.value ?? profile.birthYear,
         gender: gender.value ?? null,
         maritalStatus: maritalStatus.value ?? null,
         nationality: nationality.value ?? null,

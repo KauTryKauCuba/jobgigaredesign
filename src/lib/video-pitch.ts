@@ -2,6 +2,7 @@ import "server-only";
 import { execFile } from "child_process";
 import { randomUUID } from "crypto";
 import { mkdir, rm, stat } from "fs/promises";
+import path from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -13,7 +14,7 @@ import {
   videoPitches,
   videoPitchViews,
 } from "./db/schema";
-import { getEmployerAccess } from "./employer-profile";
+import { canViewApplication, getScopedEmployerAccess } from "./hiring-scope";
 import { notify } from "./notifications";
 import { isSuperadminEmail } from "./superadmin";
 import { isUuid } from "./uuid";
@@ -23,8 +24,6 @@ import { SAMPLE_VIDEO_PITCH_FILE, VIDEO_PITCH_DIR, videoPitchFilePath } from "./
 export { VIDEO_PITCH_DIR, videoPitchFilePath };
 
 export const MAX_PITCH_SECONDS = 60;
-// A little slack over 60s for recorder/encoder rounding.
-const MAX_INPUT_SECONDS = 65;
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 /**
@@ -64,11 +63,22 @@ function parseDurationSeconds(ffmpegOutput: string): number | null {
 /**
  * Converts any recorded/uploaded video (WebM from Chrome/Android, MP4/MOV
  * from iPhone, large camera-app files) into one small format that plays on
- * every device: H.264/AAC MP4, shorter side 480px, ~1 Mbps, max 60s, with
- * the index up front so playback starts before the whole file downloads.
+ * every device: H.264/AAC MP4, capped length and resolution, with the index
+ * up front so playback starts before the whole file downloads. Shared by
+ * video pitches and company landing-page ads.
  */
-export async function transcodeVideoPitch(
+export async function transcodeToMp4(
   inputPath: string,
+  opts: {
+    outputDir: string;
+    maxSeconds: number;
+    // Shorter side, in px (portrait videos stay portrait).
+    shortSide: number;
+    maxRate: string;
+    tooLongError: string;
+    unreadableError: string;
+    failedError: string;
+  },
 ): Promise<{ ok: true; fileName: string; durationSeconds: number; sizeBytes: number } | { ok: false; error: string }> {
   // Probe first: ffmpeg with no output prints the input's details and exits
   // non-zero, which is expected here.
@@ -80,15 +90,17 @@ export async function transcodeVideoPitch(
   }
   const inputDuration = parseDurationSeconds(probeOutput);
   if (!/Stream #\d+:\d+.*Video:/.test(probeOutput)) {
-    return { ok: false, error: "That file doesn't look like a video we can read. Try recording again." };
+    return { ok: false, error: opts.unreadableError };
   }
-  if (inputDuration !== null && inputDuration > MAX_INPUT_SECONDS) {
-    return { ok: false, error: `Your video is longer than ${MAX_PITCH_SECONDS} seconds. Please keep it to one minute.` };
+  // A little slack for recorder/encoder rounding.
+  if (inputDuration !== null && inputDuration > opts.maxSeconds + 5) {
+    return { ok: false, error: opts.tooLongError };
   }
 
-  await mkdir(VIDEO_PITCH_DIR, { recursive: true });
+  await mkdir(opts.outputDir, { recursive: true });
   const fileName = `${randomUUID()}.mp4`;
-  const outputPath = videoPitchFilePath(fileName);
+  const outputPath = path.join(opts.outputDir, fileName);
+  const s = opts.shortSide;
   try {
     await runFfmpeg([
       "-hide_banner",
@@ -96,10 +108,10 @@ export async function transcodeVideoPitch(
       "-i",
       inputPath,
       "-t",
-      String(MAX_PITCH_SECONDS),
-      // Shorter side to 480px (portrait phone videos stay portrait), even dimensions.
+      String(opts.maxSeconds),
+      // Shorter side to `s` px, even dimensions.
       "-vf",
-      "scale='if(gt(iw,ih),-2,480)':'if(gt(iw,ih),480,-2)',setsar=1",
+      `scale='if(gt(iw,ih),-2,${s})':'if(gt(iw,ih),${s},-2)',setsar=1`,
       "-c:v",
       "libx264",
       "-preset",
@@ -107,7 +119,7 @@ export async function transcodeVideoPitch(
       "-crf",
       "28",
       "-maxrate",
-      "1M",
+      opts.maxRate,
       "-bufsize",
       "2M",
       "-pix_fmt",
@@ -124,13 +136,25 @@ export async function transcodeVideoPitch(
     ]);
   } catch (err) {
     await rm(outputPath, { force: true });
-    console.error("Video pitch transcode failed", (err as { stderr?: string }).stderr ?? err);
-    return { ok: false, error: "We couldn't process that video. Try recording again." };
+    console.error("Video transcode failed", (err as { stderr?: string }).stderr ?? err);
+    return { ok: false, error: opts.failedError };
   }
 
   const { size } = await stat(outputPath);
-  const durationSeconds = Math.max(1, Math.round(Math.min(inputDuration ?? MAX_PITCH_SECONDS, MAX_PITCH_SECONDS)));
+  const durationSeconds = Math.max(1, Math.round(Math.min(inputDuration ?? opts.maxSeconds, opts.maxSeconds)));
   return { ok: true, fileName, durationSeconds, sizeBytes: size };
+}
+
+export function transcodeVideoPitch(inputPath: string) {
+  return transcodeToMp4(inputPath, {
+    outputDir: VIDEO_PITCH_DIR,
+    maxSeconds: MAX_PITCH_SECONDS,
+    shortSide: 480,
+    maxRate: "1M",
+    tooLongError: `Your video is longer than ${MAX_PITCH_SECONDS} seconds. Please keep it to one minute.`,
+    unreadableError: "That file doesn't look like a video we can read. Try recording again.",
+    failedError: "We couldn't process that video. Try recording again.",
+  });
 }
 
 export async function deleteVideoPitchFile(fileName: string) {
@@ -248,10 +272,10 @@ async function resolveRegularPitchAccess(
   }
 
   if (!row.pitch.visible) return { ok: false };
-  const access = await getEmployerAccess(session.userId);
+  const access = await getScopedEmployerAccess(session.userId);
   if (!access) return { ok: false };
-  const [applied] = await db
-    .select({ id: jobApplications.id })
+  const applications = await db
+    .select({ jobPostingId: jobApplications.jobPostingId, interviewDetails: jobApplications.interviewDetails })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .where(
@@ -259,9 +283,9 @@ async function resolveRegularPitchAccess(
         eq(jobApplications.jobseekerProfileId, row.pitch.jobseekerProfileId),
         eq(jobPostings.employerProfileId, access.profile.id),
       ),
-    )
-    .limit(1);
-  if (!applied) return { ok: false };
+    );
+  // A Hiring manager / Panel member only for a candidate they can see.
+  if (!applications.some((a) => canViewApplication(access.scope, a))) return { ok: false };
   return { ok: true, pitch: row.pitch, viewer: "employer", employerProfileId: access.profile.id };
 }
 

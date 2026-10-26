@@ -1,5 +1,6 @@
 import "server-only";
 import type { getJobPostingForEmployer } from "./job-postings";
+import { formatSalary } from "./job-posting-options";
 
 export const POSTER_STYLES = ["playful", "photo_corporate"] as const;
 export type PosterStyle = (typeof POSTER_STYLES)[number];
@@ -56,10 +57,10 @@ export function derivePostingContent(
     posting.minQualificationTier ? `${humanize(posting.minQualificationTier)} qualification` : null,
   ].filter((line): line is string => !!line);
 
+  // A poster is public marketing — a salary hidden on the posting stays hidden here too.
   const salaryLine =
-    posting.salaryMin != null && posting.salaryMax != null
-      ? `RM${posting.salaryMin.toLocaleString()}–${posting.salaryMax.toLocaleString()}`
-      : "Salary undisclosed";
+    (posting.showSalary && formatSalary(posting.salaryMin, posting.salaryMax, posting.salaryPeriod)) ||
+    "Salary undisclosed";
 
   return {
     requirementLines: requirementLines.length > 0 ? requirementLines : ["See full posting on JobGiga"],

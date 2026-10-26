@@ -97,7 +97,7 @@ export default function AiFillMockup() {
   const aboutShown = (i: number) => shown(i + 1);
 
   return (
-    <div ref={rootRef} className="flex h-full w-full items-center justify-center bg-[#F2FAF5] p-[20px]">
+    <div ref={rootRef} className="flex h-full w-full items-center justify-center bg-brand-teal-page p-[20px]">
       <div className="grid w-full max-w-[840px] grid-cols-1 gap-[12px] md:grid-cols-[1fr_3fr]">
         {/* Hidden below md — three columns of dense text don't fit a phone-width
             card; the other two cards carry the idea on their own there. */}
@@ -111,7 +111,7 @@ export default function AiFillMockup() {
             <span className="relative flex h-[26px] w-[26px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F1F4F8]">
               <UserIcon className="h-[13px] w-[13px] text-[#9AA3B2]" />
               <span
-                className={`absolute inset-0 flex items-center justify-center bg-[#FFE9A6] text-[10px] font-semibold text-[#8A6A1F] transition-opacity duration-500 ${
+                className={`absolute inset-0 flex items-center justify-center bg-brand-gold text-[10px] font-semibold text-[#8A6A1F] transition-opacity duration-500 ${
                   aboutShown(0) ? "opacity-100" : "opacity-0"
                 }`}
               >
@@ -162,7 +162,7 @@ export default function AiFillMockup() {
                 className={`flex h-[26px] shrink-0 items-center gap-[4px] whitespace-nowrap rounded-[8px] px-[8px] text-xs text-white transition-all duration-500 ${
                   phase === "done"
                     ? "bg-[#2F9E56]"
-                    : "bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)]"
+                    : "bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))]"
                 } ${phase === "lookup" || phase === "filling" ? "ai-fill-pulse" : ""} ${
                   phase === "typing" ? "opacity-70" : "opacity-100"
                 }`}

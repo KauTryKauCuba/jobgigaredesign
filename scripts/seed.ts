@@ -647,11 +647,8 @@ const COMPANIES_FOR_EXPERIENCE = [
   "Metro Trading Co.", "Vital Medical Centre", "Byte Systems", "Prime Commerce",
 ];
 
-function randomDateOfBirth() {
-  const year = randInt(1985, 2003);
-  const month = String(randInt(1, 12)).padStart(2, "0");
-  const day = String(randInt(1, 28)).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function randomBirthYear() {
+  return randInt(1985, 2003);
 }
 
 function randomPastDate(yearsAgoMax: number) {
@@ -757,7 +754,7 @@ async function main() {
         userId: user.id,
         avatarUrl: personAvatarUrl(i + EMPLOYER_COUNT),
         fullName,
-        dateOfBirth: randomDateOfBirth(),
+        birthYear: randomBirthYear(),
         gender: pick(GENDERS),
         maritalStatus: pick(MARITAL_STATUSES),
         nationality: "Malaysian",
@@ -766,6 +763,9 @@ async function main() {
         location: `${jobseekerAddress.city}, ${jobseekerAddress.state}`,
         city: jobseekerAddress.city,
         state: jobseekerAddress.state,
+        // Real jobseekers must pick at least one (see OnboardingForm/
+        // work-locations.ts) — their own city stands in for seeded ones.
+        preferredWorkPlaces: [{ area: null, city: jobseekerAddress.city, state: jobseekerAddress.state, lat: null, lng: null }],
         targetRole: pick(ROLE_POOLS[industry]),
         preferredIndustry: industry,
         yearsExperience,

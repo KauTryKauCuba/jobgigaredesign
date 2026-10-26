@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { otpCodes, users } from "@/lib/db/schema";
 import { activatePendingTeamInvites } from "@/lib/employer-profile";
 import { getPostAuthRedirect } from "@/lib/onboarding";
+import { consumeInviteCompany } from "@/lib/team-invite";
 import { hashOtp, OTP_MAX_ATTEMPTS } from "@/lib/otp";
 import { createSession } from "@/lib/session";
 
@@ -83,12 +84,20 @@ export async function POST(request: Request) {
   // first post-auth redirect.
   await activatePendingTeamInvites(user.id, normalizedEmail);
 
-  await createSession({ userId: user.id, role });
+  // Came from a team-invite link (/invite/[id]) — land in that company, on
+  // the employer side.
+  const inviteCompanyId = await consumeInviteCompany(user.id);
+  const sessionRole = inviteCompanyId ? "employer" : role;
+  await createSession({
+    userId: user.id,
+    role: sessionRole,
+    ...(inviteCompanyId ? { employerProfileId: inviteCompanyId } : {}),
+  });
 
   const redirectTo = await getPostAuthRedirect();
 
   return NextResponse.json({
-    user: { email: user.email, name: user.name, avatarUrl: user.avatarUrl, role },
+    user: { email: user.email, name: user.name, avatarUrl: user.avatarUrl, role: sessionRole },
     redirectTo,
   });
 }

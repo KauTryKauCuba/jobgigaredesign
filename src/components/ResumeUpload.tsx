@@ -190,7 +190,7 @@ export default function ResumeUpload({
               <button
                 type="button"
                 onClick={() => setShowCoverLetterForm((v) => !v)}
-                className="flex h-[42px] items-center justify-center gap-[7px] rounded-[12px] bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90"
+                className="flex h-[42px] items-center justify-center gap-[7px] rounded-[12px] bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90"
               >
                 <PencilIcon className="h-[14px] w-[14px]" />
                 Write my cover letter
@@ -207,7 +207,7 @@ export default function ResumeUpload({
                 type="button"
                 disabled
                 aria-disabled
-                className="flex h-[42px] cursor-not-allowed items-center justify-center gap-[7px] rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] text-sm text-white opacity-60"
+                className="flex h-[42px] cursor-not-allowed items-center justify-center gap-[7px] rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] text-sm text-white opacity-60"
               >
                 <SiriOrb className="h-[14px] w-[14px]" active />
                 Give my resume a glow-up
@@ -259,7 +259,7 @@ export default function ResumeUpload({
                 }}
                 className={`mt-[16px] flex w-full flex-col items-center justify-center gap-[6px] rounded-[14px] border border-dashed px-[16px] py-[22px] text-center transition-colors ${
                   dragActive
-                    ? "border-brand-gold-dark bg-[#FFF3D6]"
+                    ? "border-brand-gold-dark bg-brand-gold-soft"
                     : "border-[#D7DCE4] hover:border-brand-gold-dark hover:bg-[#F8FAFB]"
                 }`}
               >
@@ -277,7 +277,7 @@ export default function ResumeUpload({
               type="button"
               disabled={!file}
               onClick={handleContinue}
-              className="mt-[16px] flex h-[38px] w-full items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="mt-[16px] flex h-[38px] w-full items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Continue
             </button>

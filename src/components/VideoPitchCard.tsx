@@ -115,7 +115,7 @@ export default function VideoPitchCard({
                   key={benefit}
                   className="flex items-start gap-[10px] rounded-[14px] border border-[#FBE7B5] bg-[#FFFBF0] p-[12px] text-sm leading-[20px] text-[#141B2E]"
                 >
-                  <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#FFE9A6]">
+                  <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-brand-gold">
                     <CheckIcon className="h-[11px] w-[11px] text-brand-gold-dark" />
                   </span>
                   {benefit}
@@ -126,7 +126,7 @@ export default function VideoPitchCard({
               <button
                 type="button"
                 onClick={() => setRecorder({ guide: false })}
-                className="flex h-[40px] items-center rounded-full bg-[#FFE9A6] px-[20px] text-sm text-[#141B2E] hover:opacity-90"
+                className="flex h-[40px] items-center rounded-full bg-brand-gold px-[20px] text-sm text-[#141B2E] hover:opacity-90"
               >
                 Record my pitch
               </button>
@@ -228,7 +228,7 @@ export default function VideoPitchCard({
                     strengths.length > 0 ? (
                       <div className="flex flex-wrap gap-[6px]">
                         {strengths.map((s) => (
-                          <span key={s} className="rounded-full bg-[#FFE9A6] px-[10px] py-[4px] text-xs text-[#141B2E]">
+                          <span key={s} className="rounded-full bg-brand-gold px-[10px] py-[4px] text-xs text-[#141B2E]">
                             {s}
                           </span>
                         ))}
@@ -247,7 +247,7 @@ export default function VideoPitchCard({
                         onClick={() => toggleStrength(skill)}
                         disabled={!picked && strengths.length >= MAX_STRENGTHS}
                         className={`rounded-full px-[10px] py-[4px] text-xs transition-colors disabled:opacity-40 ${
-                          picked ? "bg-[#FFE9A6] text-[#141B2E]" : "bg-[#F1F4F8] text-[#4B5468] hover:bg-black/[0.06]"
+                          picked ? "bg-brand-gold text-[#141B2E]" : "bg-[#F1F4F8] text-[#4B5468] hover:bg-black/[0.06]"
                         }`}
                       >
                         {picked ? "✓ " : ""}
@@ -264,7 +264,7 @@ export default function VideoPitchCard({
                 type="button"
                 disabled={saving || !detailsDirty}
                 onClick={() => patch({ intro: intro.trim() || null, strengths }, "Saved.")}
-                className="flex h-[36px] items-center rounded-full bg-[#FFE9A6] px-[16px] text-sm text-[#141B2E] hover:opacity-90 disabled:opacity-40"
+                className="flex h-[36px] items-center rounded-full bg-brand-gold px-[16px] text-sm text-[#141B2E] hover:opacity-90 disabled:opacity-40"
               >
                 {saving ? "Saving…" : "Save changes"}
               </button>

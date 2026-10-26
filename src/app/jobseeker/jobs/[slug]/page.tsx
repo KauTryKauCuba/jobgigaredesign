@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import JobPostingDetailView from "@/components/JobPostingDetailView";
+import { getPostingContacts } from "@/lib/posting-extras";
 import { getEmployerResponsiveness } from "@/lib/application-events";
 import { getAuthUser } from "@/lib/auth-user";
 import { getActiveJobPostingBySlug, stripCustomQuestionAnswers } from "@/lib/job-postings";
@@ -37,17 +38,19 @@ export default async function JobPostingDetailPage({ params }: { params: Promise
   const posting = row.posting;
   const match = profile ? scoreJobseekerForPosting(posting, profile) : null;
 
-  const [responsivenessMap, savedIds] = await Promise.all([
+  const [responsivenessMap, savedIds, contacts] = await Promise.all([
     getEmployerResponsiveness([posting.employerProfileId]),
     profile ? getSavedJobPostingIds(profile.id) : ([] as string[]),
+    getPostingContacts([posting]),
   ]);
+  const contact = contacts.get(`${posting.employerProfileId}:${posting.contactUserId}`) ?? null;
   const responsiveness = responsivenessMap.get(posting.employerProfileId) ?? null;
 
   return (
     <JobPostingDetailView
       authUser={authUser}
       resume={resume}
-      posting={JSON.parse(JSON.stringify(stripCustomQuestionAnswers(posting)))}
+      posting={JSON.parse(JSON.stringify({ ...stripCustomQuestionAnswers(posting), contact }))}
       companyName={row.companyName}
       companyLogoUrl={row.companyLogoUrl}
       match={match}

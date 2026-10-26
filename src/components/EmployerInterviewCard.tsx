@@ -7,6 +7,11 @@ export default function EmployerInterviewCard() {
       reverse
       step={4}
       background="#E3F2EB"
+      fadeEdges
+      bandStartWidth={45}
+      bandDurationMs={1400}
+      // Same band as "Write jobs with AI" (EmployerJobPostCard).
+      bandGradient="linear-gradient(120deg, #DDF0E8 0%, #E3F2EB 45%, #FBF3DC 100%)"
       eyebrow="Interview your way"
       headline="Interviews, organized your way"
       bullets={[

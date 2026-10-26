@@ -6,12 +6,16 @@ import { aiUsageLogs } from "./db/schema";
 type AiUsageFeature =
   | "company_lookup"
   | "job_posting_suggestion"
+  | "salary_suggestion"
   | "resume_parse"
   | "skill_suggestion"
   | "match_scoring"
   | "cover_letter"
   | "poster_generation"
-  | "assistant_chat";
+  | "assistant_chat"
+  | "ai_interview_questions"
+  | "ai_interview_transcription"
+  | "ai_interview_scoring";
 
 type TokenUsage = {
   prompt_tokens?: number;
@@ -198,12 +202,16 @@ export async function getAiUsageForUser(userId: string) {
 export const AI_FEATURE_LABEL: Record<AiUsageFeature, string> = {
   company_lookup: "Company lookup",
   job_posting_suggestion: "Job posting writer",
+  salary_suggestion: "Salary suggestions",
   resume_parse: "Resume parsing",
   skill_suggestion: "Skill suggestions",
   match_scoring: "Match scoring",
   cover_letter: "Cover letters",
   poster_generation: "Poster generation",
   assistant_chat: "AI assistant chat",
+  ai_interview_questions: "AI interview questions",
+  ai_interview_transcription: "AI interview transcription",
+  ai_interview_scoring: "AI interview scoring",
 };
 
 type UsageTotals = { calls: number; tokens: number; costUsd: number };

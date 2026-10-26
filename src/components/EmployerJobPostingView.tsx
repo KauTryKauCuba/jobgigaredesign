@@ -7,7 +7,6 @@ import ApplicantDetailModal from "./ApplicantDetailModal";
 import VideoPitchBadge, { type ApplicantVideoPitch } from "./VideoPitchBadge";
 import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import EmployerDashboardShell from "./EmployerDashboardShell";
-import RichTextContent from "./RichTextContent";
 import { gradientFrameClass } from "./formStyles";
 import {
   APPLICATION_STATUS_COLOR,
@@ -16,27 +15,18 @@ import {
   type InterviewDetails,
   type InterviewResponseStatus,
 } from "@/lib/applicationStatus";
-import { UserIcon } from "./icons";
+import { CheckIcon, PencilIcon, UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
+import type { HiringManagerOption } from "./EmployerJobsView";
 import type {
   EvaluationCriterion,
   InterviewEvaluation,
   InterviewRecommendation,
   PanelEvaluation,
 } from "@/lib/interviewEvaluation";
-import { fullPostingAddress } from "@/lib/postingLocation";
-
-const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
-  full_time: "Full-time",
-  part_time: "Part-time",
-  contract: "Contract",
-  internship: "Internship",
-};
-const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
-  onsite: "Onsite",
-  hybrid: "Hybrid",
-  remote: "Remote",
-};
+import { ageFromBirthYear } from "@/lib/age";
+import { formatSalary } from "@/lib/job-posting-options";
+import JobPostingDetails, { toJobPosting, type ActivePostingRow } from "./JobPostingDetails";
 
 const INTERVIEW_STAGE_STATUSES = ["interview", "interviewed", "evaluation", "evaluated"];
 
@@ -60,19 +50,6 @@ function daysBetween(a: string, b: string): number {
   return (new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24);
 }
 
-// Same logic as OnboardingForm.tsx's calculateAge — kept in sync so an
-// applicant's bucketed age here matches what they'd see as "Age: N" there.
-function calculateAge(dateOfBirth: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return null;
-  const dob = new Date(dateOfBirth);
-  if (Number.isNaN(dob.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const hasHadBirthdayThisYear =
-    today.getMonth() > dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
-  if (!hasHadBirthdayThisYear) age--;
-  return age >= 0 ? age : null;
-}
 
 const AGE_BANDS = [
   { label: "18-24", min: 18, max: 24, color: "#7C5CD1" },
@@ -99,7 +76,7 @@ const FUNNEL_STAGE_HEX: Record<string, string> = {
 // Solid fill colors matching the match-score band text colors from matchBand().
 const SCORE_BAND_FILL: Record<string, string> = {
   "Strong (80+)": "bg-[#2F9E56]",
-  "Good (60-79)": "bg-[#008990]",
+  "Good (60-79)": "bg-brand-teal-dark",
   "Possible (<60)": "bg-[#4B5468]",
 };
 
@@ -115,37 +92,16 @@ type MatchResult = {
 // so a score reads the same wherever it shows up.
 function matchBand(score: number): { label: string; bg: string; text: string } {
   if (score >= 80) return { label: "Strong match", bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]" };
-  if (score >= 60) return { label: "Good match", bg: "bg-[#E6F9FA]", text: "text-[#008990]" };
+  if (score >= 60) return { label: "Good match", bg: "bg-brand-teal-soft", text: "text-brand-teal-dark" };
   return { label: "Possible match", bg: "bg-[#F1F4F8]", text: "text-[#4B5468]" };
 }
 
-type Posting = {
-  id: string;
+// Everything the jobseeker view shows (ActivePostingRow's posting, incl. the
+// "Posted by" contact), plus what only the employer's own page needs.
+type Posting = ActivePostingRow["posting"] & {
   status: string;
   flagReason: string | null;
-  title: string;
-  description: string;
-  responsibilities: string;
-  industry: string | null;
-  employmentType: string;
-  workArrangement: string;
-  location: string;
-  addressLine1: string | null;
-  addressLine2: string | null;
-  city: string | null;
-  state: string | null;
-  postcode: string | null;
-  salaryMin: number | null;
-  salaryMax: number | null;
-  openings: number;
-  skills: string[];
-  softSkills: string[];
-  minYearsExperience: number | null;
-  minQualificationTier: string | null;
-  languages: { language: string; level: string }[];
-  workAuthorizations: string[];
-  drivingLicense: string | null;
-  createdAt: string;
+  showSalary: boolean;
 };
 
 type ApplicationRow = {
@@ -163,12 +119,16 @@ type ApplicationRow = {
   applicantName: string;
   applicantAvatarUrl: string | null;
   applicantLocation: string;
-  applicantDateOfBirth: string | null;
+  applicantBirthYear: number | null;
   applicantTargetRole: string;
   applicantYearsExperience: number;
   applicantSkills: string[];
   applicantExpectedSalaryMin: number;
   applicantExpectedSalaryMax: number;
+  // The posting's own range, to flag whether the expectation fits it.
+  postingSalaryMin?: number | null;
+  postingSalaryMax?: number | null;
+  postingSalaryPeriod?: string;
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
@@ -181,7 +141,7 @@ type ApplicationRow = {
 function ApplicantAvatar({ url }: { url: string | null }) {
   if (!url) {
     return (
-      <div className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full bg-[#E6F9FA] text-brand-teal-dark">
+      <div className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full bg-brand-teal-soft text-brand-teal-dark">
         <UserIcon className="h-[15px] w-[15px]" />
       </div>
     );
@@ -340,7 +300,7 @@ function PostingAnalytics({
   // have a valid date of birth on file (optional field, so this is often
   // a subset of total applicants).
   const ages = rows
-    .map((r) => (r.applicantDateOfBirth ? calculateAge(r.applicantDateOfBirth) : null))
+    .map((r) => ageFromBirthYear(r.applicantBirthYear))
     .filter((a): a is number => a !== null);
   const ageBandCounts = AGE_BANDS.map((band) => ({
     ...band,
@@ -591,6 +551,159 @@ function PostingAnalytics({
   );
 }
 
+// Who covers this posting as Hiring manager — Owners/Admins can change it
+// right here; a Hiring manager just sees who's on it.
+function HiringManagersCard({
+  postingId,
+  options,
+  initialIds,
+  canEdit,
+}: {
+  postingId: string;
+  options: HiringManagerOption[];
+  initialIds: string[];
+  canEdit: boolean;
+}) {
+  const [ids, setIds] = useState(initialIds);
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const assigned = options.filter((o) => ids.includes(o.teamMemberId));
+
+  async function save() {
+    if (!draft) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/employer/job-postings/${postingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hiringManagerIds: draft }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't save the hiring managers.");
+      setIds(data.posting?.hiringManagerIds ?? draft);
+      setDraft(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the hiring managers.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "30ms" }}>
+      <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+        <div className="flex items-center justify-between gap-[8px]">
+          <div className="flex items-center gap-[8px]">
+            <p className="text-sm text-[#141B2E]">Hiring managers</p>
+            <span className="rounded-full bg-[#EAF0FE] px-[10px] py-[3px] text-xs text-[#3B5BDB]">{assigned.length}</span>
+          </div>
+          {canEdit && !draft && options.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setDraft(ids);
+              }}
+              className="flex items-center gap-[4px] text-sm text-brand-teal-dark hover:underline"
+            >
+              <PencilIcon className="h-[11px] w-[11px]" />
+              Edit
+            </button>
+          )}
+        </div>
+        <p className="mt-[2px] text-xs text-[#9AA3B2]">
+          They see this job&rsquo;s applicants and interviews, and are notified when someone applies.
+        </p>
+
+        {draft ? (
+          <div className="mt-[12px] flex flex-col gap-[6px]">
+            {options.map((m) => {
+              const checked = draft.includes(m.teamMemberId);
+              return (
+                <button
+                  key={m.teamMemberId}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={checked}
+                  onClick={() =>
+                    setDraft((prev) =>
+                      prev ? (checked ? prev.filter((id) => id !== m.teamMemberId) : [...prev, m.teamMemberId]) : prev,
+                    )
+                  }
+                  className={`flex items-center gap-[10px] rounded-[12px] border px-[10px] py-[8px] text-left transition-colors ${
+                    checked ? "border-brand-teal-dark bg-brand-teal-soft" : "border-[#EAEDF2] bg-white hover:bg-[#F8FAFB]"
+                  }`}
+                >
+                  <span
+                    className={`flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-[5px] border ${
+                      checked ? "border-brand-teal-dark bg-brand-teal-dark text-white" : "border-black/[0.2] bg-white"
+                    }`}
+                  >
+                    {checked && <CheckIcon className="h-[9px] w-[9px]" />}
+                  </span>
+                  <ApplicantAvatar url={m.avatarUrl} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-[#141B2E]">{m.name}</span>
+                    <span className="block truncate text-xs text-[#9AA3B2]">
+                      {m.pending ? "Invited · hasn't joined yet" : (m.position ?? m.email)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <div className="mt-[4px] flex gap-[6px]">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={save}
+                className="flex h-[32px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setDraft(null)}
+                className="flex h-[32px] items-center justify-center rounded-full border border-black/[0.1] px-[14px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : assigned.length === 0 ? (
+          <p className="mt-[12px] rounded-[14px] bg-[#F8FAFB] p-[14px] text-xs leading-[18px] text-[#9AA3B2]">
+            {options.length === 0
+              ? canEdit
+                ? "No hiring managers on your team yet — invite one from Team with the Hiring manager role."
+                : "No hiring managers on this job."
+              : canEdit
+                ? "None yet — click Edit to pick who covers this job."
+                : "No hiring managers on this job."}
+          </p>
+        ) : (
+          <div className="mt-[12px] flex flex-col gap-[6px]">
+            {assigned.map((m) => (
+              <div key={m.teamMemberId} className="flex items-center gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] px-[10px] py-[8px]">
+                <ApplicantAvatar url={m.avatarUrl} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs text-[#141B2E]">{m.name}</span>
+                  <span className="block truncate text-xs text-[#9AA3B2]">{m.position ?? m.email}</span>
+                </span>
+                {m.pending && (
+                  <span className="shrink-0 rounded-full bg-[#F1F4F8] px-[8px] py-[2px] text-xs text-[#4B5468]">Invited</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function EmployerJobPostingView({
   authUser,
   posting,
@@ -598,13 +711,23 @@ export default function EmployerJobPostingView({
   addresses,
   currentUserRole,
   teamMembers = [],
+  company,
+  canManagePosting = true,
+  hiringManagerOptions = [],
+  hiringManagerIds = [],
 }: {
   authUser: AuthUser;
   posting: Posting;
+  company: { name: string; logoUrl: string | null };
   applications: ApplicationRow[];
   addresses: EmployerAddress[];
   currentUserRole?: string | null;
   teamMembers?: EmployerTeamMember[];
+  // false for a Hiring manager: no editing/resubmitting the posting itself.
+  canManagePosting?: boolean;
+  // Every Hiring manager on the team, and which of them cover this posting.
+  hiringManagerOptions?: HiringManagerOption[];
+  hiringManagerIds?: string[];
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(applications);
@@ -782,10 +905,18 @@ export default function EmployerJobPostingView({
     );
   }
 
-  const salary =
-    posting.salaryMin && posting.salaryMax
-      ? `RM${posting.salaryMin.toLocaleString("en-US")}–${posting.salaryMax.toLocaleString("en-US")}`
-      : "Salary not disclosed";
+  // The posting exactly as jobseekers see it (same panel as the jobseeker
+  // landing page) — except a salary hidden from them is still shown here,
+  // marked, since this is the employer's own page.
+  const salaryRange = formatSalary(posting.salaryMin, posting.salaryMax, posting.salaryPeriod, "long");
+  const jobseekerView = {
+    ...toJobPosting({ posting, companyName: company.name, companyLogoUrl: company.logoUrl }),
+    salary: salaryRange
+      ? posting.showSalary
+        ? salaryRange
+        : `${salaryRange} (hidden from jobseekers)`
+      : "Salary not disclosed",
+  };
 
   return (
     <EmployerDashboardShell
@@ -793,21 +924,23 @@ export default function EmployerJobPostingView({
       active="jobs"
       heading={posting.title}
       headerAction={
-        <button
-          type="button"
-          onClick={() => router.push(`/employer/jobs/postajob?id=${posting.id}`)}
-          className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[16px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
-        >
-          Edit posting
-        </button>
+        canManagePosting ? (
+          <button
+            type="button"
+            onClick={() => router.push(`/employer/jobs/postajob?id=${posting.id}`)}
+            className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[16px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+          >
+            Edit posting
+          </button>
+        ) : undefined
       }
       subheading="Everything about this posting — details, applicants, and interviews, in one place."
     >
       <Link href="/employer/jobs" className="text-sm text-[#9AA3B2] hover:text-[#141B2E]">
-        ← Back to Manage Job
+        ← Back to {canManagePosting ? "Manage Job" : "My jobs"}
       </Link>
 
-      {posting.status === "flagged" && posting.flagReason && (
+      {canManagePosting && posting.status === "flagged" && posting.flagReason && (
         <div className="mt-[16px] rounded-[12px] border border-[#FBDBBE] bg-[#FFF7F0] p-[12px]">
           <p className="mb-[4px] text-xs text-[#C2600A]">Flagged — needs a fix</p>
           <p className="text-xs text-[#9A5209]">{posting.flagReason}</p>
@@ -827,118 +960,9 @@ export default function EmployerJobPostingView({
         <div className="flex min-w-0 flex-col gap-[16px] lg:flex-[3]">
           <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
             <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
-              <p className="text-sm text-[#141B2E]">Job posting</p>
-
-              <div className="mt-[12px] flex flex-wrap items-center gap-[8px] text-xs">
-                {posting.industry && (
-                  <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">{posting.industry}</span>
-                )}
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">{posting.location}</span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {EMPLOYMENT_TYPE_LABEL[posting.employmentType] ?? posting.employmentType}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {WORK_ARRANGEMENT_LABEL[posting.workArrangement] ?? posting.workArrangement}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">{salary}</span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {posting.openings} opening{posting.openings === 1 ? "" : "s"}
-                </span>
-                <span className="text-[#9AA3B2]">Posted {relativeTimeAgo(posting.createdAt)}</span>
-              </div>
-
-              <RichTextContent html={posting.description} className="mt-[16px] text-sm leading-[22px] text-[#4B5468]" />
-
-              <div className="mt-[16px]">
-                <p className="text-xs text-[#141B2E]">Job description</p>
-                <RichTextContent
-                  html={posting.responsibilities}
-                  className="mt-[6px] text-sm leading-[22px] text-[#4B5468]"
-                />
-              </div>
-
-              {posting.skills.length > 0 && (
-                <div className="mt-[16px]">
-                  <p className="text-xs text-[#141B2E]">Skills required</p>
-                  <div className="mt-[8px] flex flex-wrap gap-[6px]">
-                    {posting.skills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="rounded-full bg-[#E6F9FA] px-[10px] py-[3px] text-xs text-brand-teal-dark"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {posting.softSkills.length > 0 && (
-                <div className="mt-[12px]">
-                  <p className="text-xs text-[#141B2E]">Soft skills</p>
-                  <div className="mt-[8px] flex flex-wrap gap-[6px]">
-                    {posting.softSkills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#141B2E]"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {posting.location && (
-                <div className="mt-[12px]">
-                  <p className="text-xs text-[#141B2E]">Location</p>
-                  <p className="mt-[2px] text-sm text-[#4B5468]">{fullPostingAddress(posting)}</p>
-                  <iframe
-                    title={`Map for ${posting.location}`}
-                    src={`https://www.google.com/maps?q=${encodeURIComponent(fullPostingAddress(posting))}&output=embed`}
-                    loading="lazy"
-                    className="mt-[8px] h-[160px] w-full rounded-[12px] border border-black/[0.08]"
-                  />
-                </div>
-              )}
-
-              <div className="mt-[20px] border-t border-black/[0.06] pt-[14px]">
-                <p className="text-sm text-[#141B2E]">Screening requirements</p>
-                <div className="mt-[10px] grid grid-cols-1 gap-x-[20px] gap-y-[10px] sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-[#4B5468]">Minimum experience</p>
-                    <p className="mt-[2px] text-sm text-[#141B2E]">
-                      {!posting.minYearsExperience
-                        ? "No requirement"
-                        : `${posting.minYearsExperience} year${posting.minYearsExperience === 1 ? "" : "s"}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#4B5468]">Minimum education</p>
-                    <p className="mt-[2px] text-sm text-[#141B2E]">{posting.minQualificationTier ?? "No requirement"}</p>
-                  </div>
-                  {posting.drivingLicense && (
-                    <div>
-                      <p className="text-xs text-[#4B5468]">Driving license</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">{posting.drivingLicense}</p>
-                    </div>
-                  )}
-                  {posting.languages.length > 0 && (
-                    <div>
-                      <p className="text-xs text-[#4B5468]">Languages required</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {posting.languages.map((l) => `${l.language} (${l.level})`).join(", ")}
-                      </p>
-                    </div>
-                  )}
-                  {posting.workAuthorizations.length > 0 && (
-                    <div className="sm:col-span-2">
-                      <p className="text-xs text-[#4B5468]">Accepted work authorization</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">{posting.workAuthorizations.join(", ")}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <p className="mb-[14px] text-sm text-[#141B2E]">Job posting</p>
+              {/* Same panel jobseekers see on the jobseeker landing page. */}
+              <JobPostingDetails posting={jobseekerView} />
             </div>
           </div>
 
@@ -979,6 +1003,13 @@ export default function EmployerJobPostingView({
 
         <div className="flex flex-col gap-[16px] lg:flex-[2]">
           <PostingAnalytics postingCreatedAt={posting.createdAt} rows={rows} matchByApplicationId={matchByApplicationId} />
+
+          <HiringManagersCard
+            postingId={posting.id}
+            options={hiringManagerOptions}
+            initialIds={hiringManagerIds}
+            canEdit={canManagePosting}
+          />
 
           <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
             <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">

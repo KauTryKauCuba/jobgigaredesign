@@ -1,5 +1,10 @@
-import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, doublePrecision, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, uniqueIndex, doublePrecision, index, date } from "drizzle-orm/pg-core";
 import type { AssistantAction } from "../assistant-types";
+import type { ThemeBanner, ThemeColors, ThemeEffect, ThemeEffectScope } from "../site-themes-shared";
+import type { AiInterviewAnswerEvaluation, AiInterviewReport } from "../ai-interview-shared";
+import type { CustomAnswer, CustomQuestion } from "../screening-questions";
+import type { WorkPlace } from "../work-locations";
 
 export const roleEnum = pgEnum("role", ["employer", "jobseeker"]);
 
@@ -13,6 +18,12 @@ export const users = pgTable("users", {
   // When this person closed the employer "Get sample data" bar — stored on
   // the account (not the browser) so closing it once hides it everywhere.
   sampleDataBannerDismissedAt: timestamp("sample_data_banner_dismissed_at", { withTimezone: true }),
+  // Same, for the "Verify your phone number" bar (jobseekers and employer owners).
+  phoneVerifyBannerDismissedAt: timestamp("phone_verify_banner_dismissed_at", { withTimezone: true }),
+  // How many companies this account may register. Null = the default
+  // (DEFAULT_COMPANY_LIMIT in src/lib/company-limit.ts); a superadmin can set
+  // a custom number for a special client.
+  companyLimit: integer("company_limit"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -27,11 +38,23 @@ export const otpCodes = pgTable("otp_codes", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// "unverified" = no SSM document uploaded yet (or it was cleared);
+// "pending" = a document is uploaded and waiting on superadmin review;
+// "verified" earns the checkmark badge next to the company's logo/avatar;
+// "rejected" sends the employer back to "pending" the moment they re-upload.
+export const ssmVerificationStatusEnum = pgEnum("ssm_verification_status", [
+  "unverified",
+  "pending",
+  "verified",
+  "rejected",
+]);
+
+// One account can register several companies (up to its company limit —
+// see users.companyLimit), so userId is indexed, not unique.
 export const employerProfiles = pgTable("employer_profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
-    .unique()
     .references(() => users.id),
   avatarUrl: text("avatar_url"),
   contactName: text("contact_name").notNull(),
@@ -46,6 +69,14 @@ export const employerProfiles = pgTable("employer_profiles", {
   contactEmail: text("contact_email").notNull(),
   companyName: text("company_name").notNull(),
   ssmNumber: text("ssm_number").notNull(),
+  // The uploaded SSM certificate/business registration document (PDF or
+  // image) a superadmin checks against `ssmNumber` before verifying.
+  ssmDocumentUrl: text("ssm_document_url"),
+  ssmVerificationStatus: ssmVerificationStatusEnum("ssm_verification_status").notNull().default("unverified"),
+  ssmVerifiedAt: timestamp("ssm_verified_at", { withTimezone: true }),
+  // Set when a superadmin rejects the document — shown back to the employer
+  // so they know what to fix before re-uploading. Cleared on the next upload.
+  ssmRejectionReason: text("ssm_rejection_reason"),
   industry: text("industry").notNull(),
   // One of INDUSTRIES (src/lib/industries.ts), same list jobseekerProfiles
   // .preferredIndustry and jobPostings.industry use — kept separate from the
@@ -70,6 +101,17 @@ export const employerProfiles = pgTable("employer_profiles", {
   bannerUrl: text("banner_url"),
   recentNews: jsonb("recent_news")
     .$type<{ title: string; url: string }[]>()
+    .notNull()
+    .default([]),
+  // What the workplace is like (see src/lib/company-workplace.ts): office &
+  // team photos the employer uploads, facilities (from FACILITIES), dress
+  // code (from DRESS_CODES), awards/certifications and leadership.
+  galleryPhotos: jsonb("gallery_photos").$type<string[]>().notNull().default([]),
+  facilities: jsonb("facilities").$type<string[]>().notNull().default([]),
+  dressCode: text("dress_code"),
+  awards: jsonb("awards").$type<{ title: string; year: number | null }[]>().notNull().default([]),
+  leaders: jsonb("leaders")
+    .$type<{ name: string; title: string; photoUrl: string | null }[]>()
     .notNull()
     .default([]),
   // Applicants page's "Top Matches" card — persisted per employer so the
@@ -107,7 +149,7 @@ export const employerProfiles = pgTable("employer_profiles", {
   applicantsLastCheckedAt: timestamp("applicants_last_checked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [index("employer_profiles_user_id_idx").on(table.userId)]);
 
 // An employer can have more than one office/branch — the "Company Profile"
 // page shows them as a list, and a job posting picks one of these as its
@@ -124,15 +166,26 @@ export const employerAddresses = pgTable(
     label: text("label").notNull(),
     addressLine1: text("address_line1").notNull(),
     addressLine2: text("address_line2"),
+    // Optional neighbourhood (e.g. "Bangsar South") — the postcode list only
+    // goes down to the post-office town, so this is typed by the employer.
+    area: text("area"),
     city: text("city").notNull(),
     state: text("state").notNull(),
     postcode: text("postcode").notNull(),
+    // The address a new job posting starts with (Post a job pre-fills its
+    // location from it). At most one per company; when none is marked, the
+    // first address is used — see defaultJobAddress().
+    isJobDefault: boolean("is_job_default").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("employer_addresses_employer_profile_id_idx").on(table.employerProfileId)],
 );
 
-export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin"]);
+// owner/admin run the whole company account. hiring_manager only sees the
+// job postings they're assigned to (job_posting_hiring_managers) and moves
+// those applicants along; panel only sees the candidates whose interview
+// panel they're on, and submits their scorecard. See src/lib/team-roles.ts.
+export const teamMemberRoleEnum = pgEnum("team_member_role", ["owner", "admin", "hiring_manager", "panel"]);
 export const teamMemberStatusEnum = pgEnum("team_member_status", ["active", "pending"]);
 
 // A company can have more than one login now — this is the membership
@@ -158,9 +211,27 @@ export const employerTeamMembers = pgTable(
     // the owner's own row relies on employerProfiles.contactPosition for
     // display instead (set once at onboarding, not duplicated here).
     position: text("position"),
+    // A teammate's own "Your role" (CONTACT_ROLES) and phone — the same
+    // About-you fields the registrant keeps on employerProfiles
+    // (contactRole/contactPhone). Null until they fill in About you.
+    hiringRole: text("hiring_role"),
+    phone: text("phone"),
     status: teamMemberStatusEnum("status").notNull().default("pending"),
     invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
     joinedAt: timestamp("joined_at", { withTimezone: true }),
+    // When they finished the "About you" welcome step after joining (name,
+    // photo, position). Null = an invited teammate who hasn't yet — they're
+    // sent to /employer/welcome first. Never needed for the registrant.
+    profileCompletedAt: timestamp("profile_completed_at", { withTimezone: true }),
+    // The invite link (/invite/[token]): only a SHA-256 hash of the token is
+    // stored, never the token itself. One-time — cleared when accepted or
+    // declined — and replaced (so old links stop working) on every resend.
+    inviteTokenHash: text("invite_token_hash").unique(),
+    // When the link stops working. Null on invites sent before links
+    // expired (and on accepted/joined rows).
+    inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
+    // Who sent (or last resent) the invite — shown on the invite page.
+    invitedByUserId: uuid("invited_by_user_id").references(() => users.id, { onDelete: "set null" }),
   },
   (table) => [
     unique().on(table.employerProfileId, table.email),
@@ -173,6 +244,10 @@ export const teamActivityActionEnum = pgEnum("team_activity_action", [
   "resent_invite",
   "role_changed",
   "removed",
+  "declined",
+  "joined",
+  "job_assigned",
+  "job_unassigned",
 ]);
 
 // One row per team-management action, newest first on the Team page's
@@ -195,6 +270,8 @@ export const employerTeamActivity = pgTable(
     targetEmail: text("target_email").notNull(),
     fromRole: teamMemberRoleEnum("from_role"),
     toRole: teamMemberRoleEnum("to_role"),
+    // Extra context for the line, e.g. the job title on job_assigned.
+    detail: text("detail"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("employer_team_activity_employer_profile_id_idx").on(table.employerProfileId)],
@@ -291,7 +368,11 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
     .references(() => users.id),
   avatarUrl: text("avatar_url"),
   fullName: text("full_name").notNull(),
-  dateOfBirth: text("date_of_birth").notNull(),
+  // Jobseekers give their age, kept as the year it implies (this year minus
+  // the age) so it stays right as the years go by — see src/lib/age.ts. A
+  // full date of birth is never stored. Null only for a profile from before
+  // ages whose old date couldn't be read; the form asks for it again.
+  birthYear: integer("birth_year"),
   gender: genderEnum("gender"),
   maritalStatus: maritalStatusEnum("marital_status"),
   nationality: text("nationality"),
@@ -303,14 +384,20 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
   resumeUrl: text("resume_url"),
   resumeFileName: text("resume_file_name"),
   resumeFileSize: integer("resume_file_size"),
-  // `location` stays the "City, State" display string (kept for the many
-  // existing reads of it, e.g. ApplicantDetailModal), auto-derived from
-  // city/state — the jobseeker no longer edits it directly. Country isn't
-  // stored since this app is Malaysia-only, same assumption MALAYSIA_STATES
-  // already makes everywhere else.
+  // `location` stays the display string (kept for the many existing reads of
+  // it, e.g. ApplicantDetailModal), auto-derived — "City, State" in Malaysia,
+  // "City, Country" elsewhere; the jobseeker never edits it directly. `state`
+  // is one of MALAYSIA_STATES in Malaysia and "" for any other country.
   location: text("location").notNull(),
   city: text("city").notNull(),
   state: text("state").notNull(),
+  country: text("country").notNull().default("Malaysia"),
+  // Malaysia only, from the place search (src/lib/place-search.ts): the area
+  // inside the town when one was picked ("Kota Damansara"), and the map
+  // coordinates when known — kept for distance features later.
+  area: text("area"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
   targetRole: text("target_role").notNull(),
   targetOccupationCode: text("target_occupation_code"),
   // One of INDUSTRIES (src/lib/industries.ts) — required, matching
@@ -336,6 +423,9 @@ export const jobseekerProfiles = pgTable("jobseeker_profiles", {
   githubUrl: text("github_url"),
   noticePeriod: noticePeriodEnum("notice_period").notNull(),
   workArrangement: workArrangementEnum("work_arrangement").notNull(),
+  // Where they'd like to work: town + state pairs from Malaysia's town list
+  // (see src/lib/work-locations.ts). Empty = not said.
+  preferredWorkPlaces: jsonb("preferred_work_places").$type<WorkPlace[]>().notNull().default([]),
   workAuthorization: workAuthorizationEnum("work_authorization").notNull(),
   // Career target as MASCO occupation codes (§0.5 career switcher matching) —
   // separate from the free-text targetRole, populated once MASCO normalization exists.
@@ -398,6 +488,10 @@ export const jobseekerCertifications = pgTable("jobseeker_certifications", {
   name: text("name").notNull(),
   issuer: text("issuer"),
   year: integer("year"),
+  // The certificate/license file itself (PDF or image), optional.
+  fileUrl: text("file_url"),
+  fileName: text("file_name"),
+  fileSize: integer("file_size"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -407,12 +501,59 @@ export const jobseekerLanguages = pgTable("jobseeker_languages", {
   profileId: uuid("profile_id")
     .notNull()
     .references(() => jobseekerProfiles.id, { onDelete: "cascade" }),
+  // The language ("Chinese") and the dialects they also speak ("Mandarin",
+  // "Hokkien") — see src/lib/languages.ts.
   language: text("language").notNull(),
+  dialects: text("dialects").array().notNull().default([]),
   spokenLevel: languageLevelEnum("spoken_level").notNull(),
   writtenLevel: languageLevelEnum("written_level").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Phone numbers a person has proven they can receive a code on. Keyed by the
+// number itself (in international form), not by a profile — so it works while
+// someone is still in onboarding, and a profile's phone counts as verified
+// only while it is still this exact number. Change it and the tick goes
+// until it's verified again.
+export const verifiedPhones = pgTable(
+  "verified_phones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // +60123456789
+    phone: text("phone").notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("verified_phones_user_phone_unique").on(table.userId, table.phone)],
+);
+
+// Every code sent or checked, so sending can be rate-limited per person and
+// per number (a text costs money, and bots love to trigger them).
+export const phoneVerificationAttempts = pgTable(
+  "phone_verification_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    phone: text("phone").notNull(),
+    // "send" | "call" | "check"
+    action: text("action").notNull(),
+    // Where the request came from, for the per-IP limit. Null for older rows.
+    ip: text("ip"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("phone_verification_attempts_user_idx").on(table.userId, table.createdAt),
+    index("phone_verification_attempts_phone_idx").on(table.phone, table.createdAt),
+    index("phone_verification_attempts_ip_idx").on(table.ip, table.createdAt),
+    // The platform-wide daily budget counts everything in the last day.
+    index("phone_verification_attempts_created_idx").on(table.createdAt),
+  ],
+);
 
 export const jobseekerReferences = pgTable("jobseeker_references", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -434,12 +575,16 @@ export const jobseekerReferences = pgTable("jobseeker_references", {
 export const aiUsageFeatureEnum = pgEnum("ai_usage_feature", [
   "company_lookup",
   "job_posting_suggestion",
+  "salary_suggestion",
   "resume_parse",
   "skill_suggestion",
   "match_scoring",
   "cover_letter",
   "poster_generation",
   "assistant_chat",
+  "ai_interview_questions",
+  "ai_interview_transcription",
+  "ai_interview_scoring",
 ]);
 
 // job_postings — finalized 7-state pipeline (see the design memory this was
@@ -464,6 +609,8 @@ export const employmentTypeEnum = pgEnum("employment_type", [
   "part_time",
   "contract",
   "internship",
+  "freelance",
+  "temporary",
 ]);
 
 export const jobPostings = pgTable(
@@ -488,6 +635,8 @@ export const jobPostings = pgTable(
   industry: text("industry"),
   employmentType: employmentTypeEnum("employment_type").notNull().default("full_time"),
   workArrangement: workArrangementEnum("work_arrangement").notNull().default("onsite"),
+  // Hybrid only: how many days a week are in the office (1–4). Null = not said.
+  officeDaysPerWeek: integer("office_days_per_week"),
   // `location` stays the short "City, State" string shown on chips/cards.
   // The fields below are the full structured address (same shape as
   // employerAddresses) used for the location map — optional since older
@@ -495,11 +644,19 @@ export const jobPostings = pgTable(
   location: text("location").notNull(),
   addressLine1: text("address_line1"),
   addressLine2: text("address_line2"),
+  // Optional neighbourhood, carried over from a company address.
+  area: text("area"),
   city: text("city"),
   state: text("state"),
   postcode: text("postcode"),
   salaryMin: integer("salary_min"),
   salaryMax: integer("salary_max"),
+  // What the salary range above is per — "month" | "hour" | "day" |
+  // "project" (SALARY_PERIODS in job-posting-options.ts).
+  salaryPeriod: text("salary_period").notNull().default("month"),
+  // false = the range is kept for the employer's own reference but never
+  // sent to jobseekers (stripCustomQuestionAnswers nulls it out).
+  showSalary: boolean("show_salary").notNull().default(true),
   openings: integer("openings").notNull().default(1),
   skills: text("skills").array().notNull().default([]),
   softSkills: text("soft_skills").array().notNull().default([]),
@@ -507,8 +664,9 @@ export const jobPostings = pgTable(
   niceToHaveSkills: text("nice_to_have_skills").array().notNull().default([]),
   minYearsExperience: integer("min_years_experience"),
   minQualificationTier: text("min_qualification_tier"),
+  // Each: the language, ONE dialect or null for "any dialect", and the minimum level.
   languages: jsonb("languages")
-    .$type<{ language: string; level: "basic" | "conversational" | "fluent" | "native" }[]>()
+    .$type<{ language: string; dialect?: string | null; level: "basic" | "conversational" | "fluent" | "native" }[]>()
     .notNull()
     .default([]),
   workAuthorizations: workAuthorizationEnum("work_authorizations").array().notNull().default([]),
@@ -536,9 +694,13 @@ export const jobPostings = pgTable(
   // pass/fail model instead of needing manual review. Only used when
   // screeningEnabled is true, same as the fields above.
   customScreeningQuestions: jsonb("custom_screening_questions")
-    .$type<{ id: string; question: string; requiredAnswer: boolean }[]>()
+    .$type<CustomQuestion[]>()
     .notNull()
     .default([]),
+  // Built-in requirements (see PREFERRABLE_REQUIREMENTS) the employer marked
+  // "Preferred": meeting one boosts the match score, missing one never
+  // makes an applicant ineligible. Custom questions carry their own flag.
+  screeningPreferred: text("screening_preferred").array().notNull().default([]),
   // AI-generated skill suggestions the employer hasn't reviewed yet (the
   // dashed "+ skill" chips on the post-a-job form's Skills card) — saved
   // with the posting itself, not just in the browser, so they're still
@@ -548,7 +710,16 @@ export const jobPostings = pgTable(
     softSkills: string[];
     niceToHaveSkills: string[];
   } | null>(),
-  benefits: text("benefits"),
+  // Benefits offered for this role (pre-filled from the company's benefits).
+  benefits: text("benefits").array().notNull().default([]),
+  // How soon the hire needs to start — same scale as a jobseeker's notice
+  // period (jobseekerProfiles.noticePeriod), plus "flexible". Null = not said.
+  startAvailability: text("start_availability"),
+  // Free text, e.g. "Mon–Fri, 9am–6pm" or "Rotating shifts, incl. weekends".
+  workingHours: text("working_hours"),
+  // The teammate shown on the posting as its contact ("Posted by …") — name,
+  // position and photo only, never their email or phone. Null = none shown.
+  contactUserId: uuid("contact_user_id").references(() => users.id, { onDelete: "set null" }),
   status: jobPostingStatusEnum("status").notNull().default("draft"),
   rejectionReason: text("rejection_reason"),
   flagReason: text("flag_reason"),
@@ -594,6 +765,29 @@ export const jobPostings = pgTable(
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("job_postings_employer_profile_id_idx").on(table.employerProfileId)],
+);
+
+// Which Hiring managers (team members with role hiring_manager) cover which
+// job postings — they see only these postings' applicants and interviews,
+// and are notified when someone applies. Keyed by the team-member row (not
+// the user) so a still-pending invite can be assigned too, and removing
+// someone from the team or deleting the posting clears it automatically.
+export const jobPostingHiringManagers = pgTable(
+  "job_posting_hiring_managers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobPostingId: uuid("job_posting_id")
+      .notNull()
+      .references(() => jobPostings.id, { onDelete: "cascade" }),
+    teamMemberId: uuid("team_member_id")
+      .notNull()
+      .references(() => employerTeamMembers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("job_posting_hiring_managers_posting_member_unique").on(table.jobPostingId, table.teamMemberId),
+    index("job_posting_hiring_managers_team_member_id_idx").on(table.teamMemberId),
+  ],
 );
 
 // job_posting_posters — one row per successfully generated poster image, so
@@ -728,9 +922,9 @@ export const jobApplications = pgTable(
       yearsExperience: number | null;
       qualificationTier: string | null;
       drivingLicense: string | null;
-      languages: { language: string; level: string }[];
+      languages: { language: string; dialect?: string | null; level: string }[];
       workAuthorization: string | null;
-      customAnswers: { questionId: string; answer: boolean }[];
+      customAnswers: CustomAnswer[];
     } | null>(),
     // Whether the answers above meet every requirement the employer set.
     // Null means screening wasn't required for this application (not "no
@@ -738,6 +932,11 @@ export const jobApplications = pgTable(
     // 0 the same way the existing driving-license/work-authorization hard
     // filters already do.
     screeningEligible: boolean("screening_eligible"),
+    // How many of the posting's "Preferred" requirements this applicant met,
+    // out of how many were set — null when screening wasn't required. Drives
+    // a small match-score boost, never eligibility.
+    screeningPreferredMet: integer("screening_preferred_met"),
+    screeningPreferredTotal: integer("screening_preferred_total"),
     appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     // Set once, the moment status actually transitions to "hired" — kept
@@ -1117,4 +1316,325 @@ export const assistantMessages = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("assistant_messages_conversation_created_idx").on(table.conversationId, table.createdAt)],
+);
+
+// A company's landing-page advertisement booking. The employer landing page
+// has 10 ad slots (src/lib/company-ads.ts); each booking runs 30 days from
+// its start date, booked up to 3 months ahead, and only shows once a
+// superadmin approves it. A company may hold 2 active bookings at once (one
+// running, one booked next), never overlapping. "pending" holds its slot
+// while awaiting review; "rejected" (or taken down) frees it. Live/scheduled/
+// ended are derived from the dates, not stored.
+export const companyAdStatusEnum = pgEnum("company_ad_status", ["pending", "approved", "rejected"]);
+export const companyAdMediaTypeEnum = pgEnum("company_ad_media_type", ["image", "video"]);
+
+export const companyAds = pgTable(
+  "company_ads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    employerProfileId: uuid("employer_profile_id")
+      .notNull()
+      .references(() => employerProfiles.id, { onDelete: "cascade" }),
+    mediaType: companyAdMediaTypeEnum("media_type").notNull(),
+    // File name in private storage (storage/company-ads) — served through
+    // /api/company-ads/[id]/media, which only shows unapproved ads to the
+    // company's own team and superadmins.
+    fileName: text("file_name").notNull(),
+    headline: text("headline").notNull(),
+    status: companyAdStatusEnum("status").notNull().default("pending"),
+    rejectionReason: text("rejection_reason"),
+    // Malaysia calendar days: shows from startDate, gone on endDate (exclusive).
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(),
+    // Each notification is claimed once (set when sent), so it never repeats.
+    liveNotifiedAt: timestamp("live_notified_at", { withTimezone: true }),
+    endingNotifiedAt: timestamp("ending_notified_at", { withTimezone: true }),
+    endedNotifiedAt: timestamp("ended_notified_at", { withTimezone: true }),
+    submittedByUserId: uuid("submitted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("company_ads_employer_profile_id_idx").on(table.employerProfileId),
+    index("company_ads_dates_idx").on(table.startDate, table.endDate),
+  ],
+);
+
+// A job posting advertisement: the employer's own square artwork (image or
+// short video) attached to one of their live job postings, featured above
+// the jobseeker page's job search. Same booking rules as company_ads (its
+// own 10 slots, 30-day runs, 2 active bookings per company, superadmin
+// review) — see src/lib/job-ads.ts. Only shows while its posting is active.
+export const jobAds = pgTable(
+  "job_ads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    employerProfileId: uuid("employer_profile_id")
+      .notNull()
+      .references(() => employerProfiles.id, { onDelete: "cascade" }),
+    jobPostingId: uuid("job_posting_id")
+      .notNull()
+      .references(() => jobPostings.id, { onDelete: "cascade" }),
+    mediaType: companyAdMediaTypeEnum("media_type").notNull(),
+    // File name in private storage (storage/job-ads) — served through
+    // /api/job-ads/[id]/media, public only once approved.
+    fileName: text("file_name").notNull(),
+    status: companyAdStatusEnum("status").notNull().default("pending"),
+    rejectionReason: text("rejection_reason"),
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(),
+    liveNotifiedAt: timestamp("live_notified_at", { withTimezone: true }),
+    endingNotifiedAt: timestamp("ending_notified_at", { withTimezone: true }),
+    endedNotifiedAt: timestamp("ended_notified_at", { withTimezone: true }),
+    submittedByUserId: uuid("submitted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("job_ads_employer_profile_id_idx").on(table.employerProfileId),
+    index("job_ads_job_posting_id_idx").on(table.jobPostingId),
+    index("job_ads_dates_idx").on(table.startDate, table.endDate),
+  ],
+);
+
+// AI interview — a pre-interview screen an employer sends to a shortlisted
+// applicant: 5 job-knowledge questions answered by short recordings, then
+// transcribed and scored by AI against the key points the employer approved.
+// Its own feature, separate from the video pitch. One per application; a
+// resend or extension reuses the same row.
+export const aiInterviewStatusEnum = pgEnum("ai_interview_status", [
+  "invited",
+  "in_progress",
+  "processing",
+  "completed",
+  "failed",
+  "expired",
+  "cancelled",
+]);
+
+export const aiInterviews = pgTable(
+  "ai_interviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobApplicationId: uuid("job_application_id")
+      .notNull()
+      .unique()
+      .references(() => jobApplications.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    status: aiInterviewStatusEnum("status").notNull().default("invited"),
+    // Per-answer time limit, chosen by the employer when sending.
+    answerSeconds: integer("answer_seconds").notNull().default(30),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    inviteSentAt: timestamp("invite_sent_at", { withTimezone: true }).notNull().defaultNow(),
+    // When the applicant ticked the consent box (recording + AI processing).
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    // The overall AiInterviewReport — advice for the employer, never a decision.
+    report: jsonb("report").$type<AiInterviewReport | null>(),
+    failureReason: text("failure_reason"),
+    // Recordings are deleted after this; transcripts, scores and the report stay.
+    recordingsExpireAt: timestamp("recordings_expire_at", { withTimezone: true }),
+    recordingsDeletedAt: timestamp("recordings_deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("ai_interviews_status_idx").on(table.status)],
+);
+
+// One row per question, carrying its answer too (an answer never exists
+// without its question).
+export const aiInterviewQuestions = pgTable(
+  "ai_interview_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    aiInterviewId: uuid("ai_interview_id")
+      .notNull()
+      .references(() => aiInterviews.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    question: text("question").notNull(),
+    // What a good answer covers — approved by the employer, used to score.
+    keyPoints: text("key_points").array().notNull().default([]),
+    // The answer: a file in storage/ai-interviews/<interview id>/.
+    mediaFileName: text("media_file_name"),
+    mediaKind: text("media_kind"),
+    durationSeconds: integer("duration_seconds"),
+    // Takes used so far (a first take plus re-records).
+    attempts: integer("attempts").notNull().default(0),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    transcript: text("transcript"),
+    score: integer("score"),
+    evaluation: jsonb("evaluation").$type<AiInterviewAnswerEvaluation | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("ai_interview_questions_position_unique").on(table.aiInterviewId, table.position),
+    index("ai_interview_questions_interview_idx").on(table.aiInterviewId),
+  ],
+);
+
+// Site-wide settings the superadmin changes from their dashboard, one row
+// per key — e.g. "welcome_image.employer" → { url } for the landing pages'
+// welcome popup. A missing row means "use the built-in default".
+export const siteSettings = pgTable("site_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A superadmin-made look for one side of the site (employer or jobseeker):
+// colours, an optional banner and an optional effect — see
+// src/lib/site-themes.ts. At most one live theme per side; with none live,
+// that side shows the default design.
+export const siteThemeAudienceEnum = pgEnum("site_theme_audience", ["employer", "jobseeker"]);
+
+export const siteThemes = pgTable(
+  "site_themes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    audience: siteThemeAudienceEnum("audience").notNull(),
+    name: text("name").notNull(),
+    // The ready-made theme it started from, if any (for "reset colours").
+    presetKey: text("preset_key"),
+    colors: jsonb("colors").$type<ThemeColors>().notNull(),
+    banner: jsonb("banner").$type<ThemeBanner>().notNull(),
+    effect: text("effect").$type<ThemeEffect>().notNull().default("none"),
+    effectScope: text("effect_scope").$type<ThemeEffectScope>().notNull().default("landing"),
+    isActive: boolean("is_active").notNull().default(false),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("site_themes_one_active_per_audience")
+      .on(table.audience)
+      .where(sql`${table.isActive}`),
+  ],
+);
+
+// Superadmin-run reward campaigns — see src/lib/campaigns.ts. A campaign is
+// started by one action (its trigger; for now only "phone_verified") and
+// offers each side (employer / jobseeker) its own reward: a voucher code
+// from an uploaded stock, or an entry into a lucky draw. "draft" has never
+// gone live; "paused" can go live again; "ended" is final.
+export const campaignStatusEnum = pgEnum("campaign_status", ["draft", "live", "paused", "ended"]);
+export const campaignRewardTypeEnum = pgEnum("campaign_reward_type", ["voucher", "draw"]);
+// Voucher: pending (waiting for a superadmin, code set aside) → approved
+// (code shown) or rejected (code back in stock). Draw: entered → selected
+// (picked, waiting for a superadmin) → won, or rejected; everyone left over
+// becomes not_selected when the results are announced.
+export const campaignClaimStatusEnum = pgEnum("campaign_claim_status", [
+  "pending",
+  "approved",
+  "rejected",
+  "entered",
+  "selected",
+  "won",
+  "not_selected",
+]);
+
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  trigger: text("trigger").notNull().default("phone_verified"),
+  status: campaignStatusEnum("status").notNull().default("draft"),
+  // Every reward waits for a superadmin before it's given (or a winner announced).
+  needsApproval: boolean("needs_approval").notNull().default(true),
+  // Optional window, set as whole days in Malaysia time (see campaigns-shared.ts).
+  startsAt: timestamp("starts_at", { withTimezone: true }),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  terms: text("terms").notNull().default(""),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One per side of a campaign.
+export const campaignRewards = pgTable(
+  "campaign_rewards",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    audience: roleEnum("audience").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    type: campaignRewardTypeEnum("type").notNull().default("voucher"),
+    // What they get / the prize, e.g. "RM5 Touch 'n Go eWallet voucher".
+    title: text("title").notNull().default(""),
+    // How to use the voucher, or more about the prize.
+    details: text("details").notNull().default(""),
+    // What one voucher costs, for the budget figure. Optional.
+    valueRm: doublePrecision("value_rm"),
+    winnerCount: integer("winner_count").notNull().default(1),
+    drawnAt: timestamp("drawn_at", { withTimezone: true }),
+    announcedAt: timestamp("announced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("campaign_rewards_campaign_audience_unique").on(table.campaignId, table.audience)],
+);
+
+// The uploaded stock of codes for a voucher reward. `claimId` is set while a
+// claim holds the code (pending or approved) and cleared if it's rejected.
+export const campaignVoucherCodes = pgTable(
+  "campaign_voucher_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rewardId: uuid("reward_id")
+      .notNull()
+      .references(() => campaignRewards.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    // The partner's own expiry (last valid day). Expired codes aren't handed out.
+    expiresOn: date("expires_on"),
+    claimId: uuid("claim_id").unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("campaign_voucher_codes_reward_code_unique").on(table.rewardId, table.code),
+    index("campaign_voucher_codes_reward_claim_idx").on(table.rewardId, table.claimId),
+  ],
+);
+
+// Who got (or is waiting for) a reward. One per person and one per phone
+// number per campaign. Kept when the account is deleted (userId goes null,
+// the phone and the name/email snapshot stay), so signing up again with the
+// same number doesn't earn a second reward.
+export const campaignClaims = pgTable(
+  "campaign_claims",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    rewardId: uuid("reward_id")
+      .notNull()
+      .references(() => campaignRewards.id, { onDelete: "cascade" }),
+    audience: roleEnum("audience").notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    // +60123456789
+    phone: text("phone").notNull(),
+    userEmail: text("user_email").notNull(),
+    userName: text("user_name"),
+    status: campaignClaimStatusEnum("status").notNull(),
+    codeId: uuid("code_id").references(() => campaignVoucherCodes.id, { onDelete: "set null" }),
+    rejectReason: text("reject_reason"),
+    reviewedByEmail: text("reviewed_by_email"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    // When the person closed the "You've earned a reward" popup.
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("campaign_claims_campaign_user_unique").on(table.campaignId, table.userId),
+    unique("campaign_claims_campaign_phone_unique").on(table.campaignId, table.phone),
+    index("campaign_claims_reward_status_idx").on(table.rewardId, table.status),
+    index("campaign_claims_user_idx").on(table.userId, table.audience),
+  ],
 );

@@ -43,9 +43,19 @@ export default function NotificationBell({ accent = "teal" }: { accent?: "teal" 
   const [now, setNow] = useState(() => Date.now());
   const ref = useRef<HTMLDivElement>(null);
 
+  // Set once the server says this tab is no longer signed in (signed out in
+  // another tab, account switched, session expired) — polling stops rather
+  // than repeating a request that can only ever 401 from now on.
+  const signedOutRef = useRef(false);
+
   const load = useCallback(async () => {
+    if (signedOutRef.current) return;
     try {
       const res = await fetch("/api/notifications", { cache: "no-store" });
+      if (res.status === 401) {
+        signedOutRef.current = true;
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       setItems(data.notifications ?? []);

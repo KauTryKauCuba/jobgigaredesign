@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import DatePicker from "./DatePicker";
 import Dropdown from "./Dropdown";
 import MonthYearPicker, { parseMonthYearValue } from "./MonthYearPicker";
 import { useDraftName } from "./DraftNameContext";
@@ -11,21 +10,42 @@ import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
 import { CheckIcon, FileIcon, PlusIcon, UploadIcon, UserIcon, XIcon } from "./icons";
 import Modal from "./Modal";
 import PhoneInput from "./PhoneInput";
+import PhoneVerifiedAvatarBadge from "./PhoneVerifiedAvatarBadge";
+import PlaceSearch from "./PlaceSearch";
 import RichTextEditor from "./RichTextEditor";
 import { PENDING_RESUME_KEY } from "./ResumeUpload";
 import SiriOrb from "./SiriOrb";
 import { useRegisterUnsavedChangesGuard } from "./UnsavedChangesGuard";
+import { ageFromBirthYear, ageFromDate, MAX_AGE, MIN_AGE, parseAge } from "@/lib/age";
 import { INDUSTRIES } from "@/lib/industries";
+import {
+  canonicalLanguage,
+  isListedLanguage,
+  LANGUAGE_OPTIONS,
+  languageDialects,
+  normalizeSpokenLanguages,
+  sameLanguage,
+} from "@/lib/languages";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
+import { COUNTRIES, DEFAULT_COUNTRY } from "@/lib/countries";
 import { NATIONALITIES } from "@/lib/nationalities";
+import { isValidMalaysianPhone } from "@/lib/phone";
+import { formatPlace, MAX_WORK_PLACES, type Place } from "@/lib/work-locations";
 import { plainTextToHtml } from "@/lib/richText";
 import type { JobseekerProfile } from "@/lib/jobseeker-profile";
+
+// The language picker's "Other (type it)" choice.
+const OTHER_LANGUAGE = "__other__";
+// One "Preferred work locations" row: empty until a place is picked.
+type WorkPlaceRow = { id: string; place: Place | null };
 
 const EMPLOYMENT_TYPES = [
   { value: "full_time", label: "Full-time" },
   { value: "part_time", label: "Part-time" },
   { value: "contract", label: "Contract" },
   { value: "internship", label: "Internship" },
+  { value: "freelance", label: "Freelance" },
+  { value: "temporary", label: "Temporary" },
 ] as const;
 
 const WORK_ARRANGEMENTS = [
@@ -96,6 +116,9 @@ const RESUME_MAX_BYTES = 10 * 1024 * 1024;
 
 const AVATAR_ACCEPT = "image/*";
 const AVATAR_MAX_BYTES = 3 * 1024 * 1024;
+
+const CERTIFICATE_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
+const CERTIFICATE_MAX_BYTES = 5 * 1024 * 1024;
 
 type QualificationTier = (typeof QUALIFICATION_TIERS)[number]["value"];
 type LanguageLevel = (typeof LANGUAGE_LEVELS)[number]["value"];
@@ -218,7 +241,7 @@ function SalaryRangeSlider({
     <div className="col-span-full select-none">
       <div ref={trackRef} className="relative mt-[18px] h-[6px] rounded-full bg-[#F1F4F8]">
         <div
-          className="absolute h-full rounded-full bg-[#FFE9A6]"
+          className="absolute h-full rounded-full bg-brand-gold"
           style={{ left: `${minPct}%`, width: `${Math.max(0, maxPct - minPct)}%` }}
         />
         <div
@@ -366,15 +389,27 @@ function computeYearsFromWorkExperiences(entries: WorkExperienceEntry[]): number
   return Math.round(totalMonths / 12);
 }
 
-function splitLocationGuess(raw: string): { city: string; state: (typeof MALAYSIA_STATES)[number] | "" } {
-  const trimmed = raw.trim();
-  for (const s of MALAYSIA_STATES) {
-    if (trimmed.toLowerCase().endsWith(s.toLowerCase())) {
-      const city = trimmed.slice(0, trimmed.length - s.length).replace(/,\s*$/, "").trim();
-      return { city, state: s };
+// A resume's location ("Petaling Jaya, Selangor", "Shah Alam, Selangor,
+// Malaysia", "Singapore") → city, state and — when it names one — country.
+function splitLocationGuess(raw: string): { city: string; state: (typeof MALAYSIA_STATES)[number] | ""; country: string | null } {
+  let trimmed = raw.trim();
+  const endsWith = (name: string) => trimmed.toLowerCase().endsWith(name.toLowerCase());
+  const cut = (name: string) => trimmed.slice(0, trimmed.length - name.length).replace(/,\s*$/, "").trim();
+  let country: string | null = null;
+  // A trailing country: Malaysia is dropped (its state comes next); any other
+  // country is where they are, and the rest is the city.
+  for (const c of COUNTRIES) {
+    if (endsWith(c)) {
+      country = c;
+      trimmed = cut(c);
+      break;
     }
   }
-  return { city: trimmed, state: "" };
+  if (country && country !== DEFAULT_COUNTRY) return { city: trimmed || country, state: "", country };
+  for (const s of MALAYSIA_STATES) {
+    if (endsWith(s)) return { city: cut(s), state: s, country: DEFAULT_COUNTRY };
+  }
+  return { city: trimmed, state: "", country };
 }
 
 type WorkExperienceEntry = {
@@ -416,21 +451,35 @@ type CertificationEntry = {
   name: string;
   issuer: string;
   year: string;
+  // The certificate/license file: either a "/uploads/certificates/..." URL
+  // already saved, or a fresh "data:...;base64,..." just picked and not yet
+  // uploaded. Null when there's no file.
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
 };
 
 function newCertification(): CertificationEntry {
-  return { id: newId(), name: "", issuer: "", year: "" };
+  return { id: newId(), name: "", issuer: "", year: "", fileUrl: null, fileName: null, fileSize: null };
 }
 
 type LanguageEntry = {
   id: string;
   language: string;
+  // The dialects they also speak, e.g. Chinese → Mandarin, Hokkien (see src/lib/languages.ts).
+  dialects: string[];
   spokenLevel: LanguageLevel;
   writtenLevel: LanguageLevel;
 };
 
 function newLanguage(): LanguageEntry {
-  return { id: newId(), language: "", spokenLevel: "conversational", writtenLevel: "conversational" };
+  return { id: newId(), language: "", dialects: [], spokenLevel: "conversational", writtenLevel: "conversational" };
+}
+
+/** Rows read through the language list: one per language, older names ("Hokkien") as Chinese + Hokkien. */
+function normalizeLanguageRows<T extends { language: string; dialects?: string[] | null }>(rows: T[]) {
+  const blank = rows.filter((r) => !r.language.trim()).map((r) => ({ ...r, dialects: r.dialects ?? [] }));
+  return [...normalizeSpokenLanguages(rows.filter((r) => r.language.trim())), ...blank];
 }
 
 type ReferenceEntry = {
@@ -478,16 +527,22 @@ function mapCertifications(rows: JobseekerProfile["certifications"]): Certificat
     name: r.name,
     issuer: r.issuer ?? "",
     year: r.year != null ? String(r.year) : "",
+    fileUrl: r.fileUrl ?? null,
+    fileName: r.fileName ?? null,
+    fileSize: r.fileSize ?? null,
   }));
 }
 
 function mapLanguages(rows: JobseekerProfile["languages"]): LanguageEntry[] {
-  return rows.map((r) => ({
-    id: r.id,
-    language: r.language,
-    spokenLevel: r.spokenLevel as LanguageLevel,
-    writtenLevel: r.writtenLevel as LanguageLevel,
-  }));
+  return normalizeLanguageRows(
+    rows.map((r) => ({
+      id: r.id,
+      language: r.language,
+      dialects: r.dialects ?? [],
+      spokenLevel: r.spokenLevel as LanguageLevel,
+      writtenLevel: r.writtenLevel as LanguageLevel,
+    })),
+  );
 }
 
 function mapReferences(rows: JobseekerProfile["references"]): ReferenceEntry[] {
@@ -545,7 +600,7 @@ type ParsedProfile = {
     graduationYear: number | null;
   }[];
   certifications: { name: string; issuer: string | null; year: number | null }[];
-  languages: { language: string; spokenLevel: LanguageLevel; writtenLevel: LanguageLevel }[];
+  languages: { language: string; dialects?: string[]; spokenLevel: LanguageLevel; writtenLevel: LanguageLevel }[];
   references: { fullName: string; jobTitle: string | null; company: string | null; phone: string | null; email: string | null }[];
 };
 
@@ -553,7 +608,9 @@ type DraftData = {
   avatarUrl: string | null;
   avatarIsAccountDefault: boolean;
   fullName: string;
-  dateOfBirth: string;
+  age: string;
+  // Drafts saved before ages were asked for hold a date of birth instead.
+  dateOfBirth?: string;
   gender: (typeof GENDERS)[number]["value"] | "";
   maritalStatus: (typeof MARITAL_STATUSES)[number]["value"] | "";
   nationality: string;
@@ -562,6 +619,12 @@ type DraftData = {
   location: string;
   city: string;
   state: (typeof MALAYSIA_STATES)[number] | "";
+  // Missing on drafts from before country was asked — those are Malaysia.
+  country?: string;
+  // From the place search (Malaysia); missing on older drafts.
+  area?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   targetRole: string;
   preferredIndustry: (typeof INDUSTRIES)[number] | "";
   yearsExperience: string;
@@ -577,7 +640,10 @@ type DraftData = {
   portfolioUrl: string;
   githubUrl: string;
   workArrangement: (typeof WORK_ARRANGEMENTS)[number]["value"];
-  workAuthorization: (typeof WORK_AUTHORIZATIONS)[number]["value"];
+  // Picked places; older drafts may hold half-picked rows (state only, no area/coordinates).
+  preferredWorkPlaces?: { city: string; state: (typeof MALAYSIA_STATES)[number] | ""; area?: string | null; lat?: number | null; lng?: number | null }[];
+  // "" until picked — it decides which jobs they're matched and screened for.
+  workAuthorization: (typeof WORK_AUTHORIZATIONS)[number]["value"] | "";
   noticePeriod: (typeof NOTICE_PERIODS)[number]["value"];
   workExperiences: Omit<WorkExperienceEntry, "id">[];
   education: Omit<EducationEntry, "id">[];
@@ -610,18 +676,6 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-function calculateAge(dateOfBirth: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return null;
-  const dob = new Date(dateOfBirth);
-  if (Number.isNaN(dob.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const hasHadBirthdayThisYear =
-    today.getMonth() > dob.getMonth() ||
-    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
-  if (!hasHadBirthdayThisYear) age--;
-  return age >= 0 ? age : null;
-}
 
 
 const inputClass = formInputClass("gold");
@@ -644,22 +698,28 @@ function SectionHeader({
   hint,
   onAdd,
   addLabel,
+  required = false,
 }: {
   label: string;
   hint?: string;
   onAdd: () => void;
   addLabel: string;
+  // A red asterisk, like Field's.
+  required?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-xs text-[#4B5468]">{label}</p>
+        <p className="text-xs text-[#4B5468]">
+          {label}
+          {required && <span className="text-red-500"> *</span>}
+        </p>
         {hint && <p className="text-xs text-[#9AA3B2]">{hint}</p>}
       </div>
       <button
         type="button"
         onClick={onAdd}
-        className="flex items-center gap-[4px] rounded-full bg-[#FFF3D6] py-[6px] pl-[10px] pr-[12px] text-sm text-brand-gold-dark hover:bg-[#FFE9A6]"
+        className="flex items-center gap-[4px] rounded-full bg-brand-gold-soft py-[6px] pl-[10px] pr-[12px] text-sm text-brand-gold-dark hover:bg-brand-gold"
       >
         <PlusIcon className="h-[10px] w-[10px]" />
         {addLabel}
@@ -688,7 +748,11 @@ export default function OnboardingForm({
   initialAvatarUrl,
   initialDraft,
   topSlot,
+  initialPhoneStatus,
 }: {
+  // Whether the phone the form starts with is verified (from the server), so
+  // it shows correctly on the first frame instead of loading in.
+  initialPhoneStatus?: { canVerify: boolean; verified: boolean };
   mode?: "onboarding" | "edit";
   initialProfile?: JobseekerProfile;
   accountEmail?: string;
@@ -830,7 +894,11 @@ export default function OnboardingForm({
   useEffect(() => {
     setDraftAvatarUrl?.(avatarUrl);
   }, [avatarUrl, setDraftAvatarUrl]);
-  const [dateOfBirth, setDateOfBirth] = useState(initialProfile?.dateOfBirth ?? initialDraft?.dateOfBirth ?? "");
+  // Typed as text so it can be cleared; checked with parseAge (see src/lib/age.ts).
+  const [age, setAge] = useState(() => {
+    const saved = ageFromBirthYear(initialProfile?.birthYear) ?? (initialDraft?.age ? null : ageFromDate(initialDraft?.dateOfBirth));
+    return saved !== null ? String(saved) : (initialDraft?.age ?? "");
+  });
   const [gender, setGender] = useState<(typeof GENDERS)[number]["value"] | "">(
     (initialProfile?.gender as (typeof GENDERS)[number]["value"] | null | undefined) ??
       initialDraft?.gender ??
@@ -844,6 +912,13 @@ export default function OnboardingForm({
   const [nationality, setNationality] = useState(initialProfile?.nationality ?? initialDraft?.nationality ?? "");
   const accountEmail = initialAccountEmail ?? "";
   const [phone, setPhone] = useState(initialProfile?.phone ?? initialDraft?.phone ?? "");
+  // Whether the number in the phone field is verified — shown as a seal on the avatar
+  // here, and (during onboarding) on the navbar's avatar too.
+  const [phoneVerified, setPhoneVerified] = useState(initialPhoneStatus?.verified ?? false);
+  const setDraftPhoneVerified = draftContext?.setDraftPhoneVerified;
+  useEffect(() => {
+    setDraftPhoneVerified?.(phoneVerified);
+  }, [phoneVerified, setDraftPhoneVerified]);
   const [drivingLicense, setDrivingLicense] = useState<(typeof DRIVING_LICENSES)[number]["value"] | "">(
     (initialProfile?.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null | undefined) ??
       initialDraft?.drivingLicense ??
@@ -853,7 +928,52 @@ export default function OnboardingForm({
   const [state, setState] = useState<(typeof MALAYSIA_STATES)[number] | "">(
     (initialProfile?.state as (typeof MALAYSIA_STATES)[number] | undefined) ?? initialDraft?.state ?? "",
   );
-  const location = city.trim() && state ? `${city.trim()}, ${state}` : city.trim() || state;
+  const [country, setCountry] = useState<string>(initialProfile?.country ?? initialDraft?.country ?? DEFAULT_COUNTRY);
+  const inMalaysia = country === DEFAULT_COUNTRY;
+  // In Malaysia the place comes from the place search (towns and areas, see
+  // src/lib/place-search.ts): picking one fills the town, state, area and
+  // map coordinates together. Elsewhere the city is just typed.
+  const [area, setArea] = useState<string | null>(initialProfile?.area ?? initialDraft?.area ?? null);
+  const [latitude, setLatitude] = useState<number | null>(initialProfile?.latitude ?? initialDraft?.latitude ?? null);
+  const [longitude, setLongitude] = useState<number | null>(initialProfile?.longitude ?? initialDraft?.longitude ?? null);
+  const homePlace: Place | null =
+    inMalaysia && city.trim() && state ? { area, city: city.trim(), state, lat: latitude, lng: longitude } : null;
+  function setHomePlace(place: Place | null) {
+    setCity(place?.city ?? "");
+    setState(place?.state ?? "");
+    setArea(place?.area ?? null);
+    setLatitude(place?.lat ?? null);
+    setLongitude(place?.lng ?? null);
+  }
+  // A resume's location is plain text ("Kota Damansara, Selangor"). Look it up
+  // like a typed search so it lands on a real town (and area) — unless the
+  // jobseeker has picked something else in the meantime.
+  function matchResumePlace(guess: { city: string; state: string }) {
+    const q = guess.city.trim();
+    if (q.length < 2) return;
+    fetch(`/api/places?q=${encodeURIComponent(q)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { places?: Place[] } | null) => {
+        const match = data?.places?.find((p) => !guess.state || p.state === guess.state);
+        if (!match) return;
+        setCity((prev) => {
+          if (prev !== guess.city) return prev;
+          setState(match.state);
+          setArea(match.area);
+          setLatitude(match.lat);
+          setLongitude(match.lng);
+          return match.city;
+        });
+      })
+      .catch(() => {});
+  }
+  const location = homePlace
+    ? formatPlace(homePlace)
+    : inMalaysia
+      ? city.trim() || state
+      : city.trim() && city.trim().toLowerCase() !== country.toLowerCase()
+        ? `${city.trim()}, ${country}`
+        : country;
   const [targetRole, setTargetRole] = useState(initialProfile?.targetRole ?? initialDraft?.targetRole ?? "");
   const [preferredIndustry, setPreferredIndustry] = useState<(typeof INDUSTRIES)[number] | "">(
     (initialProfile?.preferredIndustry as (typeof INDUSTRIES)[number] | null | undefined) ??
@@ -922,17 +1042,39 @@ export default function OnboardingForm({
     initialProfile?.portfolioUrl ?? initialDraft?.portfolioUrl ?? "",
   );
   const [githubUrl, setGithubUrl] = useState(initialProfile?.githubUrl ?? initialDraft?.githubUrl ?? "");
+  // Where they'd like to work: one place-search box per row (towns and
+  // areas), at least one and up to MAX_WORK_PLACES (see
+  // src/lib/work-locations.ts). Starts with one empty row; an extra empty
+  // row is simply ignored.
+  const [workPlaceRows, setWorkPlaceRows] = useState<WorkPlaceRow[]>(() => {
+    // Ids here must come out the same on the server and the client (the
+    // initial render is the same data both times), so they're index-based —
+    // newId() (random) is only for rows added afterward via "+ Add".
+    const saved = (initialProfile?.preferredWorkPlaces ?? initialDraft?.preferredWorkPlaces ?? []).map((p, i) => ({
+      id: `initial-${i}`,
+      // Older drafts can hold a half-picked row (state only) — that's empty now.
+      place:
+        p.city && p.state
+          ? { area: p.area ?? null, city: p.city, state: p.state, lat: p.lat ?? null, lng: p.lng ?? null }
+          : null,
+    }));
+    return saved.length > 0 ? saved : [{ id: "initial-0", place: null }];
+  });
+  const pickedWorkPlaces = workPlaceRows.map((r) => r.place).filter((p): p is Place => p !== null);
+  const workPlacesDone = pickedWorkPlaces.length > 0;
   const [workArrangement, setWorkArrangement] = useState<(typeof WORK_ARRANGEMENTS)[number]["value"]>(
     (initialProfile?.workArrangement as (typeof WORK_ARRANGEMENTS)[number]["value"] | undefined) ??
       initialDraft?.workArrangement ??
       "onsite",
   );
+  // No default: a wrong guess (e.g. "Malaysian citizen" for someone on a work
+  // pass) would match and screen them for the wrong jobs without them noticing.
   const [workAuthorization, setWorkAuthorization] = useState<
-    (typeof WORK_AUTHORIZATIONS)[number]["value"]
+    (typeof WORK_AUTHORIZATIONS)[number]["value"] | ""
   >(
     (initialProfile?.workAuthorization as (typeof WORK_AUTHORIZATIONS)[number]["value"] | undefined) ??
       initialDraft?.workAuthorization ??
-      "citizen",
+      "",
   );
   const [noticePeriod, setNoticePeriod] = useState<(typeof NOTICE_PERIODS)[number]["value"]>(
     (initialProfile?.noticePeriod as (typeof NOTICE_PERIODS)[number]["value"] | undefined) ??
@@ -966,12 +1108,19 @@ export default function OnboardingForm({
   const [certifications, setCertifications] = useState<CertificationEntry[]>(
     initialProfile
       ? mapCertifications(initialProfile.certifications)
-      : (initialDraft?.certifications?.map((entry) => ({ ...entry, id: newId() })) ?? []),
+      : // Older drafts were saved before the file fields existed.
+        (initialDraft?.certifications?.map((entry) => ({
+          ...entry,
+          id: newId(),
+          fileUrl: entry.fileUrl ?? null,
+          fileName: entry.fileName ?? null,
+          fileSize: entry.fileSize ?? null,
+        })) ?? []),
   );
   const [languages, setLanguages] = useState<LanguageEntry[]>(
     initialProfile
       ? mapLanguages(initialProfile.languages)
-      : (initialDraft?.languages?.map((entry) => ({ ...entry, id: newId() })) ?? []),
+      : normalizeLanguageRows((initialDraft?.languages ?? []).map((entry) => ({ ...entry, id: newId() }))),
   );
   const [references, setReferences] = useState<ReferenceEntry[]>(
     initialProfile
@@ -987,7 +1136,7 @@ export default function OnboardingForm({
   const profileSnapshotValue = JSON.stringify({
     avatarUrl,
     fullName,
-    dateOfBirth,
+    age,
     gender,
     maritalStatus,
     nationality,
@@ -995,6 +1144,7 @@ export default function OnboardingForm({
     drivingLicense,
     city,
     state,
+    country,
     targetRole,
     preferredIndustry,
     yearsExperience,
@@ -1009,12 +1159,16 @@ export default function OnboardingForm({
     portfolioUrl,
     githubUrl,
     workArrangement,
+    preferredWorkPlaces: pickedWorkPlaces.map(formatPlace),
+    area,
+    latitude,
+    longitude,
     workAuthorization,
     noticePeriod,
     workExperiences: workExperiences.map((e) => [e.company, e.title, e.startDate, e.endDate, e.isCurrent, e.achievements]),
     education: education.map((e) => [e.institution, e.fieldOfStudy, e.qualificationTier, e.cgpa, e.graduationYear]),
-    certifications: certifications.map((e) => [e.name, e.issuer, e.year]),
-    languages: languages.map((e) => [e.language, e.spokenLevel, e.writtenLevel]),
+    certifications: certifications.map((e) => [e.name, e.issuer, e.year, e.fileUrl, e.fileName, e.fileSize]),
+    languages: languages.map((e) => [e.language, e.dialects, e.spokenLevel, e.writtenLevel]),
     references: references.map((e) => [e.fullName, e.jobTitle, e.company, e.phone, e.email]),
   });
   const initialProfileSnapshot = useRef(profileSnapshotValue);
@@ -1035,7 +1189,7 @@ export default function OnboardingForm({
         avatarUrl,
         avatarIsAccountDefault,
         fullName,
-        dateOfBirth,
+        age,
         gender,
         maritalStatus,
         nationality,
@@ -1044,6 +1198,7 @@ export default function OnboardingForm({
         location,
         city,
         state,
+        country,
         targetRole,
         preferredIndustry,
         yearsExperience,
@@ -1059,6 +1214,10 @@ export default function OnboardingForm({
         portfolioUrl,
         githubUrl,
         workArrangement,
+        preferredWorkPlaces: pickedWorkPlaces,
+        area,
+        latitude,
+        longitude,
         workAuthorization,
         noticePeriod,
         workExperiences: workExperiences.map((e) => ({
@@ -1076,9 +1235,17 @@ export default function OnboardingForm({
           cgpa: e.cgpa,
           graduationYear: e.graduationYear,
         })),
-        certifications: certifications.map((e) => ({ name: e.name, issuer: e.issuer, year: e.year })),
+        certifications: certifications.map((e) => ({
+          name: e.name,
+          issuer: e.issuer,
+          year: e.year,
+          fileUrl: e.fileUrl,
+          fileName: e.fileName,
+          fileSize: e.fileSize,
+        })),
         languages: languages.map((e) => ({
           language: e.language,
+          dialects: e.dialects,
           spokenLevel: e.spokenLevel,
           writtenLevel: e.writtenLevel,
         })),
@@ -1110,7 +1277,7 @@ export default function OnboardingForm({
     avatarUrl,
     avatarIsAccountDefault,
     fullName,
-    dateOfBirth,
+    age,
     gender,
     maritalStatus,
     nationality,
@@ -1119,6 +1286,7 @@ export default function OnboardingForm({
     location,
     city,
     state,
+    country,
     targetRole,
     preferredIndustry,
     yearsExperience,
@@ -1134,6 +1302,10 @@ export default function OnboardingForm({
     portfolioUrl,
     githubUrl,
     workArrangement,
+    pickedWorkPlaces,
+    area,
+    latitude,
+    longitude,
     workAuthorization,
     noticePeriod,
     workExperiences,
@@ -1166,8 +1338,43 @@ export default function OnboardingForm({
   }
   function removeCertification(id: string) {
     setCertifications((prev) => prev.filter((entry) => entry.id !== id));
+    setCertificationFileErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
+  // One upload box per certification row — picked files are read straight to
+  // a data URL (small files, no need to defer like the resume) and resolved
+  // to a stored "/uploads/certificates/..." URL on submit, same as the avatar.
+  const [certificationFileErrors, setCertificationFileErrors] = useState<Record<string, string>>({});
+  async function handleCertificationFile(id: string, file: File | null) {
+    if (!file) return;
+    if (file.size > CERTIFICATE_MAX_BYTES) {
+      setCertificationFileErrors((prev) => ({ ...prev, [id]: "File is too large — max 5 MB." }));
+      return;
+    }
+    setCertificationFileErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      updateCertification(id, { fileUrl: dataUrl, fileName: file.name, fileSize: file.size });
+    } catch {
+      setCertificationFileErrors((prev) => ({ ...prev, [id]: "Couldn't read that file." }));
+    }
+  }
+  function clearCertificationFile(id: string) {
+    updateCertification(id, { fileUrl: null, fileName: null, fileSize: null });
+  }
+
+  // Language rows switched to "Other (type it)" before anything was typed.
+  const [otherLanguageRows, setOtherLanguageRows] = useState<Set<string>>(() => new Set());
   function updateLanguage(id: string, patch: Partial<LanguageEntry>) {
     setLanguages((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
   }
@@ -1314,19 +1521,26 @@ export default function OnboardingForm({
 
     if (overwrite) {
       setFullName(profile.fullName ?? "");
-      setDateOfBirth(profile.dateOfBirth ?? "");
+      setAge(String(ageFromDate(profile.dateOfBirth) ?? ""));
       setGender((profile.gender as (typeof GENDERS)[number]["value"] | null) ?? "");
       setMaritalStatus((profile.maritalStatus as (typeof MARITAL_STATUSES)[number]["value"] | null) ?? "");
       setNationality(profile.nationality ?? "");
       setPhone(profile.phone ?? "");
       setDrivingLicense((profile.drivingLicense as (typeof DRIVING_LICENSES)[number]["value"] | null) ?? "");
+      // A resume's location is text, not a picked place — no area or coordinates.
+      setArea(null);
+      setLatitude(null);
+      setLongitude(null);
       if (profile.location) {
         const guess = splitLocationGuess(profile.location);
         setCity(guess.city);
         setState(guess.state);
+        setCountry(guess.country ?? DEFAULT_COUNTRY);
+        if ((guess.country ?? DEFAULT_COUNTRY) === DEFAULT_COUNTRY) matchResumePlace(guess);
       } else {
         setCity("");
         setState("");
+        setCountry(DEFAULT_COUNTRY);
       }
       setTargetRole(profile.targetRole ?? "");
       setYearsExperience(profile.yearsExperience !== null ? String(profile.yearsExperience) : "");
@@ -1366,15 +1580,22 @@ export default function OnboardingForm({
           name: entry.name,
           issuer: entry.issuer ?? "",
           year: entry.year !== null ? String(entry.year) : "",
+          // A resume's text doesn't carry the actual certificate file.
+          fileUrl: null,
+          fileName: null,
+          fileSize: null,
         })),
       );
       setLanguages(
-        profile.languages.map((entry) => ({
-          id: newId(),
-          language: entry.language,
-          spokenLevel: entry.spokenLevel,
-          writtenLevel: entry.writtenLevel,
-        })),
+        normalizeLanguageRows(
+          profile.languages.map((entry) => ({
+            id: newId(),
+            language: entry.language,
+            dialects: entry.dialects ?? [],
+            spokenLevel: entry.spokenLevel,
+            writtenLevel: entry.writtenLevel,
+          })),
+        ),
       );
       setReferences(
         profile.references.map((entry) => ({
@@ -1398,11 +1619,13 @@ export default function OnboardingForm({
         return profile.fullName as string;
       });
     }
-    if (profile.dateOfBirth) {
-      setDateOfBirth((prev) => {
+    // A date of birth on the resume fills in the age (the date isn't kept).
+    const resumeAge = ageFromDate(profile.dateOfBirth);
+    if (resumeAge !== null) {
+      setAge((prev) => {
         if (prev.trim()) return prev;
         mark();
-        return profile.dateOfBirth as string;
+        return String(resumeAge);
       });
     }
     if (profile.gender) {
@@ -1441,13 +1664,15 @@ export default function OnboardingForm({
       });
     }
     if (profile.location) {
+      const guess = splitLocationGuess(profile.location);
       setCity((prev) => {
         if (prev.trim()) return prev;
-        const guess = splitLocationGuess(profile.location as string);
         mark();
         setState((prevState) => prevState || guess.state);
+        if (guess.country) setCountry(guess.country);
         return guess.city;
       });
+      if ((guess.country ?? country) === DEFAULT_COUNTRY) matchResumePlace(guess);
     }
     if (profile.targetRole) {
       setTargetRole((prev) => {
@@ -1558,20 +1783,27 @@ export default function OnboardingForm({
           name: entry.name,
           issuer: entry.issuer ?? "",
           year: entry.year !== null ? String(entry.year) : "",
+          fileUrl: null,
+          fileName: null,
+          fileSize: null,
         })),
       ]);
       mark();
     }
     if (profile.languages.length > 0) {
-      setLanguages((prev) => [
-        ...prev,
-        ...profile.languages.map((entry) => ({
-          id: newId(),
-          language: entry.language,
-          spokenLevel: entry.spokenLevel,
-          writtenLevel: entry.writtenLevel,
-        })),
-      ]);
+      // A résumé's dialects join a language already listed, not a second row for it.
+      setLanguages((prev) =>
+        normalizeLanguageRows([
+          ...prev,
+          ...profile.languages.map((entry) => ({
+            id: newId(),
+            language: entry.language,
+            dialects: entry.dialects ?? [],
+            spokenLevel: entry.spokenLevel,
+            writtenLevel: entry.writtenLevel,
+          })),
+        ]),
+      );
       mark();
     }
     if (profile.references.length > 0) {
@@ -1772,20 +2004,42 @@ export default function OnboardingForm({
     if (resumeInputRef.current) resumeInputRef.current.value = "";
   }
 
-  // Clears every field resume parsing can populate, back to blank/default —
-  // not just the attached file (that's what clearResume does), the actual
-  // values it filled in — plus removes the attachment itself so the form is
-  // a clean slate for a fresh upload or manual entry.
+  // A full start-over, like the employer form's Reset: the resume and every
+  // field on the form — including anything typed by hand — back to how a new
+  // account starts. Only the email (from the account) stays, and the photo
+  // goes back to the account's Google picture.
   function resetResumeFields() {
     clearResume();
+    setAvatarUrl(initialAvatarUrl ?? null);
+    setAvatarIsAccountDefault(Boolean(initialAvatarUrl));
+    setAvatarIsFromResumeSuggestion(false);
+    setAvatarLoadFailed(false);
+    setAvatarError(null);
     setFullName("");
-    setCity("");
-    setState("");
+    setAge("");
+    setGender("");
+    setMaritalStatus("");
+    setNationality("");
+    setPhone("");
+    setDrivingLicense("");
+    setHomePlace(null);
+    setCountry(DEFAULT_COUNTRY);
     setTargetRole("");
+    setPreferredIndustry("");
     setYearsExperience("");
+    setYearsExperienceAuto(true);
+    setProfessionalSkillInput("");
     setProfessionalSkills([]);
+    setSoftSkillInput("");
     setSoftSkills([]);
+    setOtherSkillInput("");
+    setOtherSkills([]);
+    setSkillSuggestions(null);
     setEmploymentType("full_time");
+    setWorkArrangement("onsite");
+    setWorkAuthorization("");
+    setNoticePeriod("immediate");
+    setWorkPlaceRows([{ id: newId(), place: null }]);
     setExpectedSalaryMin("");
     setExpectedSalaryMax("");
     setBio("");
@@ -1796,38 +2050,47 @@ export default function OnboardingForm({
     setEducation([]);
     setCertifications([]);
     setLanguages([]);
+    setOtherLanguageRows(new Set());
     setReferences([]);
   }
 
   const formValid =
     fullName.trim().length > 0 &&
-    dateOfBirth.trim().length > 0 &&
+    parseAge(age) !== null &&
     city.trim().length > 0 &&
-    state.length > 0 &&
+    (!inMalaysia || state.length > 0) &&
     targetRole.trim().length > 0 &&
     isNonNegativeInt(yearsExperience) &&
     professionalSkills.length > 0 &&
     isNonNegativeInt(expectedSalaryMin) &&
     isNonNegativeInt(expectedSalaryMax) &&
     Number(expectedSalaryMin) <= Number(expectedSalaryMax) &&
-    preferredIndustry.length > 0;
+    preferredIndustry.length > 0 &&
+    workAuthorization !== "" &&
+    workPlacesDone &&
+    isValidMalaysianPhone(phone) &&
+    drivingLicense !== "";
 
   // Tells the jobseeker which required field(s) are blocking the disabled
   // Finish button — otherwise it just sits unclickable with no explanation.
   const salaryFilled = isNonNegativeInt(expectedSalaryMin) && isNonNegativeInt(expectedSalaryMax);
   const requiredFieldChecklist = [
     { label: "Full name", done: fullName.trim().length > 0, fieldId: "fullName" },
-    { label: "Date of birth", done: dateOfBirth.trim().length > 0, fieldId: "dateOfBirth" },
-    { label: "City and state", done: city.trim().length > 0 && state.length > 0, fieldId: "city" },
+    { label: "Age", done: parseAge(age) !== null, fieldId: "age" },
+    { label: "Phone number", done: isValidMalaysianPhone(phone), fieldId: "phone" },
+    { label: "Driving license", done: drivingLicense !== "", fieldId: "drivingLicense" },
+    { label: "Preferred work location", done: workPlacesDone, fieldId: `workplace-${workPlaceRows[0]?.id ?? ""}` },
+    { label: "Location", done: city.trim().length > 0 && (!inMalaysia || state.length > 0), fieldId: "city" },
     { label: "Target role", done: targetRole.trim().length > 0, fieldId: "targetRole" },
     { label: "Years of experience", done: isNonNegativeInt(yearsExperience), fieldId: "yearsExperience" },
-    { label: "Professional Skills", done: professionalSkills.length > 0, fieldId: "professionalSkillInput" },
+    { label: "Professional skills", done: professionalSkills.length > 0, fieldId: "professionalSkillInput" },
     {
-      label: "Min salary and Max salary (min ≤ max)",
+      label: "Expected salary",
       done: salaryFilled && Number(expectedSalaryMin) <= Number(expectedSalaryMax),
       fieldId: "expectedSalaryMin",
     },
     { label: "Preferred industry", done: preferredIndustry.length > 0, fieldId: "preferredIndustry" },
+    { label: "Work authorization", done: workAuthorization !== "", fieldId: "workAuthorization" },
   ];
 
   function goToField(fieldId: string) {
@@ -1843,7 +2106,7 @@ export default function OnboardingForm({
   const hasResume = Boolean(resumeFile || restoredResume);
   const boostChecklist = [
     {
-      label: "Add a profile photo — profiles with a face get noticed first.",
+      label: "Profile photo",
       done: Boolean(avatarUrl),
       fieldId: "avatarUploadButton",
     },
@@ -1854,38 +2117,38 @@ export default function OnboardingForm({
       ? []
       : [
           {
-            label: "Upload your resume — let AI autofill your profile and back up your story.",
+            label: "Resume",
             done: hasResume,
             fieldId: "resumeUploadCard",
           },
         ]),
     {
-      label: "Throw in a few soft skills — show you're more than just your tools.",
+      label: "Soft skills",
       done: softSkills.length > 0,
       fieldId: "softSkillInput",
     },
     {
-      label: "Write a short bio — your 30-second pitch that makes recruiters remember you.",
+      label: "Short bio",
       done: bio.trim().length > 0,
       fieldId: "bio",
     },
     {
-      label: "Link your LinkedIn — let your full story back up your profile.",
+      label: "LinkedIn",
       done: linkedinUrl.trim().length > 0,
       fieldId: "linkedinUrl",
     },
     {
-      label: "Add a portfolio link — let your work do the talking.",
+      label: "Portfolio",
       done: portfolioUrl.trim().length > 0,
       fieldId: "portfolioUrl",
     },
     {
-      label: "Share your GitHub — great for showing employers your code, not just your resume.",
+      label: "GitHub",
       done: githubUrl.trim().length > 0,
       fieldId: "githubUrl",
     },
     {
-      label: "Add a reference — a quick credibility boost once employers get to that stage.",
+      label: "Reference",
       done: references.length > 0,
       fieldId: "referencesSection",
     },
@@ -1921,7 +2184,7 @@ export default function OnboardingForm({
           resumeUrl,
           resumeFileName,
           resumeFileSize,
-          dateOfBirth: dateOfBirth.trim() || null,
+          age: parseAge(age),
           gender: gender || null,
           maritalStatus: maritalStatus || null,
           nationality: nationality.trim() || null,
@@ -1929,6 +2192,7 @@ export default function OnboardingForm({
           drivingLicense: drivingLicense || null,
           city,
           state,
+          country,
           targetRole,
           preferredIndustry,
           yearsExperience: Number(yearsExperience),
@@ -1944,6 +2208,11 @@ export default function OnboardingForm({
           githubUrl: githubUrl.trim() || null,
           noticePeriod,
           workArrangement,
+          preferredWorkPlaces: pickedWorkPlaces,
+          // Malaysia only; the server clears them for any other country.
+          area: inMalaysia ? area : null,
+          latitude: inMalaysia ? latitude : null,
+          longitude: inMalaysia ? longitude : null,
           workAuthorization,
           workExperiences: workExperiences
             .filter((e) => e.company.trim() && e.title.trim() && e.startDate.trim())
@@ -1970,11 +2239,15 @@ export default function OnboardingForm({
               name: c.name.trim(),
               issuer: c.issuer.trim() || null,
               year: c.year.trim() ? Number(c.year) : null,
+              fileUrl: c.fileUrl,
+              fileName: c.fileName,
+              fileSize: c.fileSize,
             })),
           languages: languages
             .filter((l) => l.language.trim())
             .map((l) => ({
               language: l.language.trim(),
+              dialects: l.dialects,
               spokenLevel: l.spokenLevel,
               writtenLevel: l.writtenLevel,
             })),
@@ -1996,7 +2269,10 @@ export default function OnboardingForm({
         initialProfileSnapshot.current = profileSnapshotValue;
         router.refresh();
       } else {
-        router.refresh();
+        // No router.refresh() here: re-running the onboarding page now that
+        // a profile exists redirects it to /jobseeker, bouncing the user to
+        // the landing page before they ever see this success modal. The
+        // modal's own buttons go to the dashboard, which loads fresh anyway.
         setShowFinishSuccess(true);
       }
       return true;
@@ -2111,7 +2387,7 @@ export default function OnboardingForm({
               }}
               className={`mt-[14px] flex w-full flex-col items-center justify-center gap-[6px] rounded-[14px] border border-dashed px-[16px] py-[18px] text-center transition-colors ${
                 dragActive
-                  ? "border-brand-gold-dark bg-[#FFF3D6]"
+                  ? "border-brand-gold-dark bg-brand-gold-soft"
                   : "border-[#D7DCE4] hover:border-brand-gold-dark hover:bg-[#F8FAFB]"
               }`}
             >
@@ -2128,7 +2404,7 @@ export default function OnboardingForm({
               type="button"
               onClick={handleParseClick}
               disabled={parsing}
-              className={`mt-[8px] flex h-[38px] w-full items-center justify-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`mt-[8px] flex h-[38px] w-full items-center justify-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
                 parsing ? "ai-fill-pulse" : ""
               }`}
             >
@@ -2148,7 +2424,7 @@ export default function OnboardingForm({
             <button
               type="button"
               onClick={() => resumeInputRef.current?.click()}
-              className="mt-[8px] flex h-[38px] w-full items-center justify-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] px-[14px] text-sm text-white transition-opacity hover:opacity-90"
+              className="mt-[8px] flex h-[38px] w-full items-center justify-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] px-[14px] text-sm text-white transition-opacity hover:opacity-90"
             >
               <SiriOrb className="h-[14px] w-[14px]" active={false} />
               Re-upload to parse this resume
@@ -2160,7 +2436,7 @@ export default function OnboardingForm({
               type="button"
               onClick={() => setShowResetResumeConfirm(true)}
               disabled={parsing}
-              aria-label="Clear resume-filled details"
+              aria-label="Reset your profile"
               className="mt-[8px] h-[38px] w-full whitespace-nowrap rounded-[12px] bg-[#F1F4F8] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Reset
@@ -2200,25 +2476,30 @@ export default function OnboardingForm({
               className="hidden"
               onChange={(e) => handleAvatarFile(e.target.files)}
             />
-            <button
-              id="avatarUploadButton"
-              type="button"
-              onClick={() => avatarInputRef.current?.click()}
-              aria-label={avatarUrl ? "Change profile photo" : "Upload profile photo"}
-              className="flex h-[64px] w-[64px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/[0.1] bg-[#F1F4F8] text-[#9AA3B2] hover:border-brand-gold-dark"
-            >
-              {avatarUrl && !avatarLoadFailed ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={avatarUrl}
-                  alt="Profile"
-                  className="h-full w-full object-cover"
-                  onError={() => setAvatarLoadFailed(true)}
-                />
-              ) : (
-                <UserIcon className="h-[26px] w-[26px]" />
-              )}
-            </button>
+            {/* Wrapped so the "phone verified" tick can sit on the avatar's edge. */}
+            <div className="relative shrink-0">
+              <button
+                id="avatarUploadButton"
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                aria-label={avatarUrl ? "Change profile photo" : "Upload profile photo"}
+                className="flex h-[64px] w-[64px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/[0.1] bg-[#F1F4F8] text-[#9AA3B2] hover:border-brand-gold-dark"
+              >
+                {avatarUrl && !avatarLoadFailed ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={avatarUrl}
+                    referrerPolicy="no-referrer"
+                    alt="Profile"
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarLoadFailed(true)}
+                  />
+                ) : (
+                  <UserIcon className="h-[26px] w-[26px]" />
+                )}
+              </button>
+              {phoneVerified && <PhoneVerifiedAvatarBadge />}
+            </div>
             <div className="flex flex-col gap-[4px]">
               <div className="flex items-center gap-[10px]">
                 <button
@@ -2251,6 +2532,7 @@ export default function OnboardingForm({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={suggestedAvatarUrl}
+                referrerPolicy="no-referrer"
                 alt="Photo found in resume"
                 className="h-[44px] w-[44px] shrink-0 rounded-full object-cover"
               />
@@ -2261,7 +2543,7 @@ export default function OnboardingForm({
               <button
                 type="button"
                 onClick={acceptSuggestedAvatar}
-                className="shrink-0 rounded-full bg-[#FFE9A6] px-[12px] py-[6px] text-sm text-[#141B2E] hover:opacity-90"
+                className="shrink-0 rounded-full bg-brand-gold px-[12px] py-[6px] text-sm text-[#141B2E] hover:opacity-90"
               >
                 Use photo
               </button>
@@ -2286,16 +2568,22 @@ export default function OnboardingForm({
               className={inputClass}
             />
           </Field>
-          <Field required label="Date of birth" htmlFor="dateOfBirth">
-            <DatePicker
-              id="dateOfBirth"
-              value={dateOfBirth}
-              onChange={setDateOfBirth}
-              max={new Date().toISOString().slice(0, 10)}
-              accent="gold"
+          <Field required label="Age" htmlFor="age">
+            <input
+              id="age"
+              type="text"
+              inputMode="numeric"
+              maxLength={2}
+              value={age}
+              onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 2))}
+              placeholder="e.g. 27"
+              aria-invalid={age.trim() !== "" && parseAge(age) === null}
+              className={`${inputClass} ${age.trim() !== "" && parseAge(age) === null ? "border-red-400" : ""}`}
             />
-            {calculateAge(dateOfBirth) !== null && (
-              <p className="text-xs text-[#9AA3B2]">Age: {calculateAge(dateOfBirth)}</p>
+            {age.trim() !== "" && parseAge(age) === null && (
+              <p className="text-xs text-red-500">
+                Enter an age from {MIN_AGE} to {MAX_AGE}.
+              </p>
             )}
           </Field>
           <Field label="Gender (optional)" htmlFor="gender">
@@ -2330,24 +2618,9 @@ export default function OnboardingForm({
               searchPlaceholder="Search nationalities..."
             />
           </Field>
-          <Field label="Email" htmlFor="accountEmail">
-            <input
-              id="accountEmail"
-              type="email"
-              value={accountEmail}
-              disabled
-              readOnly
-              className={`${inputClass} cursor-not-allowed bg-[#F8FAFB] text-[#9AA3B2]`}
-            />
-          </Field>
-          <PhoneInput
-            id="phone"
-            label="Phone (optional)"
-            accent="gold"
-            value={phone}
-            onChange={setPhone}
-          />
-          <Field label="Driving license (optional)" htmlFor="drivingLicense">
+          {/* Required: jobs that need a licence check it, and a blank one
+              reads as "no licence" — silently ruling them out. "None" is an option. */}
+          <Field required label="Driving license" htmlFor="drivingLicense">
             <Dropdown
               id="drivingLicense"
               label="Driving license"
@@ -2357,26 +2630,73 @@ export default function OnboardingForm({
               accent="gold"
             />
           </Field>
-          <Field required label="City" htmlFor="city">
+          {/* Email and phone run full width, like the employer's About you. */}
+          <Field label="Email" htmlFor="accountEmail" className="col-span-full">
             <input
-              id="city"
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="e.g. Petaling Jaya"
-              className={inputClass}
+              id="accountEmail"
+              type="email"
+              value={accountEmail}
+              disabled
+              readOnly
+              className={`${inputClass} cursor-not-allowed bg-[#F8FAFB] text-[#9AA3B2]`}
             />
           </Field>
-          <Field required label="State" htmlFor="state">
+          {/* Its own box: the number and its verification belong together.
+              Framed with the jobseeker gradient, like the cards. */}
+          <div className="col-span-full rounded-[14px] bg-gradient-to-br from-brand-gold via-white to-brand-gold p-px">
+            <div className="rounded-[13px] bg-brand-gold-page p-[12px]">
+              <PhoneInput
+                required
+                id="phone"
+                label="Phone number"
+                accent="gold"
+                value={phone}
+                onChange={setPhone}
+                verifiable
+                initialStatus={initialPhoneStatus}
+                onVerifiedChange={setPhoneVerified}
+              />
+            </div>
+          </div>
+          {/* Where they're based: Country first, on its own row (it decides the
+              field below, so changing it never wipes something filled in
+              after it). In Malaysia, one search box for towns and areas
+              ("Kota Damansara") — picking one fills the town, state, area and
+              map coordinates together. Elsewhere the city is typed. */}
+          <Field required label="Country" htmlFor="country" className="col-span-full">
             <Dropdown
-              id="state"
-              label="State"
-              value={state}
-              options={[{ value: "" as const, label: "Select state" }, ...MALAYSIA_STATES.map((s) => ({ value: s, label: s }))]}
-              onChange={setState}
+              id="country"
+              label="Country"
+              value={country}
+              options={COUNTRIES.map((c) => ({ value: c as string, label: c as string }))}
+              onChange={(value) => {
+                if (value === country) return;
+                // A place belongs to its country — start it over.
+                setCountry(value);
+                setHomePlace(null);
+              }}
               accent="gold"
+              searchable
+              searchPlaceholder="Search countries..."
             />
           </Field>
+          {inMalaysia ? (
+            <Field required label="Town or area" htmlFor="city" className="col-span-full">
+              <PlaceSearch id="city" label="Town or area" value={homePlace} onChange={setHomePlace} accent="gold" />
+              <p className="text-xs text-[#9AA3B2]">Type your area or town, e.g. Kota Damansara or Petaling Jaya.</p>
+            </Field>
+          ) : (
+            <Field required label="City" htmlFor="city" className="col-span-full">
+              <input
+                id="city"
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="e.g. Singapore"
+                className={inputClass}
+              />
+            </Field>
+          )}
           <Field required label="Target role" htmlFor="targetRole">
             <input
               id="targetRole"
@@ -2443,7 +2763,7 @@ export default function OnboardingForm({
                 type="button"
                 onClick={suggestSkills}
                 disabled={suggestingSkills}
-                className={`flex h-[38px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex h-[38px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
                   suggestingSkills ? "ai-fill-pulse" : ""
                 }`}
               >
@@ -2454,7 +2774,7 @@ export default function OnboardingForm({
               </button>
             </div>
             {(suggestSkillsStatus || suggestSkillsError) && (
-              <p className={`text-xs ${suggestSkillsError ? "text-red-500" : "text-[#008990]"}`}>
+              <p className={`text-xs ${suggestSkillsError ? "text-red-500" : "text-brand-teal-dark"}`}>
                 {suggestSkillsError ??
                   `${suggestSkillsStatus}${
                     suggestSkillsTokens || suggestSkillsDurationMs
@@ -2485,7 +2805,7 @@ export default function OnboardingForm({
                   {professionalSkills.map((skill) => (
                     <span
                       key={skill}
-                      className="flex items-center gap-[6px] rounded-full bg-[#FFE9A6] py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
+                      className="flex items-center gap-[6px] rounded-full bg-brand-gold py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
                     >
                       {skill}
                       <button
@@ -2533,7 +2853,7 @@ export default function OnboardingForm({
                   {softSkills.map((skill) => (
                     <span
                       key={skill}
-                      className="flex items-center gap-[6px] rounded-full bg-[#FFE9A6] py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
+                      className="flex items-center gap-[6px] rounded-full bg-brand-gold py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
                     >
                       {skill}
                       <button
@@ -2581,7 +2901,7 @@ export default function OnboardingForm({
                   {otherSkills.map((skill) => (
                     <span
                       key={skill}
-                      className="flex items-center gap-[6px] rounded-full bg-[#FFE9A6] py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
+                      className="flex items-center gap-[6px] rounded-full bg-brand-gold py-[6px] pl-[12px] pr-[8px] text-xs text-[#141B2E]"
                     >
                       {skill}
                       <button
@@ -2658,19 +2978,23 @@ export default function OnboardingForm({
             />
           </Field>
 
-          <SalaryRangeSlider
-            min={Number(expectedSalaryMin) || 0}
-            max={Number(expectedSalaryMax) || 0}
-            onMinChange={(value) => setExpectedSalaryMin(String(value))}
-            onMaxChange={(value) => setExpectedSalaryMax(String(value))}
-          />
+          {/* Shown once there's a number to show — empty, it sat at RM0 and
+              looked broken. */}
+          {(expectedSalaryMin.trim() !== "" || expectedSalaryMax.trim() !== "") && (
+            <SalaryRangeSlider
+              min={Number(expectedSalaryMin) || 0}
+              max={Number(expectedSalaryMax) || 0}
+              onMinChange={(value) => setExpectedSalaryMin(String(value))}
+              onMaxChange={(value) => setExpectedSalaryMax(String(value))}
+            />
+          )}
 
           <Field required label="Work authorization" htmlFor="workAuthorization">
             <Dropdown
               id="workAuthorization"
               label="Work authorization"
               value={workAuthorization}
-              options={WORK_AUTHORIZATIONS.map(({ value, label }) => ({ value, label }))}
+              options={[{ value: "" as const, label: "Select" }, ...WORK_AUTHORIZATIONS.map(({ value, label }) => ({ value, label }))]}
               onChange={setWorkAuthorization}
               accent="gold"
             />
@@ -2685,6 +3009,51 @@ export default function OnboardingForm({
               accent="gold"
             />
           </Field>
+          {/* Where they'd like to work: the same town-or-area search as their
+              own location, one row per place. Compulsory: at least one, up to
+              MAX_WORK_PLACES. */}
+          <div id="preferredWorkPlaces" className="col-span-full flex flex-col gap-[8px]">
+            {workPlaceRows.length < MAX_WORK_PLACES ? (
+              <SectionHeader
+                required
+                label="Preferred work locations"
+                onAdd={() => setWorkPlaceRows((rows) => [...rows, { id: newId(), place: null }])}
+                addLabel="Add"
+              />
+            ) : (
+              <p className="text-xs text-[#4B5468]">
+                Preferred work locations<span className="text-red-500"> *</span> · up to {MAX_WORK_PLACES}
+              </p>
+            )}
+            {workPlaceRows.map((row) => {
+              const takenElsewhere = workPlaceRows.filter((r) => r.id !== row.id && r.place).map((r) => formatPlace(r.place!));
+              return (
+                <div key={row.id} className={`grid items-start gap-[8px] ${workPlaceRows.length > 1 ? "grid-cols-[1fr_auto]" : "grid-cols-1"}`}>
+                  <PlaceSearch
+                    id={`workplace-${row.id}`}
+                    label="Preferred work location"
+                    value={row.place}
+                    onChange={(place) => setWorkPlaceRows((rows) => rows.map((r) => (r.id === row.id ? { ...r, place } : r)))}
+                    accent="gold"
+                    exclude={takenElsewhere}
+                  />
+                  {/* At least one row always stays (it's compulsory), so the
+                      × only ever shows — and takes up a column — once there's
+                      something else to fall back to. */}
+                  {workPlaceRows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setWorkPlaceRows((rows) => rows.filter((r) => r.id !== row.id))}
+                      aria-label={`Remove ${row.place ? formatPlace(row.place) : "this location"}`}
+                      className="flex h-[38px] w-[30px] items-center justify-center rounded-full text-[#9AA3B2] hover:text-red-500"
+                    >
+                      <XIcon className="h-[11px] w-[11px]" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           </fieldset>
           </div>
         </div>
@@ -2749,7 +3118,7 @@ export default function OnboardingForm({
             />
             {workExperiences.map((entry) => (
               <div key={entry.id} className={entryCardClass}>
-                <div className="flex items-start justify-between gap-[8px]">
+                <div className="flex items-center justify-between gap-[8px]">
                   <div className="grid flex-1 grid-cols-2 gap-[8px]">
                     <input
                       type="text"
@@ -2808,7 +3177,7 @@ export default function OnboardingForm({
             />
             {education.map((entry) => (
               <div key={entry.id} className={entryCardClass}>
-                <div className="flex items-start justify-between gap-[8px]">
+                <div className="flex items-center justify-between gap-[8px]">
                   <input
                     type="text"
                     value={entry.institution}
@@ -2860,7 +3229,7 @@ export default function OnboardingForm({
             />
             {certifications.map((entry) => (
               <div key={entry.id} className={entryCardClass}>
-                <div className="flex items-start justify-between gap-[8px]">
+                <div className="flex items-center justify-between gap-[8px]">
                   <input
                     type="text"
                     value={entry.name}
@@ -2886,6 +3255,48 @@ export default function OnboardingForm({
                     className={inputClass}
                   />
                 </div>
+                {entry.fileUrl ? (
+                  <div className="flex items-center gap-[10px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[10px]">
+                    <span className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-white text-brand-gold-dark shadow-[0_1px_2px_rgba(0,0,0,0.06)]">
+                      <FileIcon className="h-[15px] w-[15px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs text-[#141B2E]">{entry.fileName ?? "Certificate file"}</p>
+                      {entry.fileSize != null && <p className="text-xs text-[#9AA3B2]">{formatSize(entry.fileSize)}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => clearCertificationFile(entry.id)}
+                      aria-label="Remove certificate file"
+                      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05] hover:text-[#141B2E]"
+                    >
+                      <XIcon className="h-[11px] w-[11px]" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      id={`cert-file-${entry.id}`}
+                      type="file"
+                      accept={CERTIFICATE_ACCEPT}
+                      className="hidden"
+                      onChange={(e) => {
+                        void handleCertificationFile(entry.id, e.target.files?.[0] ?? null);
+                        e.target.value = "";
+                      }}
+                    />
+                    <label
+                      htmlFor={`cert-file-${entry.id}`}
+                      className="flex h-[38px] w-full cursor-pointer items-center justify-center gap-[6px] rounded-[12px] border border-dashed border-[#D7DCE4] text-xs text-[#4B5468] transition-colors hover:border-brand-gold-dark hover:bg-[#F8FAFB]"
+                    >
+                      <UploadIcon className="h-[12px] w-[12px] text-brand-gold-dark" />
+                      Upload certificate (optional) · PDF or image, up to 5 MB
+                    </label>
+                  </>
+                )}
+                {certificationFileErrors[entry.id] && (
+                  <p className="text-xs text-red-500">{certificationFileErrors[entry.id]}</p>
+                )}
               </div>
             ))}
           </div>
@@ -2898,31 +3309,129 @@ export default function OnboardingForm({
             />
             {languages.map((entry) => (
               <div key={entry.id} className={entryCardClass}>
-                <div className="flex items-start justify-between gap-[8px]">
-                  <input
-                    type="text"
-                    value={entry.language}
-                    onChange={(e) => updateLanguage(entry.id, { language: e.target.value })}
-                    placeholder="Language"
-                    className={inputClass}
-                  />
+                <div className="flex items-center justify-between gap-[8px]">
+                  {(() => {
+                    // Picked from JobGiga's language list (so "BM" and
+                    // "Bahasa Melayu" both become "Malay"), or typed via "Other".
+                    // A row on "Other" stays there while it's being typed —
+                    // even when the text so far matches a listed name — and
+                    // only switches to the listed language on leaving the box.
+                    const pick = otherLanguageRows.has(entry.id)
+                      ? OTHER_LANGUAGE
+                      : isListedLanguage(entry.language)
+                        ? canonicalLanguage(entry.language)
+                        : entry.language
+                          ? OTHER_LANGUAGE
+                          : "";
+                    const dialects = languageDialects(entry.language);
+                    return (
+                      <div className="flex min-w-0 flex-1 flex-col gap-[8px]">
+                        <Dropdown
+                          label="Language"
+                          value={pick}
+                          accent="gold"
+                          searchable
+                          searchPlaceholder="Search languages..."
+                          options={[
+                            { value: "", label: "Choose a language" },
+                            ...LANGUAGE_OPTIONS.filter(
+                              (o) =>
+                                o.value === pick ||
+                                !languages.some((l) => l.id !== entry.id && sameLanguage(l.language, o.value)),
+                            ),
+                            { value: OTHER_LANGUAGE, label: "Other (type it)" },
+                          ]}
+                          onChange={(value) => {
+                            if (value === OTHER_LANGUAGE) {
+                              setOtherLanguageRows((prev) => new Set(prev).add(entry.id));
+                              if (isListedLanguage(entry.language)) updateLanguage(entry.id, { language: "", dialects: [] });
+                            } else {
+                              setOtherLanguageRows((prev) => {
+                                const next = new Set(prev);
+                                next.delete(entry.id);
+                                return next;
+                              });
+                              // Nearly every Chinese speaker in Malaysia speaks
+                              // Mandarin — ticked to start with, easy to untick.
+                              updateLanguage(entry.id, { language: value, dialects: value === "Chinese" ? ["Mandarin"] : [] });
+                            }
+                          }}
+                        />
+                        {pick === OTHER_LANGUAGE && (
+                          <input
+                            type="text"
+                            value={entry.language}
+                            onChange={(e) => updateLanguage(entry.id, { language: e.target.value })}
+                            onBlur={() => {
+                              if (!isListedLanguage(entry.language)) return;
+                              const value = canonicalLanguage(entry.language);
+                              setOtherLanguageRows((prev) => {
+                                const next = new Set(prev);
+                                next.delete(entry.id);
+                                return next;
+                              });
+                              updateLanguage(entry.id, { language: value, dialects: value === "Chinese" ? ["Mandarin"] : [] });
+                            }}
+                            placeholder="Type the language"
+                            className={inputClass}
+                          />
+                        )}
+                        {dialects.length > 0 && (
+                          <div>
+                            <p className="text-xs text-[#4B5468]">Dialects you speak (optional)</p>
+                            <div className="mt-[6px] flex flex-wrap gap-[6px]" role="group" aria-label={`${entry.language} dialects`}>
+                              {dialects.map((dialect) => {
+                                const on = entry.dialects.includes(dialect);
+                                return (
+                                  <button
+                                    key={dialect}
+                                    type="button"
+                                    aria-pressed={on}
+                                    onClick={() =>
+                                      updateLanguage(entry.id, {
+                                        dialects: on ? entry.dialects.filter((d) => d !== dialect) : [...entry.dialects, dialect],
+                                      })
+                                    }
+                                    className={`flex items-center gap-[5px] rounded-full py-[5px] pl-[9px] pr-[11px] text-xs transition-colors ${
+                                      on
+                                        ? "bg-brand-gold-dark text-white"
+                                        : "bg-white text-[#4B5468] ring-1 ring-black/[0.08] hover:text-[#141B2E]"
+                                    }`}
+                                  >
+                                    {on ? <CheckIcon className="h-[9px] w-[9px]" /> : <PlusIcon className="h-[8px] w-[8px]" />}
+                                    {dialect}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <EntryRemoveButton onClick={() => removeLanguage(entry.id)} />
                 </div>
                 <div className="grid grid-cols-2 gap-[8px]">
-                  <Dropdown
-                    label="Spoken level"
-                    value={entry.spokenLevel}
-                    options={LANGUAGE_LEVELS.map(({ value, label }) => ({ value, label }))}
-                    onChange={(value) => updateLanguage(entry.id, { spokenLevel: value })}
-                    accent="gold"
-                  />
-                  <Dropdown
-                    label="Written level"
-                    value={entry.writtenLevel}
-                    options={LANGUAGE_LEVELS.map(({ value, label }) => ({ value, label }))}
-                    onChange={(value) => updateLanguage(entry.id, { writtenLevel: value })}
-                    accent="gold"
-                  />
+                  <div>
+                    <p className="mb-[5px] text-xs text-[#9AA3B2]">Spoken</p>
+                    <Dropdown
+                      label="Spoken level"
+                      value={entry.spokenLevel}
+                      options={LANGUAGE_LEVELS.map(({ value, label }) => ({ value, label }))}
+                      onChange={(value) => updateLanguage(entry.id, { spokenLevel: value })}
+                      accent="gold"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-[5px] text-xs text-[#9AA3B2]">Written</p>
+                    <Dropdown
+                      label="Written level"
+                      value={entry.writtenLevel}
+                      options={LANGUAGE_LEVELS.map(({ value, label }) => ({ value, label }))}
+                      onChange={(value) => updateLanguage(entry.id, { writtenLevel: value })}
+                      accent="gold"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
@@ -2939,7 +3448,7 @@ export default function OnboardingForm({
             />
             {references.map((entry) => (
               <div key={entry.id} className={entryCardClass}>
-                <div className="flex items-start justify-between gap-[8px]">
+                <div className="flex items-center justify-between gap-[8px]">
                   <input
                     type="text"
                     value={entry.fullName}
@@ -2985,19 +3494,46 @@ export default function OnboardingForm({
             ))}
           </div>
           </fieldset>
+          </div>
+        </div>
+      </div>
 
-          {error && <p className="col-span-full text-xs text-red-500">{error}</p>}
+      {/* Finish, with what's still missing right next to it — on a phone the
+          checklist card is far below, so a greyed-out button alone would
+          give no reason. Its own card, like the employer form's. */}
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${gradientFrameClass("gold")}`}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
+          {!formValid && (
+            <div className="mb-[12px]">
+              <p className="text-sm text-[#141B2E]">Still needed to {mode === "edit" ? "save" : "finish"}:</p>
+              <div className="mt-[8px] flex flex-wrap gap-[6px]">
+                {requiredFieldChecklist
+                  .filter((item) => !item.done)
+                  .map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => goToField(item.fieldId)}
+                      className="rounded-full border border-[#E8C9C4] bg-[#FBF3F2] px-[10px] py-[4px] text-xs text-[#A66A61] hover:underline"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {error && <p className="mb-[8px] text-xs text-red-500">{error}</p>}
 
           <button
             type="button"
             disabled={!formValid || submitting}
             onClick={handleFinishClick}
-            className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-[38px] w-full items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Saving…" : saveLabel}
           </button>
-          {savedAt && !error && <p className="col-span-full text-xs text-brand-gold-dark">Saved.</p>}
-          </div>
+          {savedAt && !error && <p className="mt-[8px] text-xs text-brand-gold-dark">Saved.</p>}
         </div>
       </div>
       </div>
@@ -3020,7 +3556,7 @@ export default function OnboardingForm({
         >
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
-              {formValid ? "All required fields are complete." : "Complete these required fields to continue:"}
+              {formValid ? "Required ✓" : "Required"}
             </p>
             <ul className="mt-[16px] flex flex-col gap-[4px]">
               {requiredFieldChecklist.map(({ label, done, fieldId }) => (
@@ -3052,8 +3588,8 @@ export default function OnboardingForm({
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
               {boostChecklistRemaining > 0
-                ? "Not compulsory, but these help you match better and stand out from the crowd:"
-                : "Nice — your profile is fully boosted and ready to stand out."}
+                ? "Optional"
+                : "Optional ✓"}
             </p>
             <ul className="mt-[16px] flex flex-col gap-[4px]">
               {boostChecklist.map(({ label, done, fieldId }) => (
@@ -3100,7 +3636,7 @@ export default function OnboardingForm({
                   setShowParseConfirm(false);
                   parseResume(true);
                 }}
-                className="flex h-[38px] items-center justify-center rounded-full bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] text-sm text-white transition-opacity hover:opacity-90"
+                className="flex h-[38px] items-center justify-center rounded-full bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] text-sm text-white transition-opacity hover:opacity-90"
               >
                 Overwrite with this resume
               </button>
@@ -3146,11 +3682,11 @@ export default function OnboardingForm({
       )}
 
       {showResetResumeConfirm && (
-        <Modal ariaLabel="Reset resume-filled details?" onClose={() => setShowResetResumeConfirm(false)}>
-          <h2 className="text-lg font-semibold text-[#141B2E]">Reset resume-filled details?</h2>
+        <Modal ariaLabel="Reset your profile?" onClose={() => setShowResetResumeConfirm(false)}>
+          <h2 className="text-lg font-semibold text-[#141B2E]">Reset your profile?</h2>
           <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
-            This clears your resume along with everything it autofilled — name, skills, work
-            experience, education, and more. This can&rsquo;t be undone.
+            This clears your resume and every detail on this form, including anything you typed yourself, so you can
+            start over. It can&rsquo;t be undone.
           </p>
           <div className="mt-[18px] flex flex-col gap-[8px]">
             <button
@@ -3159,16 +3695,16 @@ export default function OnboardingForm({
                 resetResumeFields();
                 setShowResetResumeConfirm(false);
               }}
-              className="flex h-[38px] items-center justify-center rounded-full border border-red-200 text-sm text-red-500 hover:bg-red-50"
+              className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] text-sm text-red-500 hover:bg-red-50"
             >
-              Yes, reset it
+              Reset everything
             </button>
             <button
               type="button"
               onClick={() => setShowResetResumeConfirm(false)}
               className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
             >
-              Keep it
+              Keep my details
             </button>
           </div>
         </Modal>
@@ -3194,7 +3730,7 @@ export default function OnboardingForm({
                 setShowFinishSuccess(false);
                 router.push("/jobseeker/dashboard");
               }}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90"
             >
               Take me to my dashboard
             </button>
@@ -3219,7 +3755,7 @@ export default function OnboardingForm({
                   setShowResumeWarning(false);
                   // Not wired up yet — just the entry point for now.
                 }}
-                className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90"
+                className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90"
               >
                 Generate my resume via JobGiga
               </button>
@@ -3256,7 +3792,7 @@ export default function OnboardingForm({
               type="button"
               disabled={submitting || !formValid}
               onClick={saveAndLeave}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? "Saving…" : "Save changes"}
             </button>

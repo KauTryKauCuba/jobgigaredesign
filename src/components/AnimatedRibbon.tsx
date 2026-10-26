@@ -11,14 +11,17 @@ import { VB_HEIGHT, VB_WIDTH, buildMorphValues, buildStaticPath } from "@/lib/ri
  * pool rather than a dominant hue: at full strength it reads as heavy next
  * to the two teals.
  */
-const TEAL = "#07BCCA";
-const TEAL_DARK = "#008990";
-const TEAL_LIGHT = "#5CD8E0";
-const TEAL_PALE = "#CFF4F6";
+/* CSS variables (defaults in globals.css: #07BCCA, #008990, #5CD8E0,
+   #CFF4F6) so a site theme recolours the ribbon too — applied through
+   `style`, since SVG presentation attributes don't resolve var(). */
+const TEAL = "var(--color-brand-teal)";
+const TEAL_DARK = "var(--color-brand-teal-dark)";
+const TEAL_LIGHT = "var(--ribbon-teal-light)";
+const TEAL_PALE = "var(--ribbon-teal-pale)";
 const INK = "#141B2E";
 /* Same gold used in SiriOrb's third blob (#FFE9A6) — ties the ribbon back
    to the orb instead of introducing an unrelated accent. */
-const GOLD = "#FFE9A6";
+const GOLD = "var(--color-brand-gold)";
 
 /*
  * Jobseeker (gold-dominant) counterparts to the teal spread above, occupying
@@ -28,10 +31,10 @@ const GOLD = "#FFE9A6";
  * dropzone tint (#FFF3D6) reused for the wash — same reuse-existing-tokens
  * approach as the teal set, only one genuinely new stop (GOLD_VIVID).
  */
-const GOLD_DARK = "#A67C00";
-const GOLD_VIVID = "#C99A2E";
-const GOLD_LIGHT = "#FFE9A6";
-const GOLD_PALE = "#FFF3D6";
+const GOLD_DARK = "var(--color-brand-gold-dark)";
+const GOLD_VIVID = "var(--ribbon-gold-vivid)";
+const GOLD_LIGHT = "var(--color-brand-gold)";
+const GOLD_PALE = "var(--color-brand-gold-soft)";
 
 const POOLS_TEAL: readonly Pool[] = [
   { id: "teal1",       cx: 150,  cy: 150, rx: 220, ry: 70,  color: TEAL_LIGHT, opacity: 0.85, rotate: -18, dx: 14, dy: 5, duration: 15.3, parallax: 4 },
@@ -134,11 +137,11 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
           */}
           {POOLS.map((p) => (
             <radialGradient key={p.id} id={`pool-${p.id}`}>
-              <stop offset="0" stopColor={p.color} stopOpacity="1" />
-              <stop offset="0.42" stopColor={p.color} stopOpacity="0.8" />
-              <stop offset="0.72" stopColor={p.color} stopOpacity="0.32" />
-              <stop offset="0.9" stopColor={p.color} stopOpacity="0.08" />
-              <stop offset="1" stopColor={p.color} stopOpacity="0" />
+              <stop offset="0" style={{ stopColor: p.color }} stopOpacity="1" />
+              <stop offset="0.42" style={{ stopColor: p.color }} stopOpacity="0.8" />
+              <stop offset="0.72" style={{ stopColor: p.color }} stopOpacity="0.32" />
+              <stop offset="0.9" style={{ stopColor: p.color }} stopOpacity="0.08" />
+              <stop offset="1" style={{ stopColor: p.color }} stopOpacity="0" />
             </radialGradient>
           ))}
 

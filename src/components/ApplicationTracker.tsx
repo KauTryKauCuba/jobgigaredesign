@@ -106,7 +106,7 @@ export default function ApplicationTracker({
       </ol>
 
       {!isClosed && (
-        <p className={`rounded-[10px] px-[10px] py-[7px] text-xs ${overdue ? "bg-[#FFF3D6] text-brand-gold-dark" : "bg-white text-[#4B5468]"}`}>
+        <p className={`rounded-[10px] px-[10px] py-[7px] text-xs ${overdue ? "bg-brand-gold-soft text-brand-gold-dark" : "bg-white text-[#4B5468]"}`}>
           {status === "applied" ? (
             <>
               Waiting on {companyName} for {formatWait(waitedHours)}.

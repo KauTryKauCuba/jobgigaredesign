@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import AnimatedRibbon from "./AnimatedRibbon";
 import FloatingAssistant from "./FloatingAssistant";
 import Navbar from "./Navbar";
+import PhoneVerifyBanner from "./PhoneVerifyBanner";
+import RewardPopup from "./RewardPopup";
 import SidebarResumeCard from "./SidebarResumeCard";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
-import { BriefcaseIcon, DraftIcon, FileIcon, HeartIcon, HomeIcon, UserIcon } from "./icons";
+import { BriefcaseIcon, DraftIcon, FileIcon, GiftIcon, HeartIcon, HomeIcon, UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
-export type JobseekerNavKey = "overview" | "applications" | "saved" | "coverLetters" | "resumeDesigner" | "profile";
+export type JobseekerNavKey = "overview" | "applications" | "saved" | "coverLetters" | "resumeDesigner" | "profile" | "rewards";
 
 const NAV_ITEMS = [
   { key: "overview", href: "/jobseeker/dashboard", label: "Dashboard", icon: HomeIcon },
@@ -22,21 +24,35 @@ const NAV_ITEMS = [
   { key: "profile", href: "/jobseeker/profile", label: "My Profile", icon: UserIcon },
 ] as const;
 
+// Only once they've earned something from a reward campaign.
+const REWARDS_ITEM = { key: "rewards", href: "/jobseeker/rewards", label: "My Rewards", icon: GiftIcon } as const;
+
 // Split out so useUnsavedChangesGuard() is called by a genuine descendant of
 // the UnsavedChangesGuardBoundary rendered below — calling it directly in
 // JobseekerDashboardShell's own body would read the tree position ABOVE that
 // Boundary (a component can't be inside a Provider it renders as part of its
 // own output), always getting the default no-op guard.
-function Sidebar({ active, resume }: { active: JobseekerNavKey; resume: { fileName: string; fileSize: number | null } | null }) {
+function Sidebar({
+  active,
+  resume,
+  hasRewards,
+}: {
+  active: JobseekerNavKey;
+  resume: { fileName: string; fileSize: number | null } | null;
+  hasRewards: boolean;
+}) {
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
   const barRef = useCenterActiveTab<HTMLElement>();
+  const items: readonly { key: JobseekerNavKey; href: string; label: string; icon: typeof HomeIcon }[] = hasRewards
+    ? [...NAV_ITEMS, REWARDS_ITEM]
+    : NAV_ITEMS;
   return (
     // `contents` below xl lets the resume card drop under the page content
     // on phones and tablets instead of pushing it below the fold.
     <div className="contents xl:sticky xl:top-[85px] xl:flex xl:w-[220px] xl:shrink-0 xl:flex-col xl:gap-[16px]">
       <aside ref={barRef} className="scrollbar-hide flex shrink-0 flex-row gap-[4px] overflow-x-auto rounded-full bg-[#F1F4F8] p-[4px] xl:flex-col xl:gap-[2px] xl:rounded-[14px] xl:border xl:border-[#EAEDF2] xl:bg-white xl:p-[10px]">
-        {NAV_ITEMS.map((item) => (
+        {items.map((item) => (
           <Link
             key={item.key}
             href={item.href}
@@ -46,7 +62,7 @@ function Sidebar({ active, resume }: { active: JobseekerNavKey; resume: { fileNa
               e.preventDefault();
               guardNavigation(() => router.push(item.href));
             }}
-            className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-[#FFF3D6] xl:aria-[current=page]:text-brand-gold-dark xl:aria-[current=page]:shadow-none ${
+            className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-brand-gold-soft xl:aria-[current=page]:text-brand-gold-dark xl:aria-[current=page]:shadow-none ${
               item.key === active ? "animate-fade-in-up" : ""
             }`}
           >
@@ -86,14 +102,16 @@ export default function JobseekerDashboardShell({
 }) {
   return (
     <UnsavedChangesGuardBoundary>
-    <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-[#FDFAF0] pb-[92px]">
-      <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-[#FDFAF0]">
+    <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-brand-gold-page pb-[92px]">
+      <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-brand-gold-page">
         <Navbar initialUser={authUser} pageRole="jobseeker" hideProfileLinks appShell />
       </div>
+      <PhoneVerifyBanner role="jobseeker" show={!!authUser.showPhoneVerifyBar} rewardText={authUser.rewards?.verifyBarText} />
+      <RewardPopup reward={authUser.rewards?.popup} />
 
       <div className="app-shell pt-[20px]">
         <div className="flex flex-col gap-[24px] xl:flex-row xl:items-start">
-          <Sidebar active={active} resume={resume} />
+          <Sidebar active={active} resume={resume} hasRewards={!!authUser.rewards?.hasRewards || active === "rewards"} />
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center justify-between gap-[12px]">

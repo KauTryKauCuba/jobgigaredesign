@@ -2,24 +2,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BuildingIcon, ChevronDownIcon } from "./icons";
+import { useUnsavedChangesGuard } from "./UnsavedChangesGuard";
+import { BuildingIcon, ChevronDownIcon, PlusIcon } from "./icons";
+import { TEAM_ROLE_LABEL, TEAM_ROLE_PILL, type TeamRole } from "@/lib/team-roles";
 
 type Company = {
   id: string;
   companyName: string;
   logoUrl: string | null;
-  role: "owner" | "admin";
+  role: TeamRole;
   ownerName: string;
   industry: string;
   companySize: string;
   joinedAt: string;
 };
 
-const ROLE_LABEL: Record<Company["role"], string> = { owner: "Owner", admin: "Admin" };
-const ROLE_PILL: Record<Company["role"], string> = {
-  owner: "bg-[#FFF3D6] text-[#A67C00]",
-  admin: "bg-[#E6F9FA] text-[#008990]",
-};
+const ROLE_LABEL = TEAM_ROLE_LABEL;
+const ROLE_PILL = Object.fromEntries(
+  Object.entries(TEAM_ROLE_PILL).map(([role, pill]) => [role, `${pill.bg} ${pill.text}`]),
+) as Record<TeamRole, string>;
 
 function formatJoinedDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" });
@@ -50,6 +51,8 @@ export const COMPANY_SWITCHED_EVENT = "employer:company-switched";
 // background to stay current, never flashing back to empty first.
 let cachedCompanies: Company[] | null = null;
 let cachedCurrentId: string | null = null;
+type CompanyLimit = { used: number; limit: number; canAdd: boolean };
+let cachedLimit: CompanyLimit | null = null;
 
 function CompanyLogo({ url }: { url: string | null }) {
   if (!url) {
@@ -72,6 +75,8 @@ export default function CompanySwitcher() {
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[] | null>(cachedCompanies);
   const [currentId, setCurrentId] = useState<string | null>(cachedCurrentId);
+  const [companyLimit, setCompanyLimit] = useState<CompanyLimit | null>(cachedLimit);
+  const guardNavigation = useUnsavedChangesGuard();
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -85,8 +90,10 @@ export default function CompanySwitcher() {
           if (!data) return;
           cachedCompanies = data.companies;
           cachedCurrentId = data.currentId;
+          cachedLimit = data.companyLimit ?? null;
           setCompanies(data.companies);
           setCurrentId(data.currentId);
+          setCompanyLimit(data.companyLimit ?? null);
         })
         .catch(() => {});
     }
@@ -216,6 +223,30 @@ export default function CompanySwitcher() {
               <span className="shrink-0 text-xs text-[#9AA3B2]">{ROLE_LABEL[company.role]}</span>
             </button>
           ))}
+          {companyLimit && (
+            <div className="mt-[6px] border-t border-black/[0.06] pt-[6px]">
+              {companyLimit.canAdd ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    guardNavigation(() => router.push("/employer/companies/new"));
+                  }}
+                  className="flex w-full items-center gap-[10px] px-[14px] py-[9px] text-left text-sm text-brand-teal-dark hover:bg-black/[0.03]"
+                >
+                  <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-brand-teal-soft">
+                    <PlusIcon className="h-[10px] w-[10px]" />
+                  </span>
+                  Add a company
+                </button>
+              ) : (
+                <p className="px-[14px] py-[9px] text-xs leading-[17px] text-[#9AA3B2]">
+                  You&rsquo;ve reached your limit of {companyLimit.limit} companies. Contact JobGiga to add more.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

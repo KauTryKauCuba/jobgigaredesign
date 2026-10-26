@@ -51,6 +51,7 @@ async function main() {
   const rows = DUMMY_JOB_POSTINGS.map((p) => ({
     ...p,
     employerProfileId: profile.id,
+    contactUserId: user.id,
     postingName: DUMMY_POSTING_MARKER,
     slug: slugify(`${profile.companyName}-${p.title}`) || "job",
   }));

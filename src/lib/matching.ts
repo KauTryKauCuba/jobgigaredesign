@@ -1,5 +1,7 @@
 import "server-only";
+import { formatLanguageRequirement, sameLanguage } from "@/lib/languages";
 import { canonicalizeSkill } from "@/lib/skills-taxonomy";
+import { isScorableQuestion, questionType, type CustomAnswer, type CustomQuestion } from "@/lib/screening-questions";
 
 // Scoring weights per FLOW.md §6.2/§0.5 — tuned empirically, see
 // POST_JOB_GAPS.md line ~158. Each component is 0..1 or null when it doesn't
@@ -139,66 +141,133 @@ export function screeningEligibilityCheck(
     minYearsExperience: number | null;
     minQualificationTier: string | null;
     drivingLicense: string | null;
-    languages: { language: string; level: string }[];
+    languages: { language: string; dialect?: string | null; level: string }[];
     workAuthorizations: string[];
-    customQuestions: { id: string; question: string; requiredAnswer: boolean }[];
+    customQuestions: CustomQuestion[];
+    // Built-in requirements marked "Preferred" — scored, never gating.
+    preferred?: string[];
   },
   answers: {
     yearsExperience: number | null;
     qualificationTier: string | null;
     drivingLicense: string | null;
-    languages: { language: string; level: string }[];
+    languages: { language: string; dialect?: string | null; level: string }[];
     workAuthorization: string | null;
-    customAnswers: { questionId: string; answer: boolean }[];
+    customAnswers: CustomAnswer[];
   },
-): { eligible: boolean; reasons: string[] } {
+): { eligible: boolean; reasons: string[]; preferredMet: number; preferredTotal: number } {
+  // A Preferred requirement that's missed doesn't count against eligibility;
+  // it only lowers how many preferred ones the applicant met. `preferredTotal`
+  // counts only requirements that can actually be checked.
   const reasons: string[] = [];
+  let preferredMet = 0;
+  let preferredTotal = 0;
+  const preferredKeys = new Set(requirements.preferred ?? []);
+  const record = (key: string | null, preferred: boolean, failures: string[]) => {
+    if (preferred || (key !== null && preferredKeys.has(key))) {
+      preferredTotal += 1;
+      if (failures.length === 0) preferredMet += 1;
+      return;
+    }
+    reasons.push(...failures);
+  };
 
-  if (
-    requirements.minYearsExperience !== null &&
-    (answers.yearsExperience === null || answers.yearsExperience < requirements.minYearsExperience)
-  ) {
-    reasons.push(`Doesn't meet the minimum ${requirements.minYearsExperience} years of experience`);
+  if (requirements.minYearsExperience !== null) {
+    const failures =
+      answers.yearsExperience === null || answers.yearsExperience < requirements.minYearsExperience
+        ? [`Doesn't meet the minimum ${requirements.minYearsExperience} years of experience`]
+        : [];
+    record("yearsExperience", false, failures);
   }
 
   if (requirements.minQualificationTier) {
     const requiredRank = QUALIFICATION_TIER_RANK[requirements.minQualificationTier] ?? 0;
     const answerRank = answers.qualificationTier ? (QUALIFICATION_TIER_RANK[answers.qualificationTier] ?? -1) : -1;
-    if (answerRank < requiredRank) {
-      reasons.push(`Doesn't meet the minimum education level (${requirements.minQualificationTier})`);
-    }
+    record(
+      "qualificationTier",
+      false,
+      answerRank < requiredRank ? [`Doesn't meet the minimum education level (${requirements.minQualificationTier})`] : [],
+    );
   }
 
   // Work authorization / driving license: shared with hardFilterCheck (the
   // profile-derived gate) rather than a second hand-maintained copy, so a
   // fix to either check's logic or wording can't silently diverge between
   // apply-time screening and live matching.
-  reasons.push(
-    ...hardFilterCheck({
-      requiredWorkAuthorizations: requirements.workAuthorizations,
-      candidateWorkAuthorization: answers.workAuthorization ?? "",
-      requiredDrivingLicense: requirements.drivingLicense,
-      candidateDrivingLicense: answers.drivingLicense,
-    }).reasons,
-  );
+  if (requirements.workAuthorizations.length > 0) {
+    record(
+      "workAuthorization",
+      false,
+      hardFilterCheck({
+        requiredWorkAuthorizations: requirements.workAuthorizations,
+        candidateWorkAuthorization: answers.workAuthorization ?? "",
+        requiredDrivingLicense: null,
+        candidateDrivingLicense: null,
+      }).reasons,
+    );
+  }
+  if (requirements.drivingLicense) {
+    record(
+      "drivingLicense",
+      false,
+      hardFilterCheck({
+        requiredWorkAuthorizations: [],
+        candidateWorkAuthorization: "",
+        requiredDrivingLicense: requirements.drivingLicense,
+        candidateDrivingLicense: answers.drivingLicense,
+      }).reasons,
+    );
+  }
 
+  // All the language requirements count as one: met only if every one is.
+  const languageFailures: string[] = [];
   for (const required of requirements.languages) {
     const requiredRank = LANGUAGE_LEVEL_RANK[required.level] ?? 0;
-    const answer = answers.languages.find((l) => l.language.toLowerCase() === required.language.toLowerCase());
+    // Each answer is the applicant's level for that exact requirement — the
+    // language by meaning, not spelling ("BM" answers "Malay"), and the same
+    // dialect ("any dialect" answers have none).
+    const answer = answers.languages.find(
+      (l) =>
+        sameLanguage(l.language, required.language) &&
+        (l.dialect ?? "").toLowerCase() === (required.dialect ?? "").toLowerCase(),
+    );
     const answerRank = answer ? (LANGUAGE_LEVEL_RANK[answer.level] ?? -1) : -1;
     if (answerRank < requiredRank) {
-      reasons.push(`Doesn't meet the required ${required.language} level (${required.level})`);
+      languageFailures.push(
+        `Doesn't meet the required ${formatLanguageRequirement(required.language, required.dialect)} level (${required.level})`,
+      );
     }
   }
+  if (requirements.languages.length > 0) record("languages", false, languageFailures);
 
   for (const question of requirements.customQuestions) {
+    // Short answers (and choice/number questions with nothing to check
+    // against) are read by the employer — they never pass or fail anyone.
+    if (!isScorableQuestion(question)) continue;
     const answer = answers.customAnswers.find((a) => a.questionId === question.id);
-    if (!answer || answer.answer !== question.requiredAnswer) {
-      reasons.push(`"${question.question}" doesn't match what this posting requires`);
+    let met: boolean;
+    switch (questionType(question)) {
+      case "choice":
+        met = !!answer?.choice && (question.acceptedOptions ?? []).includes(answer.choice);
+        break;
+      case "number":
+        met = typeof answer?.number === "number" && answer.number >= (question.minNumber ?? 0);
+        break;
+      default:
+        met = !!answer && answer.answer === question.requiredAnswer;
     }
+    record(null, question.preferred === true, met ? [] : [`"${question.question}" doesn't match what this posting requires`]);
   }
 
-  return { eligible: reasons.length === 0, reasons };
+  return { eligible: reasons.length === 0, reasons, preferredMet, preferredTotal };
+}
+
+// A small boost for the preferred requirements an applicant met: up to
+// +PREFERRED_MAX_BONUS points when they met all of them, capped at 100.
+export const PREFERRED_MAX_BONUS = 10;
+export function withPreferredBonus(score: number, met: number | null, total: number | null): number {
+  if (!met || !total) return score;
+  return Math.min(100, score + Math.round((PREFERRED_MAX_BONUS * met) / total));
 }
 
 // Renormalizes across whichever components have a real (non-null) value, so

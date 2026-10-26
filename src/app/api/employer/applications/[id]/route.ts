@@ -4,7 +4,8 @@ import { recordStatusChange } from "@/lib/application-events";
 import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
 import { jobApplications, jobPostings } from "@/lib/db/schema";
-import { getEmployerAccess, getEmployerTeamMembers } from "@/lib/employer-profile";
+import { getEmployerTeamMembers } from "@/lib/employer-profile";
+import { canManageApplication, canViewApplication, getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getApplicationNotificationContext, notify, notifyJobseekerOfStatus } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
@@ -176,7 +177,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
 
-  const access = await getEmployerAccess(session.userId);
+  const access = await getScopedEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const profile = access.profile;
 
@@ -218,12 +219,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // Application must belong to one of this employer's own postings —
   // checked via a join rather than trusting the id alone.
   const [existing] = await db
-    .select({ id: jobApplications.id, status: jobApplications.status, interviewDetails: jobApplications.interviewDetails })
+    .select({
+      id: jobApplications.id,
+      jobPostingId: jobApplications.jobPostingId,
+      status: jobApplications.status,
+      interviewDetails: jobApplications.interviewDetails,
+    })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .where(and(eq(jobApplications.id, id), eq(jobPostings.employerProfileId, profile.id)))
     .limit(1);
-  if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  if (!existing || !canViewApplication(access.scope, existing)) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+  // A Panel member (or a Hiring manager on another posting's panel) can see
+  // this candidate but not move them along.
+  if (!canManageApplication(access.scope, existing)) {
+    return NextResponse.json(
+      { error: "Only the job's hiring manager or an admin can move this applicant." },
+      { status: 403 },
+    );
+  }
 
   // A transition INTO "interview" from any other stage must bring real
   // scheduling details — otherwise the application would read as "interview

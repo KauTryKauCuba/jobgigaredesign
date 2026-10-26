@@ -21,6 +21,7 @@ export default function Hero({
     </>
   ),
   subheadingClassName = "mb-[18px]",
+  headingGradient,
 }: {
   overlay?: React.ReactNode;
   belowNav?: React.ReactNode;
@@ -28,6 +29,8 @@ export default function Hero({
   heading?: React.ReactNode;
   subheading?: React.ReactNode;
   subheadingClassName?: string;
+  /** Paints the headline text with this CSS gradient instead of solid ink. */
+  headingGradient?: string;
 }) {
   const pathname = usePathname();
   const isJobseeker = pathname === "/jobseeker";
@@ -49,6 +52,19 @@ export default function Hero({
             fontSize: "clamp(34px, 4vw, 56px)",
             lineHeight: 1.08,
             letterSpacing: "-0.02em",
+            ...(headingGradient
+              ? {
+                  backgroundImage: headingGradient,
+                  WebkitBackgroundClip: "text",
+                  backgroundClip: "text",
+                  color: "transparent",
+                  // Shrink the box to the text so the whole gradient (gold end
+                  // included) falls on the words, not on empty space beside them.
+                  display: "inline-block",
+                  // Room for descenders (g, j, y) inside the clipped background.
+                  paddingBottom: "0.08em",
+                }
+              : {}),
           }}
         >
           {heading}
@@ -62,7 +78,7 @@ export default function Hero({
           <nav
             aria-label="View as"
             className={`mx-auto mt-[28px] grid w-fit grid-cols-2 gap-[4px] rounded-full p-[4px] ${
-              isJobseeker ? "bg-brand-teal-dark" : "bg-[#FFE9A6]"
+              isJobseeker ? "bg-brand-teal-dark" : "bg-brand-gold"
             }`}
           >
             <Link
@@ -78,7 +94,7 @@ export default function Hero({
             <Link
               href="/jobseeker"
               aria-current={isJobseeker ? "page" : undefined}
-              className={`flex h-[38px] items-center justify-center rounded-full px-[22px] text-sm transition-colors aria-[current=page]:bg-[#FFE9A6] aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] ${
+              className={`flex h-[38px] items-center justify-center rounded-full px-[22px] text-sm transition-colors aria-[current=page]:bg-brand-gold aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] ${
                 isJobseeker ? "" : "text-[#4B5468]"
               }`}
             >

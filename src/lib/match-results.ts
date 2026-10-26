@@ -1,4 +1,5 @@
 import "server-only";
+import type { HiringScope } from "./hiring-scope";
 import { getMatchCandidatesRaw } from "./job-applications";
 import {
   employmentTypeMatchScore,
@@ -8,6 +9,7 @@ import {
   skillsOverlapScore,
   weightedScore,
   withCriteriaDefaults,
+  withPreferredBonus,
   workArrangementMatchScore,
   type MatchBreakdown,
 } from "./matching";
@@ -30,11 +32,14 @@ export type MatchResult = {
 // (work authorization, driving license) gate eligibility, then a weighted
 // blend of skills overlap, experience fit, and nice-to-have skills (see
 // src/lib/matching.ts) produces the 0-100 score.
-export async function computeMatchResults(profile: {
-  id: string;
-  smartMatchCriteria: Parameters<typeof withCriteriaDefaults>[0];
-}): Promise<MatchResult[]> {
-  const candidates = await getMatchCandidatesRaw(profile.id);
+export async function computeMatchResults(
+  profile: {
+    id: string;
+    smartMatchCriteria: Parameters<typeof withCriteriaDefaults>[0];
+  },
+  scope?: HiringScope,
+): Promise<MatchResult[]> {
+  const candidates = await getMatchCandidatesRaw(profile.id, scope);
   if (candidates.length === 0) return [];
 
   const criteria = withCriteriaDefaults(profile.smartMatchCriteria);
@@ -86,7 +91,12 @@ export async function computeMatchResults(profile: {
     // lets the UI show both independently instead of a misleading 0%;
     // callers that need "who can actually be hired" already filter on
     // `eligible` directly rather than relying on the score being zeroed.
-    const score = weightedScore(breakdown, criteria);
+    // Preferred requirements the applicant met lift the score a little.
+    const score = withPreferredBonus(
+      weightedScore(breakdown, criteria),
+      c.screeningPreferredMet,
+      c.screeningPreferredTotal,
+    );
 
     return {
       applicationId: c.applicationId,

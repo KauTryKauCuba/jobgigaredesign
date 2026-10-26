@@ -274,6 +274,47 @@ export function XIcon({ className = "" }: { className?: string }) {
   );
 }
 
+export function GiftIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <rect x="2" y="5.5" width="12" height="3" rx="0.8" />
+      <path d="M3 8.5V13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8.5M8 5.5V14" />
+      <path d="M8 5.5C6.8 5.5 5 5 5 3.6 5 2.8 5.6 2.3 6.3 2.3 7.5 2.3 8 4 8 5.5zM8 5.5c1.2 0 3-.5 3-1.9 0-.8-.6-1.3-1.3-1.3C8.5 2.3 8 4 8 5.5z" />
+    </svg>
+  );
+}
+
+export function PaletteIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M8 2a6 6 0 0 0 0 12c.9 0 1.4-.6 1.4-1.3 0-.4-.2-.7-.4-1-.2-.3-.4-.6-.4-1 0-.7.6-1.3 1.3-1.3H11a3 3 0 0 0 3-3C14 4.4 11.3 2 8 2z" />
+      <circle cx="5" cy="7" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="7.4" cy="4.6" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="10.6" cy="5.4" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function CheckIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -809,6 +850,48 @@ export function ImageIcon({
       <rect x="1.8" y="2.6" width="10.4" height="8.8" rx="1.4" />
       <circle cx="4.8" cy="5.6" r="1.1" />
       <path d="m2.4 10 3-3.2 2 2 2.2-2.6 2 2.6" />
+    </svg>
+  );
+}
+
+export function MegaphoneIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M2.4 6.4v3.2a.8.8 0 0 0 .8.8h1.6l6 3.2V2.4l-6 3.2H3.2a.8.8 0 0 0-.8.8Z" />
+      <path d="M4.8 10.4 5.6 14h1.6l-.6-3.2" />
+      <path d="M12.8 6.2a2.4 2.4 0 0 1 0 3.6" />
+    </svg>
+  );
+}
+
+// A 2x2 grid of squares — the navbar's "Tools" menu button (ToolsMenu.tsx).
+export function GridIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <rect x="1.4" y="1.4" width="4.6" height="4.6" rx="1" />
+      <rect x="8" y="1.4" width="4.6" height="4.6" rx="1" />
+      <rect x="1.4" y="8" width="4.6" height="4.6" rx="1" />
+      <rect x="8" y="8" width="4.6" height="4.6" rx="1" />
     </svg>
   );
 }

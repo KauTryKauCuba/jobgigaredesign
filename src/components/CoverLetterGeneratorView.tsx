@@ -389,7 +389,7 @@ export default function CoverLetterGeneratorView({
                 <div
                   key={letter.id}
                   className={`flex items-center justify-between gap-[8px] rounded-[12px] border p-[12px] text-left transition-colors ${
-                    letter.id === selectedId ? "border-brand-gold-dark bg-[#FFF3D6]" : "border-black/[0.08] bg-white hover:bg-black/[0.02]"
+                    letter.id === selectedId ? "border-brand-gold-dark bg-brand-gold-soft" : "border-black/[0.08] bg-white hover:bg-black/[0.02]"
                   }`}
                 >
                   <button type="button" onClick={() => selectLetter(letter)} className="min-w-0 flex-1 text-left">
@@ -542,7 +542,7 @@ export default function CoverLetterGeneratorView({
                   proceed();
                 }
               }}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -581,7 +581,7 @@ export default function CoverLetterGeneratorView({
             <button
               type="button"
               onClick={handleRegenerate}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90"
             >
               Regenerate
             </button>

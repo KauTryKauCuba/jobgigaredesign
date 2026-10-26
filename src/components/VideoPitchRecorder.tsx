@@ -297,7 +297,7 @@ export default function VideoPitchRecorder({
                   key={lang}
                   type="button"
                   onClick={() => setLanguage(lang)}
-                  className={`rounded-full px-[10px] py-[3px] ${language === lang ? "bg-[#FFE9A6] text-[#141B2E]" : "text-[#4B5468]"}`}
+                  className={`rounded-full px-[10px] py-[3px] ${language === lang ? "bg-brand-gold text-[#141B2E]" : "text-[#4B5468]"}`}
                 >
                   {lang === "en" ? "EN" : "BM"}
                 </button>
@@ -341,7 +341,7 @@ export default function VideoPitchRecorder({
               <ol className="flex flex-col gap-[8px]">
                 {PITCH_QUESTIONS.map((q, i) => (
                   <li key={i} className="flex gap-[10px] rounded-[12px] bg-[#F8FAFB] p-[10px]">
-                    <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#FFE9A6] text-xs text-[#141B2E]">
+                    <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-brand-gold text-xs text-[#141B2E]">
                       {i + 1}
                     </span>
                     <div className="min-w-0">
@@ -369,7 +369,7 @@ export default function VideoPitchRecorder({
                   type="checkbox"
                   checked={skipGuideNextTime}
                   onChange={(e) => setSkipGuideNextTime(e.target.checked)}
-                  className="accent-[#A67C00]"
+                  className="accent-brand-gold-dark"
                 />
                 {language === "en" ? "Don't show this guide next time" : "Jangan tunjuk panduan ini lagi"}
               </label>
@@ -377,7 +377,7 @@ export default function VideoPitchRecorder({
                 <button
                   type="button"
                   onClick={openCamera}
-                  className="flex h-[42px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] hover:opacity-90"
+                  className="flex h-[42px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] hover:opacity-90"
                 >
                   {language === "en" ? "Start recording" : "Mula merakam"}
                 </button>
@@ -497,7 +497,7 @@ export default function VideoPitchRecorder({
                   <button
                     type="button"
                     onClick={submit}
-                    className="flex h-[42px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] hover:opacity-90"
+                    className="flex h-[42px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] hover:opacity-90"
                   >
                     Use this video
                   </button>

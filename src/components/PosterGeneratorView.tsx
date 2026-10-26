@@ -13,8 +13,8 @@ export type PosterPosting = {
   location: string;
   employmentType: string;
   workArrangement: string;
-  salaryMin: number;
-  salaryMax: number;
+  // Formatted range, e.g. "RM3,000–4,500/month" or "Salary not disclosed".
+  salary: string;
   minYearsExperience: number;
   openings: number;
   posterUrl: string | null;
@@ -215,7 +215,7 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
                     onClick={() => setSelectedId(p.id)}
                     className={`flex items-start justify-between gap-[8px] rounded-[12px] border px-[14px] py-[10px] text-left transition-colors ${
                       selected?.id === p.id
-                        ? "border-brand-teal-dark bg-[#E6F9FA]"
+                        ? "border-brand-teal-dark bg-brand-teal-soft"
                         : isReady
                           ? "border-[#B9EAC0] bg-[#F1FBF2] hover:bg-[#E7F8E9]"
                           : "border-black/[0.1] hover:bg-black/[0.03]"
@@ -244,9 +244,7 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
                         )}
                       </div>
                       <p className="mt-[2px] truncate text-xs text-[#9AA3B2]">{p.location}</p>
-                      <p className="truncate text-xs text-[#9AA3B2]">
-                        RM{p.salaryMin.toLocaleString()}–{p.salaryMax.toLocaleString()}
-                      </p>
+                      <p className="truncate text-xs text-[#9AA3B2]">{p.salary}</p>
                     </div>
                     {selected?.id === p.id && (
                       <CheckIcon className="mt-[3px] h-[11px] w-[11px] shrink-0 text-brand-teal-dark" />
@@ -280,7 +278,7 @@ function PosterGeneratorCard({ postings: initialPostings }: { postings: PosterPo
                   onClick={() => setSelectedStyle(opt.key)}
                   className={`flex items-center gap-[10px] rounded-[12px] border px-[10px] py-[8px] text-left transition-colors ${
                     selectedStyle === opt.key
-                      ? "border-brand-teal-dark bg-[#E6F9FA]"
+                      ? "border-brand-teal-dark bg-brand-teal-soft"
                       : "border-black/[0.1] hover:bg-black/[0.03]"
                   }`}
                 >

@@ -41,7 +41,7 @@ export default function EmployerResponsivenessCard({
         )}
 
         {waitingLong > 0 && (
-          <div className="rounded-[10px] bg-[#FFF3D6] p-[10px]">
+          <div className="rounded-[10px] bg-brand-gold-soft p-[10px]">
             <p className="text-xs text-brand-gold-dark">
               {waitingLong} applicant{waitingLong === 1 ? " has" : "s have"} been waiting over 3 days for a first reply.
             </p>

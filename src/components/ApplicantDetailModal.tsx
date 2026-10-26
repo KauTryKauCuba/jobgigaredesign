@@ -1,5 +1,6 @@
 "use client";
 
+import SalaryFitBadge from "./SalaryFitBadge";
 import { useEffect, useRef, useState } from "react";
 import {
   APPLICATION_STATUS_COLOR,
@@ -17,10 +18,15 @@ import Dropdown from "./Dropdown";
 import TimePicker from "./TimePicker";
 import type { ApplicantVideoPitch } from "./VideoPitchBadge";
 import VideoPitchPanel from "./VideoPitchPanel";
+import AiInterviewPanel from "./AiInterviewPanel";
+import PhoneVerifiedAvatarBadge from "./PhoneVerifiedAvatarBadge";
 import InterviewCountdown from "./InterviewCountdown";
 import RichTextContent from "./RichTextContent";
 import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import type { JobseekerProfileWithResume } from "@/lib/jobseeker-profile";
+import { ageFromBirthYear } from "@/lib/age";
+import { formatWorkPlaces } from "@/lib/work-locations";
+import { formatSpokenLanguage } from "@/lib/languages";
 import {
   EVALUATION_CRITERIA,
   EVALUATION_CRITERION_LABEL,
@@ -76,6 +82,8 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
   onsite: "Onsite",
@@ -109,6 +117,10 @@ export type ApplicantDetail = {
   applicantSkills: string[];
   applicantExpectedSalaryMin: number;
   applicantExpectedSalaryMax: number;
+  // The posting's own range, to flag whether the expectation fits it.
+  postingSalaryMin?: number | null;
+  postingSalaryMax?: number | null;
+  postingSalaryPeriod?: string;
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
@@ -118,6 +130,15 @@ export type ApplicantDetail = {
   evaluations?: PanelEvaluation[];
   // The applicant's visible video pitch (null if none or hidden).
   videoPitch?: ApplicantVideoPitch | null;
+  // They proved they can receive a text-message code on their profile phone.
+  applicantPhoneVerified?: boolean;
+  // false = the viewer only sits on this candidate's interview panel (a
+  // Panel member, or a Hiring manager of another posting): they can see the
+  // candidate and submit their own scorecard, but not move them along.
+  canManage?: boolean;
+  // The posting's Hiring managers (account ids) — pre-filled onto a brand-new
+  // interview's panel, since they usually join the interview.
+  hiringManagerUserIds?: string[];
 };
 
 const inputClass =
@@ -171,7 +192,7 @@ function InterviewerPicker({
       >
         {selected?.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={selected.avatarUrl} alt="" className="h-[28px] w-[28px] shrink-0 rounded-full object-cover" />
+          <img src={selected.avatarUrl} referrerPolicy="no-referrer" alt="" className="h-[28px] w-[28px] shrink-0 rounded-full object-cover" />
         ) : (
           <div className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
             <UserIcon className="h-[14px] w-[14px]" />
@@ -212,7 +233,7 @@ function InterviewerPicker({
                   >
                     {option.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={option.avatarUrl} alt="" className="h-[24px] w-[24px] shrink-0 rounded-full object-cover" />
+                      <img src={option.avatarUrl} referrerPolicy="no-referrer" alt="" className="h-[24px] w-[24px] shrink-0 rounded-full object-cover" />
                     ) : (
                       <div className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
                         <UserIcon className="h-[12px] w-[12px]" />
@@ -301,6 +322,8 @@ export default function ApplicantDetailModal({
   }, [onClose]);
 
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  // Interview details waiting on the "send this invite?" confirmation.
+  const [confirmingInterview, setConfirmingInterview] = useState(false);
   const [showInterviewForm, setShowInterviewForm] = useState(!!initialInterviewDate || !!autoOpenInterviewForm);
   const [fullProfile, setFullProfile] = useState<JobseekerProfileWithResume | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -403,10 +426,17 @@ export default function ApplicantDetailModal({
         .filter((id): id is string => !!id);
     }
     // Brand-new interview (no `existing` at all) — default the first slot to
-    // whoever's actually scheduling it, since they're presumably on the panel.
-    if (!existing && currentUserId) return [currentUserId];
+    // whoever's actually scheduling it, since they're presumably on the
+    // panel, followed by the posting's Hiring managers (removable).
+    if (!existing) {
+      const managers = (applicant.hiringManagerUserIds ?? []).filter(
+        (id) => id !== currentUserId && activeMembers.some((m) => m.userId === id),
+      );
+      return currentUserId ? [currentUserId, ...managers] : managers;
+    }
     return [];
   });
+  const canManage = applicant.canManage !== false;
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -425,6 +455,7 @@ export default function ApplicantDetailModal({
     }
     if (status === "interview") {
       setFormError(null);
+      setConfirmingInterview(false);
       setShowInterviewForm(true);
       return;
     }
@@ -443,27 +474,28 @@ export default function ApplicantDetailModal({
     setPendingStatus(null);
   }
 
-  function submitInterviewDetails() {
+  /** The form as it stands now, checked — or null (with the problem shown). */
+  function readInterviewForm(): InterviewDetails | null {
     if (!date || !time) {
       setFormError("Pick a date and time for the interview.");
-      return;
+      return null;
     }
     const scheduledAt = new Date(`${date}T${time}`);
     if (Number.isNaN(scheduledAt.getTime())) {
       setFormError("That date and time isn't valid.");
-      return;
+      return null;
     }
     if (mode === "onsite" && !location.trim()) {
       setFormError("Add the interview location.");
-      return;
+      return null;
     }
     if (mode === "online" && !meetingLink.trim()) {
       setFormError("Add the meeting link.");
-      return;
+      return null;
     }
 
     setFormError(null);
-    const details: InterviewDetails = {
+    return {
       round,
       mode,
       scheduledAt: scheduledAt.toISOString(),
@@ -482,6 +514,20 @@ export default function ApplicantDetailModal({
       interviewerUserIds: interviewers.filter((id) => id.length > 0),
       notes: notes.trim() || null,
     };
+  }
+
+  function submitInterviewDetails() {
+    // Sending (or changing) an invite notifies the candidate, so it waits
+    // for an explicit "yes" — see the confirm box under the form.
+    if (readInterviewForm()) setConfirmingInterview(true);
+  }
+
+  function confirmInterviewDetails() {
+    // Read again, not the copy from when Send was pressed: the form stays
+    // editable under the confirm box, and the candidate must get what it shows.
+    const details = readInterviewForm();
+    setConfirmingInterview(false);
+    if (!details) return;
     onUpdateStatus("interview", details);
     setShowInterviewForm(false);
   }
@@ -518,24 +564,34 @@ export default function ApplicantDetailModal({
       >
         <div className="flex items-start justify-between gap-[12px] border-b border-black/[0.06] px-[22px] py-[18px]">
           <div className="flex items-start gap-[12px]">
-            {applicant.applicantAvatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={applicant.applicantAvatarUrl}
-                alt=""
-                className="h-[46px] w-[46px] shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-[#E6F9FA] text-brand-teal-dark">
-                <UserIcon className="h-[20px] w-[20px]" />
-              </div>
-            )}
+            <div className="relative shrink-0">
+              {applicant.applicantAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={applicant.applicantAvatarUrl}
+                  referrerPolicy="no-referrer"
+                  alt=""
+                  className="h-[46px] w-[46px] shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-brand-teal-soft text-brand-teal-dark">
+                  <UserIcon className="h-[20px] w-[20px]" />
+                </div>
+              )}
+              {applicant.applicantPhoneVerified && <PhoneVerifiedAvatarBadge size={18} />}
+            </div>
             <div>
               <h2 className="text-lg font-semibold text-[#141B2E]">{applicant.applicantName}</h2>
               <p className="mt-[1px] text-xs text-[#4B5468]">{applicant.applicantTargetRole}</p>
               <p className="mt-[2px] text-xs text-[#9AA3B2]">
                 Applied for {applicant.jobPostingTitle} · {relativeTimeAgo(applicant.application.appliedAt)}
               </p>
+              {applicant.applicantPhoneVerified && (
+                <p className="mt-[6px] inline-flex items-center gap-[5px] rounded-full bg-[#E8F7EE] px-[10px] py-[2px] text-xs text-[#2F9E56]">
+                  <CheckIcon className="h-[8px] w-[8px]" />
+                  Phone verified
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -551,6 +607,14 @@ export default function ApplicantDetailModal({
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] pt-[18px] pb-[40px] sm:basis-2/3">
             {applicant.videoPitch && <VideoPitchPanel key={applicant.videoPitch.id} pitch={applicant.videoPitch} />}
+            <AiInterviewPanel
+              key={applicant.application.id}
+              applicationId={applicant.application.id}
+              applicantName={applicant.applicantName}
+              jobTitle={applicant.jobPostingTitle}
+              applicationStatus={applicant.application.status}
+              canManage={applicant.canManage !== false}
+            />
             <div>
               <p className="text-xs text-[#141B2E]">Candidate details</p>
               <div className="mt-[10px] grid grid-cols-1 gap-x-[16px] gap-y-[10px] sm:grid-cols-2">
@@ -578,9 +642,18 @@ export default function ApplicantDetailModal({
                 </div>
                 <div>
                   <p className="text-xs text-[#9AA3B2]">Expected salary</p>
-                  <p className="text-xs text-[#141B2E]">
-                    RM{applicant.applicantExpectedSalaryMin.toLocaleString()}–
-                    {applicant.applicantExpectedSalaryMax.toLocaleString()}
+                  <p className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px] text-xs text-[#141B2E]">
+                    <span>
+                      RM{applicant.applicantExpectedSalaryMin.toLocaleString()}–
+                      {applicant.applicantExpectedSalaryMax.toLocaleString()}
+                    </span>
+                    <SalaryFitBadge
+                      expectedMin={applicant.applicantExpectedSalaryMin}
+                      expectedMax={applicant.applicantExpectedSalaryMax}
+                      postingMin={applicant.postingSalaryMin}
+                      postingMax={applicant.postingSalaryMax}
+                      postingPeriod={applicant.postingSalaryPeriod}
+                    />
                   </p>
                 </div>
                 <div>
@@ -631,10 +704,16 @@ export default function ApplicantDetailModal({
                         <p className="text-xs text-[#141B2E]">{fullProfile.phone}</p>
                       </div>
                     )}
-                    {fullProfile.dateOfBirth && (
+                    {ageFromBirthYear(fullProfile.birthYear) !== null && (
                       <div>
-                        <p className="text-xs text-[#9AA3B2]">Date of birth</p>
-                        <p className="text-xs text-[#141B2E]">{fullProfile.dateOfBirth}</p>
+                        <p className="text-xs text-[#9AA3B2]">Age</p>
+                        <p className="text-xs text-[#141B2E]">{ageFromBirthYear(fullProfile.birthYear)}</p>
+                      </div>
+                    )}
+                    {formatWorkPlaces(fullProfile.preferredWorkPlaces) && (
+                      <div>
+                        <p className="text-xs text-[#9AA3B2]">Preferred work location</p>
+                        <p className="text-xs text-[#141B2E]">{formatWorkPlaces(fullProfile.preferredWorkPlaces)}</p>
                       </div>
                     )}
                     {fullProfile.gender && (
@@ -775,11 +854,23 @@ export default function ApplicantDetailModal({
                     <p className="text-xs text-[#141B2E]">Certifications</p>
                     <div className="mt-[8px] flex flex-col gap-[6px]">
                       {fullProfile.certifications.map((cert) => (
-                        <p key={cert.id} className="text-xs text-[#141B2E]">
-                          {cert.name}
-                          {cert.issuer ? ` · ${cert.issuer}` : ""}
-                          {cert.year ? ` · ${cert.year}` : ""}
-                        </p>
+                        <div key={cert.id} className="flex items-center justify-between gap-[8px]">
+                          <p className="text-xs text-[#141B2E]">
+                            {cert.name}
+                            {cert.issuer ? ` · ${cert.issuer}` : ""}
+                            {cert.year ? ` · ${cert.year}` : ""}
+                          </p>
+                          {cert.fileUrl && (
+                            <a
+                              href={cert.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 text-xs text-brand-teal-dark hover:underline"
+                            >
+                              View file
+                            </a>
+                          )}
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -794,7 +885,8 @@ export default function ApplicantDetailModal({
                           key={lang.id}
                           className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-xs text-[#141B2E]"
                         >
-                          {lang.language} — {LANGUAGE_LEVEL_LABEL[lang.spokenLevel] ?? lang.spokenLevel} spoken /{" "}
+                          {formatSpokenLanguage(lang.language, lang.dialects)} —{" "}
+                          {LANGUAGE_LEVEL_LABEL[lang.spokenLevel] ?? lang.spokenLevel} spoken /{" "}
                           {LANGUAGE_LEVEL_LABEL[lang.writtenLevel] ?? lang.writtenLevel} written
                         </span>
                       ))}
@@ -898,7 +990,11 @@ export default function ApplicantDetailModal({
                         ]}
                         onChange={(value) => {
                           const picked = addresses.find((a) => a.id === value);
-                          if (picked) setLocation(`${picked.addressLine1}, ${picked.city}, ${picked.state}`);
+                          if (picked) {
+                            setLocation(
+                              [picked.addressLine1, picked.area, picked.city, picked.state].filter(Boolean).join(", "),
+                            );
+                          }
                         }}
                       />
                     )}
@@ -948,6 +1044,7 @@ export default function ApplicantDetailModal({
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={currentUserAvatarUrl}
+                                referrerPolicy="no-referrer"
                                 alt=""
                                 className="h-[28px] w-[28px] shrink-0 rounded-full object-cover"
                               />
@@ -1028,6 +1125,38 @@ export default function ApplicantDetailModal({
 
                 {formError && <p className="text-xs text-red-500">{formError}</p>}
 
+                {confirmingInterview ? (
+                  <div className="rounded-[10px] border border-[#FBE7B3] bg-brand-gold-soft p-[10px]">
+                    <p className="text-xs text-[#141B2E]">
+                      {existing
+                        ? `Update ${applicant.applicantName}'s interview?`
+                        : `Invite ${applicant.applicantName} to an interview?`}
+                    </p>
+                    <p className="mt-[1px] text-xs text-[#4B5468]">
+                      {existing
+                        ? "They'll be notified of the new details straight away and asked to confirm they can still attend."
+                        : "They'll be notified straight away with the date, time and details, and asked to confirm they can attend."}
+                    </p>
+                    <div className="mt-[8px] flex gap-[6px]">
+                      <button
+                        type="button"
+                        disabled={updating}
+                        onClick={confirmInterviewDetails}
+                        className="flex h-[30px] flex-1 items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {existing ? "Yes, update and notify" : "Yes, send invite"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={updating}
+                        onClick={() => setConfirmingInterview(false)}
+                        className="flex h-[30px] items-center justify-center rounded-full border border-black/[0.1] px-[12px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                      >
+                        Go back
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="mt-[4px] flex gap-[6px]">
                   <button
                     type="button"
@@ -1046,6 +1175,7 @@ export default function ApplicantDetailModal({
                     Cancel
                   </button>
                 </div>
+                )}
               </div>
             ) : (
               <>
@@ -1110,7 +1240,7 @@ export default function ApplicantDetailModal({
                     )}
                     {existing.notes && <p className="mt-[4px] text-xs text-[#4B5468]">{existing.notes}</p>}
                     {applicant.application.interviewResponseStatus === "attended" && (
-                      <p className="mt-[4px] text-xs text-[#008990]">
+                      <p className="mt-[4px] text-xs text-brand-teal-dark">
                         {applicant.application.jobseekerConfirmedAttendance
                           ? "✓ Candidate confirmed attendance"
                           : "Candidate hasn't confirmed attendance yet"}
@@ -1125,12 +1255,24 @@ export default function ApplicantDetailModal({
                     <p className="mt-[4px] text-xs text-[#9AA3B2]">
                       {applicant.application.interviewResponseStatus === "attended"
                         ? "Waiting for the candidate to confirm their attendance too."
-                        : `Mark the candidate as attended or no-show after the round ${existing.round} interview to unlock this.`}
+                        : canManage
+                          ? `Mark the candidate as attended or no-show after the round ${existing.round} interview to unlock this.`
+                          : `Opens for your scorecard once the round ${existing.round} interview is marked as attended.`}
                     </p>
                   </div>
                 )}
 
-                {readyToStartEvaluation && (
+                {readyToStartEvaluation && !canManage && onSaveEvaluation && (
+                  <div className="rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
+                    <p className="text-xs text-[#141B2E]">Interview evaluation</p>
+                    <p className="mt-[4px] text-xs text-[#9AA3B2]">
+                      The interview&rsquo;s done. You&rsquo;ll be notified when the evaluation starts and your scorecard is
+                      due.
+                    </p>
+                  </div>
+                )}
+
+                {readyToStartEvaluation && canManage && (
                   <div className="rounded-[14px] border border-[#FBD9B4] bg-[#FFE9D6] p-[14px]">
                     <p className="text-xs text-[#B45309]">Interview complete — evaluate now</p>
                     <p className="mt-[4px] text-xs text-[#B45309]">
@@ -1281,7 +1423,7 @@ export default function ApplicantDetailModal({
                           applicant.application.status === "evaluation" &&
                           !panelComplete &&
                           panelEvaluations.length > 0 && (
-                            <div className="mt-[10px] rounded-[10px] bg-[#FFF3D6] p-[10px]">
+                            <div className="mt-[10px] rounded-[10px] bg-brand-gold-soft p-[10px]">
                               <p className="text-xs text-brand-gold-dark">
                                 Not everyone has evaluated yet. As an Owner you can close this out now with the
                                 scorecards submitted so far.
@@ -1384,6 +1526,21 @@ export default function ApplicantDetailModal({
                   </div>
                 )}
 
+                {!canManage && (
+                  <div className="rounded-[14px] border border-[#E1D6F5] bg-white p-[14px]">
+                    <p className="text-xs text-[#141B2E]">Hiring stage</p>
+                    <p className={`mt-[6px] inline-flex rounded-full px-[10px] py-[3px] text-xs ${color.bg} ${color.text}`}>
+                      {APPLICATION_STATUS_LABEL[applicant.application.status] ?? applicant.application.status}
+                    </p>
+                    <p className="mt-[8px] text-xs leading-[18px] text-[#9AA3B2]">
+                      You&rsquo;re on this candidate&rsquo;s interview panel. The job&rsquo;s hiring manager or an admin
+                      moves them along — your evaluation helps them decide.
+                    </p>
+                  </div>
+                )}
+
+                {canManage && (
+                <>
                 <div>
                   <p className="text-xs text-[#141B2E]">Hiring stage</p>
                   <p className="mt-[1px] text-xs text-[#9AA3B2]">
@@ -1433,7 +1590,7 @@ export default function ApplicantDetailModal({
                           isCurrent
                             ? "bg-brand-teal-dark text-white"
                             : isPast
-                              ? "bg-[#E6F9FA] text-brand-teal-dark hover:opacity-80"
+                              ? "bg-brand-teal-soft text-brand-teal-dark hover:opacity-80"
                               : "bg-white text-[#4B5468] hover:bg-black/[0.04]"
                         }`}
                       >
@@ -1480,6 +1637,7 @@ export default function ApplicantDetailModal({
                       type="button"
                       onClick={() => {
                         setFormError(null);
+                        setConfirmingInterview(false);
                         setShowInterviewForm(true);
                       }}
                       className="self-start text-left text-sm text-brand-teal-dark hover:underline"
@@ -1509,7 +1667,7 @@ export default function ApplicantDetailModal({
                 )}
 
                 {pendingStatus && (
-                  <div className="rounded-[10px] border border-[#FBE7B3] bg-[#FFF3D6] p-[10px]">
+                  <div className="rounded-[10px] border border-[#FBE7B3] bg-brand-gold-soft p-[10px]">
                     <p className="text-xs text-[#141B2E]">Shortlist this candidate?</p>
                     <p className="mt-[1px] text-xs text-[#4B5468]">
                       This tells your team they&rsquo;re a serious contender for the role.
@@ -1555,6 +1713,8 @@ export default function ApplicantDetailModal({
                     </p>
                   )}
                 </div>
+                </>
+                )}
               </>
             )}
           </div>

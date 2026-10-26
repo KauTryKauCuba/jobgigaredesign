@@ -9,10 +9,13 @@ import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import ResponsivenessBadge from "@/components/ResponsivenessBadge";
 import RichTextContent from "@/components/RichTextContent";
+import SiteThemeLayer from "@/components/SiteThemeLayer";
 import { gradientFrameClass } from "@/components/formStyles";
+import { CheckIcon, StarIcon, UserIcon } from "@/components/icons";
 import { getAuthUser } from "@/lib/auth-user";
 import { BADGE_DEFINITIONS } from "@/lib/badge-definitions";
 import { getPublicCompany } from "@/lib/company-directory";
+import { formatSalary } from "@/lib/job-posting-options";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 
 const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
@@ -20,16 +23,10 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 const WORK_ARRANGEMENT_LABEL: Record<string, string> = { remote: "Remote", hybrid: "Hybrid", onsite: "On-site" };
-
-function salaryLabel(min: number | null, max: number | null) {
-  const fmt = (n: number) => `RM${n.toLocaleString("en-MY")}`;
-  if (min && max) return `${fmt(min)} – ${fmt(max)}`;
-  if (min) return `From ${fmt(min)}`;
-  if (max) return `Up to ${fmt(max)}`;
-  return null;
-}
 
 function externalHref(url: string) {
   return /^https?:\/\//i.test(url) ? url : `https://${url}`;
@@ -54,7 +51,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function CompanyPage({ params }: { params: Promise<{ id: string }> }) {
   const [authUser, data] = await Promise.all([getAuthUser(), getPublicCompany((await params).id)]);
   if (!data) notFound();
-  const { company, addresses, jobs, badges, responsiveness } = data;
+  const { company, addresses, jobs, badges, responsiveness, contactVerified } = data;
   // In the same order as the employer's own Badges card.
   const earnedBadges = BADGE_DEFINITIONS.flatMap((badge) => {
     const earned = badges.find((b) => b.key === badge.key);
@@ -88,7 +85,10 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
   const joined = new Date(company.joinedAt).toLocaleDateString("en-MY", { month: "long", year: "numeric" });
 
   return (
-    <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${gold ? "bg-[#FDFAF0]" : "bg-[#F2FAF5]"}`}>
+    <>
+    {/* Shared page: wears the theme of the side it's shown as. */}
+    <SiteThemeLayer audience={gold ? "jobseeker" : "employer"} />
+    <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${gold ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>
       <Navbar initialUser={authUser} pageRole={gold ? "jobseeker" : "employer"} />
       <div className="shell pt-[24px]">
         <Link href="/companies" className={`text-sm hover:underline ${accentText}`}>
@@ -107,7 +107,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                 <div className="p-[16px] pt-0 sm:p-[22px] sm:pt-0">
                 <div className="flex items-end gap-[16px]">
                   <div className="-mt-[36px] shrink-0 rounded-[18px] bg-white p-[4px] shadow-[0_2px_6px_rgba(0,0,0,0.12)]">
-                    <CompanyLogo url={company.logoUrl} size={72} />
+                    <CompanyLogo url={company.logoUrl} size={72} verified={company.ssmVerified} />
                   </div>
                   <div className="min-w-0 pt-[12px]">
                     <h1 className="text-xl font-semibold text-[#141B2E]" style={{ lineHeight: 1.15, letterSpacing: "-0.02em" }}>
@@ -122,6 +122,15 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div className="mt-[8px] flex flex-wrap items-center gap-x-[10px] gap-y-[6px]">
                       <ResponsivenessBadge responsiveness={responsiveness} />
+                      {contactVerified && (
+                        <span
+                          title="The company owner confirmed their phone number with a text-message code."
+                          className="inline-flex items-center gap-[5px] rounded-full bg-[#E8F7EE] px-[9px] py-[3px] text-xs text-[#2F9E56]"
+                        >
+                          <CheckIcon className="h-[8px] w-[8px]" />
+                          Verified contact
+                        </span>
+                      )}
                       <p className="text-xs text-[#9AA3B2]">On JobGiga since {joined}</p>
                     </div>
                   </div>
@@ -171,6 +180,69 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                   </div>
                 )}
 
+                {company.galleryPhotos.length > 0 && (
+                  <div className="mt-[16px]">
+                    <p className="text-sm font-semibold text-[#141B2E]">Inside {company.companyName}</p>
+                    <div className="mt-[8px] grid grid-cols-2 gap-[8px] sm:grid-cols-3">
+                      {company.galleryPhotos.map((url, i) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block aspect-[4/3] overflow-hidden rounded-[12px] border border-[#EAEDF2] bg-[#F1F4F8]"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt={`${company.companyName} workplace photo ${i + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition-transform duration-300 hover:scale-[1.03]"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(company.facilities.length > 0 || company.dressCode) && (
+                  <div className="mt-[16px]">
+                    <p className="text-sm font-semibold text-[#141B2E]">Workplace</p>
+                    <div className="mt-[8px] flex flex-wrap gap-[6px]">
+                      {company.dressCode && (
+                        <span className="rounded-full bg-[#F1ECFB] px-[10px] py-[3px] text-xs text-[#7C5CD1]">
+                          Dress code: {company.dressCode}
+                        </span>
+                      )}
+                      {company.facilities.map((f) => (
+                        <span key={f} className="rounded-full bg-brand-teal-soft px-[10px] py-[3px] text-xs text-brand-teal-dark">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {company.awards.length > 0 && (
+                  <div className="mt-[16px]">
+                    <p className="text-sm font-semibold text-[#141B2E]">Awards &amp; recognition</p>
+                    <div className="mt-[8px] flex flex-col gap-[6px]">
+                      {company.awards.map((a) => (
+                        <div
+                          key={`${a.title}-${a.year ?? ""}`}
+                          className="flex items-center gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] px-[14px] py-[10px]"
+                        >
+                          <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-brand-gold-soft text-brand-gold-dark">
+                            <StarIcon className="h-[13px] w-[13px]" />
+                          </span>
+                          <span className="min-w-0 flex-1 text-sm text-[#141B2E]">{a.title}</span>
+                          {a.year && <span className="shrink-0 text-xs text-[#9AA3B2]">{a.year}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {addresses.length > 0 && (
                   <div className="mt-[16px]">
                     <p className="text-sm font-semibold text-[#141B2E]">
@@ -178,7 +250,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                     </p>
                     <div className={`mt-[8px] grid grid-cols-1 gap-[8px] ${addresses.length > 1 ? "sm:grid-cols-2" : ""}`}>
                       {addresses.map((a) => {
-                        const full = [a.addressLine1, a.addressLine2, `${a.postcode} ${a.city}`, a.state]
+                        const full = [a.addressLine1, a.addressLine2, a.area, `${a.postcode} ${a.city}`, a.state]
                           .map((p) => p?.trim())
                           .filter(Boolean)
                           .join(", ");
@@ -254,7 +326,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                 ) : (
                   <div className="mt-[12px] flex flex-col gap-[8px]">
                     {jobs.map((job) => {
-                      const salary = salaryLabel(job.salaryMin, job.salaryMax);
+                      const salary = job.showSalary ? formatSalary(job.salaryMin, job.salaryMax, job.salaryPeriod) : null;
                       return (
                         <Link
                           key={job.id}
@@ -333,6 +405,32 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
             )}
+            {company.leaders.length > 0 && (
+              <div className={gradientFrameClass(gold ? "gold" : "teal")}>
+                <div className="flex flex-col gap-[10px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+                  <p className="text-sm font-semibold text-[#141B2E]">Leadership</p>
+                  {company.leaders.map((l) => (
+                    <div
+                      key={`${l.name}-${l.title}`}
+                      className="flex items-center gap-[12px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
+                    >
+                      <span className="flex h-[44px] w-[44px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-white text-[#9AA3B2]">
+                        {l.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={l.photoUrl} alt={l.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <UserIcon className="h-[18px] w-[18px]" />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm text-[#141B2E]">{l.name}</span>
+                        <span className="block truncate text-xs text-[#9AA3B2]">{l.title}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -344,5 +442,6 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
         <AnimatedRibbon accent={gold ? "gold" : "teal"} />
       </div>
     </main>
+    </>
   );
 }

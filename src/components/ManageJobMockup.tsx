@@ -8,8 +8,8 @@ import { useMockupStep } from "./mockupAnimation";
 // Same status colors as Manage Job's STATUS_TILE_COLOR (EmployerJobsView.tsx),
 // so a pill/tile means the same thing here as it does on the real page.
 const TONE = {
-  active: { bg: "bg-[#E6F9FA]", text: "text-[#008990]" },
-  pending: { bg: "bg-[#FFF3D6]", text: "text-[#A67C00]" },
+  active: { bg: "bg-brand-teal-soft", text: "text-brand-teal-dark" },
+  pending: { bg: "bg-brand-gold-soft", text: "text-brand-gold-dark" },
   draft: { bg: "bg-[#F1ECFB]", text: "text-[#7C5CD1]" },
 };
 
@@ -94,7 +94,7 @@ export default function ManageJobMockup() {
   ];
 
   return (
-    <div ref={rootRef} className="flex h-full w-full items-center justify-center bg-[#F2FAF5] p-[20px]">
+    <div ref={rootRef} className="flex h-full w-full items-center justify-center bg-brand-teal-page p-[20px]">
       <div className="grid w-full max-w-[840px] grid-cols-1 gap-[12px] md:grid-cols-[1fr_3fr]">
         {/* Hidden below md — same rationale as the other mockups' narrow
             side card: doesn't fit a phone-width card without overflowing. */}
@@ -140,7 +140,7 @@ export default function ManageJobMockup() {
               <div
                 key={p.title}
                 className={`flex flex-col gap-[4px] rounded-[8px] border px-[8px] py-[6px] transition-colors duration-700 ${
-                  p.justApproved && sinceApproval < 3 ? "border-brand-teal-dark/40 bg-[#F2FAF5]" : "border-black/[0.06] bg-white"
+                  p.justApproved && sinceApproval < 3 ? "border-brand-teal-dark/40 bg-brand-teal-page" : "border-black/[0.06] bg-white"
                 }`}
               >
                 <div className="flex items-center justify-between gap-[6px]">

@@ -15,7 +15,18 @@ import path from "path";
 // just a folder on disk. Either way, files land in the same relative path.
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
 
-export type UploadCategory = "logos" | "avatars" | "office-photos" | "resumes" | "posters" | "banners";
+export type UploadCategory =
+  | "logos"
+  | "avatars"
+  | "office-photos"
+  | "resumes"
+  | "certificates"
+  | "posters"
+  | "banners"
+  | "welcome"
+  | "themes"
+  | "gallery"
+  | "leaders";
 
 const EXTENSION_BY_MIME: Record<string, string> = {
   "image/png": "png",

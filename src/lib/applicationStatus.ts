@@ -16,9 +16,11 @@ export const APPLICATION_STATUS_LABEL: Record<string, string> = {
   withdrawn: "Withdrawn",
 };
 
+// Fixed hex, not the brand-* tokens — a status keeps its colour (and meaning)
+// whatever site theme is on.
 export const APPLICATION_STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   applied: { bg: "bg-[#F1F4F8]", text: "text-[#4B5468]" },
-  screened: { bg: "bg-[#FFF3D6]", text: "text-brand-gold-dark" },
+  screened: { bg: "bg-[#FFF3D6]", text: "text-[#A67C00]" },
   shortlisted: { bg: "bg-[#E6F9FA]", text: "text-[#008990]" },
   interview: { bg: "bg-[#F1ECFB]", text: "text-[#7C5CD1]" },
   interviewed: { bg: "bg-[#E8F1FF]", text: "text-[#2B6CB0]" },
@@ -73,7 +75,7 @@ export const INTERVIEW_RESPONSE_STATUS_LABEL: Record<InterviewResponseStatus, st
 };
 
 export const INTERVIEW_RESPONSE_STATUS_COLOR: Record<InterviewResponseStatus, { bg: string; text: string }> = {
-  pending: { bg: "bg-[#FFF3D6]", text: "text-brand-gold-dark" },
+  pending: { bg: "bg-[#FFF3D6]", text: "text-[#A67C00]" },
   accepted: { bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]" },
   declined: { bg: "bg-red-50", text: "text-red-500" },
   reschedule_requested: { bg: "bg-[#FFEFE3]", text: "text-[#C2600A]" },

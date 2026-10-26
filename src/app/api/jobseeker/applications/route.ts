@@ -1,23 +1,29 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { recordStatusChange } from "@/lib/application-events";
-import { getApplicationNotificationContext, getEmployerTeamUserIds, notify } from "@/lib/notifications";
+import { getApplicationNotificationContext, getJobNotificationRecipients, notify } from "@/lib/notifications";
 import { db } from "@/lib/db";
 import { jobApplications, jobPostings, jobseekerProfiles } from "@/lib/db/schema";
 import { isLanguageArray, isOptionalInt, isOptionalString } from "@/lib/job-posting-validation";
 import { screeningEligibilityCheck } from "@/lib/matching";
+import type { CustomAnswer } from "@/lib/screening-questions";
 import { getSession } from "@/lib/session";
 
-function isCustomAnswerArray(value: unknown): value is { questionId: string; answer: boolean }[] {
+// One answer per question; which field is filled depends on the question's type.
+function isCustomAnswerArray(value: unknown): value is CustomAnswer[] {
   return (
     Array.isArray(value) &&
-    value.every(
-      (v) =>
-        v &&
-        typeof v === "object" &&
-        typeof (v as Record<string, unknown>).questionId === "string" &&
-        typeof (v as Record<string, unknown>).answer === "boolean",
-    )
+    value.every((v) => {
+      if (!v || typeof v !== "object") return false;
+      const a = v as Record<string, unknown>;
+      return (
+        typeof a.questionId === "string" &&
+        (a.answer === undefined || typeof a.answer === "boolean") &&
+        (a.choice === undefined || (typeof a.choice === "string" && a.choice.length <= 200)) &&
+        (a.number === undefined || a.number === null || (typeof a.number === "number" && Number.isFinite(a.number))) &&
+        (a.text === undefined || (typeof a.text === "string" && a.text.length <= 1000))
+      );
+    })
   );
 }
 
@@ -56,8 +62,10 @@ export async function POST(request: Request) {
       minQualificationTier: jobPostings.minQualificationTier,
       drivingLicense: jobPostings.drivingLicense,
       languages: jobPostings.languages,
+      askLanguages: jobPostings.askLanguages,
       workAuthorizations: jobPostings.workAuthorizations,
       customScreeningQuestions: jobPostings.customScreeningQuestions,
+      screeningPreferred: jobPostings.screeningPreferred,
     })
     .from(jobPostings)
     .where(eq(jobPostings.id, jobPostingId))
@@ -73,11 +81,14 @@ export async function POST(request: Request) {
     yearsExperience: number | null;
     qualificationTier: string | null;
     drivingLicense: string | null;
-    languages: { language: string; level: string }[];
+    // One per requirement: its language, its dialect (null for "any"), the level given.
+    languages: { language: string; dialect?: string | null; level: string }[];
     workAuthorization: string | null;
-    customAnswers: { questionId: string; answer: boolean }[];
+    customAnswers: CustomAnswer[];
   } | null = null;
   let eligible: boolean | null = null;
+  let preferredMet: number | null = null;
+  let preferredTotal: number | null = null;
   if (posting.screeningEnabled) {
     const raw = (screeningAnswers ?? {}) as Record<string, unknown>;
     const yearsExperience = isOptionalInt(raw.yearsExperience) ? (raw.yearsExperience ?? null) : null;
@@ -87,17 +98,23 @@ export async function POST(request: Request) {
     const workAuthorization = isOptionalString(raw.workAuthorization) ? (raw.workAuthorization ?? null) : null;
     const customAnswers = isCustomAnswerArray(raw.customAnswers) ? raw.customAnswers : [];
     storedAnswers = { yearsExperience, qualificationTier, drivingLicense, languages, workAuthorization, customAnswers };
-    eligible = screeningEligibilityCheck(
+    const check = screeningEligibilityCheck(
       {
+        preferred: posting.screeningPreferred,
         minYearsExperience: posting.minYearsExperience,
         minQualificationTier: posting.minQualificationTier,
         drivingLicense: posting.drivingLicense,
-        languages: posting.languages,
+        // Languages are always on the posting now; they only screen
+        // applicants when the employer switched "Ask this" on for them.
+        languages: posting.askLanguages ? posting.languages : [],
         workAuthorizations: posting.workAuthorizations,
         customQuestions: posting.customScreeningQuestions,
       },
       storedAnswers,
-    ).eligible;
+    );
+    eligible = check.eligible;
+    preferredMet = check.preferredMet;
+    preferredTotal = check.preferredTotal;
   }
 
   const [existing] = await db
@@ -118,13 +135,16 @@ export async function POST(request: Request) {
       jobseekerProfileId: profile.id,
       screeningAnswers: storedAnswers,
       screeningEligible: eligible,
+      screeningPreferredMet: preferredMet,
+      screeningPreferredTotal: preferredTotal,
     })
     .returning({ id: jobApplications.id });
   await recordStatusChange(created.id, null, "applied");
 
   const ctx = await getApplicationNotificationContext(created.id);
   if (ctx) {
-    await notify(await getEmployerTeamUserIds(ctx.employerProfileId, ctx.ownerUserId), "employer", {
+    // Owners/Admins, plus this posting's own Hiring managers.
+    await notify(await getJobNotificationRecipients(ctx.employerProfileId, ctx.ownerUserId, ctx.postingId), "employer", {
       type: "new_application",
       title: `New applicant for ${ctx.postingTitle}`,
       body: `${ctx.applicantName} just applied.`,

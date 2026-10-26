@@ -1,0 +1,1 @@
+ALTER TABLE "jobseeker_profiles" ADD COLUMN "preferred_work_locations" text[] DEFAULT '{}' NOT NULL;

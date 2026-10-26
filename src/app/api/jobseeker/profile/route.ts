@@ -10,13 +10,18 @@ import {
   jobseekerReferences,
   jobseekerOnboardingDrafts,
 } from "@/lib/db/schema";
+import { birthYearFromAge, MAX_AGE, MIN_AGE, parseAge } from "@/lib/age";
+import { DEFAULT_COUNTRY, isCountry } from "@/lib/countries";
+import { listMalaysianTowns } from "@/lib/postcodes";
+import { AREA_MAX, formatPlace, isMalaysiaCoordinate, MAX_WORK_PLACES, type Place, type WorkPlace } from "@/lib/work-locations";
 import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import { getSession } from "@/lib/session";
 import { isBase64DataUrl, saveBase64Upload } from "@/lib/uploads";
+import { normalizeSpokenLanguages } from "@/lib/languages";
 
-const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"] as const;
+const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship", "freelance", "temporary"] as const;
 const WORK_ARRANGEMENTS = ["remote", "hybrid", "onsite"] as const;
 const WORK_AUTHORIZATIONS = [
   "citizen",
@@ -36,7 +41,6 @@ const LANGUAGE_LEVELS = ["basic", "conversational", "fluent", "native"] as const
 const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
 const MARITAL_STATUSES = ["single", "married", "divorced", "widowed", "prefer_not_to_say"] as const;
 const DRIVING_LICENSES = ["none", "b2", "b", "d", "da", "e"] as const;
-const DATE_OF_BIRTH_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -48,6 +52,37 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isNonNegativeInt(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+// A place from the place search: an official town in its state, an optional
+// area name, optional coordinates (inside Malaysia) — or null if it doesn't fit.
+function parsePlace(value: unknown): Place | null {
+  const { city, state, area, lat, lng } = (value ?? {}) as Record<string, unknown>;
+  const town = listMalaysianTowns().find((t) => t.city === city && t.state === state);
+  if (!town) return null;
+  if (area !== null && area !== undefined && (typeof area !== "string" || area.trim().length > AREA_MAX)) return null;
+  const hasCoords = lat !== null && lat !== undefined;
+  if (hasCoords && !isMalaysiaCoordinate(lat, lng)) return null;
+  return {
+    area: typeof area === "string" && area.trim() ? area.trim() : null,
+    city: town.city,
+    state: town.state,
+    lat: hasCoords ? (lat as number) : null,
+    lng: hasCoords ? (lng as number) : null,
+  };
+}
+
+// Preferred work locations: each a valid place, no repeats, at most
+// MAX_WORK_PLACES — or null if anything doesn't fit.
+function parseWorkPlaces(value: unknown): WorkPlace[] | null {
+  if (!Array.isArray(value) || value.length > MAX_WORK_PLACES) return null;
+  const out: WorkPlace[] = [];
+  for (const item of value) {
+    const place = parsePlace(item);
+    if (!place) return null;
+    if (!out.some((p) => formatPlace(p) === formatPlace(place))) out.push(place);
+  }
+  return out;
 }
 
 function isOneOf<T extends readonly string[]>(value: unknown, options: T): value is T[number] {
@@ -118,6 +153,12 @@ type CertificationInput = {
   name: string;
   issuer: string | null;
   year: number | null;
+  // Either an existing "/uploads/certificates/..." URL (unchanged) or a fresh
+  // "data:...;base64,..." picked client-side — resolved to a stored URL
+  // later, the same way the avatar and resume are.
+  fileUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
 };
 
 function parseCertifications(value: unknown): CertificationInput[] | null {
@@ -126,10 +167,20 @@ function parseCertifications(value: unknown): CertificationInput[] | null {
   for (const raw of value) {
     const entry = (raw ?? {}) as Record<string, unknown>;
     if (!isNonEmptyString(entry.name)) return null;
+    // 7MB covers a 5MB certificate file (this app's upload cap for it)
+    // inflated ~33% by base64 encoding, plus the data URL prefix.
+    if (!isOptionalString(entry.fileUrl) || (typeof entry.fileUrl === "string" && entry.fileUrl.length > 7_000_000)) {
+      return null;
+    }
+    if (!isOptionalString(entry.fileName)) return null;
+    if (entry.fileSize !== undefined && entry.fileSize !== null && !isNonNegativeInt(entry.fileSize)) return null;
     entries.push({
       name: entry.name.trim(),
       issuer: isNonEmptyString(entry.issuer) ? entry.issuer.trim() : null,
       year: isNonNegativeInt(entry.year) ? entry.year : null,
+      fileUrl: isNonEmptyString(entry.fileUrl) ? entry.fileUrl : null,
+      fileName: isNonEmptyString(entry.fileName) ? entry.fileName.trim() : null,
+      fileSize: isNonNegativeInt(entry.fileSize) ? entry.fileSize : null,
     });
   }
   return entries;
@@ -163,6 +214,7 @@ function parseReferences(value: unknown): ReferenceInput[] | null {
 
 type LanguageInput = {
   language: string;
+  dialects: string[];
   spokenLevel: (typeof LANGUAGE_LEVELS)[number];
   writtenLevel: (typeof LANGUAGE_LEVELS)[number];
 };
@@ -175,17 +227,21 @@ function parseLanguages(value: unknown): LanguageInput[] | null {
     if (
       !isNonEmptyString(entry.language) ||
       !isOneOf(entry.spokenLevel, LANGUAGE_LEVELS) ||
-      !isOneOf(entry.writtenLevel, LANGUAGE_LEVELS)
+      !isOneOf(entry.writtenLevel, LANGUAGE_LEVELS) ||
+      (entry.dialects !== undefined && !(Array.isArray(entry.dialects) && entry.dialects.every((d) => typeof d === "string")))
     ) {
       return null;
     }
     entries.push({
       language: entry.language.trim(),
+      dialects: (entry.dialects as string[] | undefined) ?? [],
       spokenLevel: entry.spokenLevel,
       writtenLevel: entry.writtenLevel,
     });
   }
-  return entries;
+  // Standard names ("BM" → Malay), each language once with its dialects —
+  // a dialect not on the list for that language is dropped.
+  return normalizeSpokenLanguages(entries);
 }
 
 export async function POST(request: Request) {
@@ -207,7 +263,7 @@ export async function POST(request: Request) {
     resumeUrl,
     resumeFileName,
     resumeFileSize,
-    dateOfBirth,
+    age,
     gender,
     maritalStatus,
     nationality,
@@ -215,6 +271,10 @@ export async function POST(request: Request) {
     drivingLicense,
     city,
     state,
+    country,
+    area,
+    latitude,
+    longitude,
     targetRole,
     preferredIndustry,
     yearsExperience,
@@ -230,6 +290,7 @@ export async function POST(request: Request) {
     githubUrl,
     noticePeriod,
     workArrangement,
+    preferredWorkPlaces,
     workAuthorization,
     workExperiences: rawWorkExperiences,
     education: rawEducation,
@@ -255,11 +316,9 @@ export async function POST(request: Request) {
   if (!isNonEmptyString(fullName)) {
     return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
   }
-  if (!isNonEmptyString(dateOfBirth)) {
-    return NextResponse.json({ error: "Enter your date of birth." }, { status: 400 });
-  }
-  if (!DATE_OF_BIRTH_RE.test(dateOfBirth.trim())) {
-    return NextResponse.json({ error: "Enter a valid date of birth." }, { status: 400 });
+  const parsedAge = parseAge(age);
+  if (parsedAge === null) {
+    return NextResponse.json({ error: `Enter your age (${MIN_AGE}–${MAX_AGE}).` }, { status: 400 });
   }
   if (gender !== undefined && gender !== null && !isOneOf(gender, GENDERS)) {
     return NextResponse.json({ error: "Invalid gender." }, { status: 400 });
@@ -281,12 +340,50 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json({ error: "Invalid driving license." }, { status: 400 });
   }
+  // Older callers (e.g. the Resume Designer before country existed) send no
+  // country — that means Malaysia, as it always did.
+  const countryName = country === undefined || country === null || country === "" ? DEFAULT_COUNTRY : country;
+  if (!isCountry(countryName)) {
+    return NextResponse.json({ error: "Choose your country." }, { status: 400 });
+  }
+  const inMalaysia = countryName === DEFAULT_COUNTRY;
   if (!isNonEmptyString(city)) {
     return NextResponse.json({ error: "Enter your city." }, { status: 400 });
   }
-  if (!isNonEmptyString(state) || !(MALAYSIA_STATES as readonly string[]).includes(state)) {
+  // A state only applies in Malaysia.
+  if (inMalaysia && (!isNonEmptyString(state) || !(MALAYSIA_STATES as readonly string[]).includes(state))) {
     return NextResponse.json({ error: "Choose your state." }, { status: 400 });
   }
+  const savedState = inMalaysia ? (state as string) : "";
+  // The area and map coordinates from the place search (Malaysia only). Older
+  // callers (the Resume Designer) don't send them — then they stay as saved.
+  let savedArea: string | null | undefined;
+  let savedLatitude: number | null | undefined;
+  let savedLongitude: number | null | undefined;
+  if (!inMalaysia) {
+    savedArea = savedLatitude = savedLongitude = null;
+  } else if (area !== undefined || latitude !== undefined || longitude !== undefined) {
+    if (area !== null && area !== undefined && (typeof area !== "string" || area.trim().length > AREA_MAX)) {
+      return NextResponse.json({ error: "Invalid area." }, { status: 400 });
+    }
+    const hasCoords = latitude !== null && latitude !== undefined;
+    if (hasCoords && !isMalaysiaCoordinate(latitude, longitude)) {
+      return NextResponse.json({ error: "Invalid location." }, { status: 400 });
+    }
+    savedArea = typeof area === "string" && area.trim() ? area.trim() : null;
+    savedLatitude = hasCoords ? (latitude as number) : null;
+    savedLongitude = hasCoords ? (longitude as number) : null;
+  }
+  const areaForLabel =
+    savedArea !== undefined
+      ? savedArea
+      : ((
+          await db
+            .select({ area: jobseekerProfiles.area })
+            .from(jobseekerProfiles)
+            .where(eq(jobseekerProfiles.userId, session.userId))
+            .limit(1)
+        )[0]?.area ?? null);
   if (!isNonEmptyString(targetRole)) {
     return NextResponse.json({ error: "Enter the role you're targeting." }, { status: 400 });
   }
@@ -333,6 +430,15 @@ export async function POST(request: Request) {
   if (!isOneOf(workAuthorization, WORK_AUTHORIZATIONS)) {
     return NextResponse.json({ error: "Choose your work authorization." }, { status: 400 });
   }
+  // Compulsory when sent (the profile form always sends it); left as it is
+  // when not, so older callers like the Resume Designer keep working.
+  const workPlaces = preferredWorkPlaces === undefined ? null : parseWorkPlaces(preferredWorkPlaces);
+  if (preferredWorkPlaces !== undefined && workPlaces === null) {
+    return NextResponse.json({ error: "Pick each preferred work location from the list." }, { status: 400 });
+  }
+  if (workPlaces !== null && workPlaces.length === 0) {
+    return NextResponse.json({ error: "Add at least one preferred work location." }, { status: 400 });
+  }
 
   const workExperiences = parseWorkExperiences(rawWorkExperiences ?? []);
   if (!workExperiences) {
@@ -362,6 +468,12 @@ export async function POST(request: Request) {
   // Interviews page bloat found earlier this session.
   const resolvedAvatarUrl = isBase64DataUrl(avatarUrl) ? await saveBase64Upload(avatarUrl, "avatars") : avatarUrl;
   const resolvedResumeUrl = isBase64DataUrl(resumeUrl) ? await saveBase64Upload(resumeUrl, "resumes") : resumeUrl;
+  const resolvedCertifications = await Promise.all(
+    certifications.map(async (c) => ({
+      ...c,
+      fileUrl: isBase64DataUrl(c.fileUrl) ? await saveBase64Upload(c.fileUrl, "certificates") : c.fileUrl,
+    })),
+  );
 
   // A freshly-picked resume has real bytes to save; an edit save where the
   // user didn't touch the resume sends none — in that case the existing
@@ -373,15 +485,26 @@ export async function POST(request: Request) {
     userId: session.userId,
     avatarUrl: isNonEmptyString(resolvedAvatarUrl) ? resolvedAvatarUrl.trim() : null,
     fullName: fullName.trim(),
-    dateOfBirth: dateOfBirth.trim(),
+    birthYear: birthYearFromAge(parsedAge),
     gender: isNonEmptyString(gender) ? gender : null,
     maritalStatus: isNonEmptyString(maritalStatus) ? maritalStatus : null,
     nationality: isNonEmptyString(nationality) ? nationality.trim() : null,
     phone: isNonEmptyString(phone) ? phone.trim() : null,
     drivingLicense: isNonEmptyString(drivingLicense) ? drivingLicense : null,
-    location: `${city.trim()}, ${state}`,
+    // "Kota Damansara, Petaling Jaya, Selangor" in Malaysia ("Setapak, Kuala
+    // Lumpur" when the town is the state); "London, United Kingdom" — or just
+    // "Singapore" when the city is the country — elsewhere.
+    location: inMalaysia
+      ? formatPlace({ area: areaForLabel, city: city.trim(), state: savedState as Place["state"] })
+      : city.trim().toLowerCase() === countryName.toLowerCase()
+        ? city.trim()
+        : `${city.trim()}, ${countryName}`,
     city: city.trim(),
-    state,
+    state: savedState,
+    country: countryName,
+    area: savedArea,
+    latitude: savedLatitude,
+    longitude: savedLongitude,
     targetRole: targetRole.trim(),
     preferredIndustry,
     yearsExperience,
@@ -398,6 +521,8 @@ export async function POST(request: Request) {
     noticePeriod,
     workArrangement,
     workAuthorization,
+    // Left as it is when not sent (older callers, e.g. the Resume Designer).
+    preferredWorkPlaces: workPlaces ?? undefined,
   };
 
   const insertValues = {
@@ -473,11 +598,14 @@ export async function POST(request: Request) {
 
     if (certifications.length > 0) {
       await tx.insert(jobseekerCertifications).values(
-        certifications.map((entry, index) => ({
+        resolvedCertifications.map((entry, index) => ({
           profileId: profile.id,
           name: entry.name,
           issuer: entry.issuer,
           year: entry.year,
+          fileUrl: entry.fileUrl,
+          fileName: entry.fileName,
+          fileSize: entry.fileSize,
           sortOrder: index,
         })),
       );
@@ -488,6 +616,7 @@ export async function POST(request: Request) {
         languages.map((entry, index) => ({
           profileId: profile.id,
           language: entry.language,
+          dialects: entry.dialects,
           spokenLevel: entry.spokenLevel,
           writtenLevel: entry.writtenLevel,
           sortOrder: index,

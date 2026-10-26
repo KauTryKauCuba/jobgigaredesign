@@ -1,0 +1,1 @@
+ALTER TYPE "public"."ai_usage_feature" ADD VALUE 'salary_suggestion' BEFORE 'resume_parse';

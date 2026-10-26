@@ -10,18 +10,31 @@ import {
   jobPostingViews,
   jobseekerProfiles,
 } from "./db/schema";
+import { jobPostingScopeCondition, type HiringScope } from "./hiring-scope";
+import { toPublicQuestion, type CustomQuestion, type PublicCustomQuestion } from "./screening-questions";
 
 // Custom screening questions carry a `requiredAnswer` ("correct" yes/no)
 // that must never reach a jobseeker's browser — a posting handed to a
 // client component as page props is visible in the page source, so this
 // strips it at the server boundary rather than relying on the client only
-// choosing not to render it.
-export function stripCustomQuestionAnswers<T extends { customScreeningQuestions: { id: string; question: string; requiredAnswer: boolean }[] }>(
+// choosing not to render it. Same for a salary the employer chose not to
+// show: the range is nulled out here, not just left unrendered.
+export function stripCustomQuestionAnswers<
+  T extends {
+    customScreeningQuestions: CustomQuestion[];
+    salaryMin: number | null;
+    salaryMax: number | null;
+    showSalary: boolean;
+  },
+>(
   posting: T,
-): Omit<T, "customScreeningQuestions"> & { customScreeningQuestions: { id: string; question: string }[] } {
+): Omit<T, "customScreeningQuestions"> & { customScreeningQuestions: PublicCustomQuestion[] } {
   return {
     ...posting,
-    customScreeningQuestions: posting.customScreeningQuestions.map((q) => ({ id: q.id, question: q.question })),
+    ...(posting.showSalary ? {} : { salaryMin: null, salaryMax: null }),
+    // Only what's needed to ask the question — never the right answer,
+    // accepted options, minimum or Preferred flag.
+    customScreeningQuestions: posting.customScreeningQuestions.map(toPublicQuestion),
   };
 }
 
@@ -74,14 +87,18 @@ const jobPostingListColumns = {
   industry: jobPostings.industry,
   employmentType: jobPostings.employmentType,
   workArrangement: jobPostings.workArrangement,
+  officeDaysPerWeek: jobPostings.officeDaysPerWeek,
   location: jobPostings.location,
   addressLine1: jobPostings.addressLine1,
   addressLine2: jobPostings.addressLine2,
+  area: jobPostings.area,
   city: jobPostings.city,
   state: jobPostings.state,
   postcode: jobPostings.postcode,
   salaryMin: jobPostings.salaryMin,
   salaryMax: jobPostings.salaryMax,
+  salaryPeriod: jobPostings.salaryPeriod,
+  showSalary: jobPostings.showSalary,
   openings: jobPostings.openings,
   skills: jobPostings.skills,
   softSkills: jobPostings.softSkills,
@@ -98,8 +115,12 @@ const jobPostingListColumns = {
   askLanguages: jobPostings.askLanguages,
   askWorkAuthorizations: jobPostings.askWorkAuthorizations,
   customScreeningQuestions: jobPostings.customScreeningQuestions,
+  screeningPreferred: jobPostings.screeningPreferred,
   skillSuggestions: jobPostings.skillSuggestions,
   benefits: jobPostings.benefits,
+  startAvailability: jobPostings.startAvailability,
+  workingHours: jobPostings.workingHours,
+  contactUserId: jobPostings.contactUserId,
   status: jobPostings.status,
   rejectionReason: jobPostings.rejectionReason,
   flagReason: jobPostings.flagReason,
@@ -118,11 +139,13 @@ const jobPostingListColumns = {
   updatedAt: jobPostings.updatedAt,
 };
 
-export async function getJobPostingsForEmployer(employerProfileId: string) {
+// `scope` narrows a Hiring manager's list to their own postings (a Panel
+// member's to none) — omitted = every posting at the company.
+export async function getJobPostingsForEmployer(employerProfileId: string, scope?: HiringScope) {
   return db
     .select(jobPostingListColumns)
     .from(jobPostings)
-    .where(eq(jobPostings.employerProfileId, employerProfileId))
+    .where(and(eq(jobPostings.employerProfileId, employerProfileId), jobPostingScopeCondition(scope)))
     .orderBy(desc(jobPostings.createdAt));
 }
 
@@ -140,6 +163,8 @@ export async function getActivePostingsWithPosterForEmployer(employerProfileId: 
       workArrangement: jobPostings.workArrangement,
       salaryMin: jobPostings.salaryMin,
       salaryMax: jobPostings.salaryMax,
+      salaryPeriod: jobPostings.salaryPeriod,
+      showSalary: jobPostings.showSalary,
       minYearsExperience: jobPostings.minYearsExperience,
       openings: jobPostings.openings,
       posterUrl: jobPostings.posterUrl,

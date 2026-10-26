@@ -355,7 +355,7 @@ export default function DatePicker({
                   className={`flex h-[28px] items-center justify-center rounded-full text-sm transition-colors ${
                     isSelected
                       ? accent === "gold"
-                        ? "bg-[#FFE9A6] text-[#141B2E]"
+                        ? "bg-brand-gold text-[#141B2E]"
                         : "bg-brand-teal-dark text-white"
                       : disabled
                         ? "cursor-not-allowed text-[#D5DAE1]"

@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import EmployerJobsView from "@/components/EmployerJobsView";
 import { getAuthUser } from "@/lib/auth-user";
-import { getEmployerProfileForUser } from "@/lib/employer-profile";
+import { getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getApplicantCounts, getJobPostingsForEmployer, getViewCounts } from "@/lib/job-postings";
 import { getOnboardingRedirect } from "@/lib/onboarding";
 import { getSession } from "@/lib/session";
+import { employerHomePath, hasFullAccess } from "@/lib/team-roles";
 
 export default async function EmployerJobsPage() {
   const session = await getSession();
@@ -16,8 +17,12 @@ export default async function EmployerJobsPage() {
   const authUser = await getAuthUser();
   if (!authUser) redirect("/employer");
 
-  const profile = await getEmployerProfileForUser(session.userId);
-  const postings = profile ? await getJobPostingsForEmployer(profile.id) : [];
+  const access = await getScopedEmployerAccess(session.userId);
+  // A Panel member has no jobs of their own — just their interviews.
+  if (access?.role === "panel") redirect(employerHomePath("panel"));
+  const profile = access?.profile ?? null;
+  // A Hiring manager sees only their assigned postings, read-only.
+  const postings = access ? await getJobPostingsForEmployer(access.profile.id, access.scope) : [];
   const postingIds = postings.map((p) => p.id);
   const [applicantCounts, viewCounts] = await Promise.all([
     getApplicantCounts(postingIds),
@@ -38,6 +43,7 @@ export default async function EmployerJobsPage() {
       key={profile?.id ?? "none"}
       authUser={authUser}
       initialPostings={serializedPostings}
+      canManage={!access || hasFullAccess(access.role)}
     />
   );
 }

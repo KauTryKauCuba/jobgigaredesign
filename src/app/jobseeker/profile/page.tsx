@@ -5,6 +5,7 @@ import VideoPitchCard from "@/components/VideoPitchCard";
 import { getAuthUser } from "@/lib/auth-user";
 import { getJobseekerProfile } from "@/lib/jobseeker-profile";
 import { getOnboardingRedirect } from "@/lib/onboarding";
+import { getInitialPhoneStatus } from "@/lib/phone-verification";
 import { getSession } from "@/lib/session";
 import { getVideoPitchForProfile } from "@/lib/video-pitch";
 
@@ -21,7 +22,11 @@ export default async function JobseekerProfilePage() {
   ]);
   if (!authUser || !profile) redirect("/jobseeker/onboarding");
 
-  const pitch = await getVideoPitchForProfile(profile.id);
+  const [pitch, initialPhoneStatus] = await Promise.all([
+    getVideoPitchForProfile(profile.id),
+    // So the phone field shows "verified" on its first frame, not after loading.
+    getInitialPhoneStatus(session, profile.phone),
+  ]);
   const resume = profile.resumeFileName
     ? { fileName: profile.resumeFileName, fileSize: profile.resumeFileSize }
     : null;
@@ -38,6 +43,7 @@ export default async function JobseekerProfilePage() {
         mode="edit"
         initialProfile={profile}
         accountEmail={authUser.email}
+        initialPhoneStatus={initialPhoneStatus}
         topSlot={
           <VideoPitchCard
             key="video-pitch"

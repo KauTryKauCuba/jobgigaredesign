@@ -7,6 +7,11 @@ export default function EmployerJobPostCard() {
       reverse
       step={2}
       background="#E3F2EB"
+      fadeEdges
+      bandStartWidth={45}
+      bandDurationMs={1400}
+      // Soft take on the AI button's teal-to-gold gradient.
+      bandGradient="linear-gradient(120deg, #DDF0E8 0%, #E3F2EB 45%, #FBF3DC 100%)"
       eyebrow="Write jobs with AI"
       headline="Create jobs without starting from scratch"
       bullets={[

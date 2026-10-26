@@ -156,7 +156,7 @@ export default function SuperadminJobseekersView({
                           </span>
                         )}
                         {jobseeker.coverLetterCount > 0 && (
-                          <span className={`${pill} bg-[#E6F9FA] text-brand-teal-dark`}>
+                          <span className={`${pill} bg-brand-teal-soft text-brand-teal-dark`}>
                             {jobseeker.coverLetterCount} cover letter{jobseeker.coverLetterCount === 1 ? "" : "s"}
                           </span>
                         )}
@@ -167,7 +167,7 @@ export default function SuperadminJobseekersView({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-[10px] text-xs text-[#9AA3B2] sm:flex-col sm:items-end sm:gap-[4px]">
-                    <span className="rounded-full bg-[#E6F9FA] px-[10px] py-[3px] text-xs text-brand-teal-dark">
+                    <span className="rounded-full bg-brand-teal-soft px-[10px] py-[3px] text-xs text-brand-teal-dark">
                       {jobseeker.applicationCount} application{jobseeker.applicationCount === 1 ? "" : "s"}
                     </span>
                     <span>Joined {new Date(jobseeker.createdAt).toLocaleDateString("en-GB")}</span>

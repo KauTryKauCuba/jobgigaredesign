@@ -9,9 +9,9 @@ import { useMockupStep } from "./mockupAnimation";
 // (applicationStatus.ts), so a tile means the same thing here as it does on
 // the real Interviews page.
 const STATUS = {
-  pending: { label: "Pending", bg: "bg-[#FFF3D6]", text: "text-brand-gold-dark" },
+  pending: { label: "Pending", bg: "bg-brand-gold-soft", text: "text-brand-gold-dark" },
   accepted: { label: "Accepted", bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]" },
-  attended: { label: "Attended", bg: "bg-[#E6F9FA]", text: "text-[#008990]" },
+  attended: { label: "Attended", bg: "bg-brand-teal-soft", text: "text-brand-teal-dark" },
   reschedule: { label: "Reschedule", bg: "bg-[#FFEFE3]", text: "text-[#C2600A]" },
 };
 
@@ -234,7 +234,7 @@ export default function InterviewMockup() {
               <div
                 key={newBooking ? "new" : "next"}
                 className={`mock-slide-in flex items-center gap-[6px] rounded-[8px] border px-[8px] py-[6px] ${
-                  newBooking ? "border-[#2F9E56]/40 bg-[#F2FAF5]" : "border-black/[0.06]"
+                  newBooking ? "border-[#2F9E56]/40 bg-brand-teal-page" : "border-black/[0.06]"
                 }`}
               >
                 <span

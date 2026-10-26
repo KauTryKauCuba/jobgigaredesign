@@ -1,8 +1,16 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "./db";
-import { employerProfiles, jobApplications, jobPostings, jobseekerProfiles, notifications } from "./db/schema";
+import {
+  employerProfiles,
+  jobApplications,
+  jobPostingHiringManagers,
+  jobPostings,
+  jobseekerProfiles,
+  notifications,
+} from "./db/schema";
 import { getEmployerTeamMembers } from "./employer-profile";
+import { hasFullAccess } from "./team-roles";
 
 type Audience = "employer" | "jobseeker";
 
@@ -63,10 +71,32 @@ export async function getApplicationNotificationContext(jobApplicationId: string
   return row ?? null;
 }
 
-/** Every active teammate (incl. the owner) at a company, as user ids. */
-export async function getEmployerTeamUserIds(employerProfileId: string, ownerUserId: string): Promise<string[]> {
-  const members = await getEmployerTeamMembers(employerProfileId, ownerUserId);
-  return members.filter((m) => m.status === "active" && m.userId).map((m) => m.userId as string);
+/**
+ * Who hears about activity on one job posting: every active Owner and Admin,
+ * plus the posting's own active Hiring managers. Panel members and other
+ * postings' Hiring managers aren't told — it isn't theirs to act on.
+ */
+export async function getJobNotificationRecipients(
+  employerProfileId: string,
+  ownerUserId: string,
+  jobPostingId: string,
+): Promise<string[]> {
+  const [members, assigned] = await Promise.all([
+    getEmployerTeamMembers(employerProfileId, ownerUserId),
+    db
+      .select({ teamMemberId: jobPostingHiringManagers.teamMemberId })
+      .from(jobPostingHiringManagers)
+      .where(eq(jobPostingHiringManagers.jobPostingId, jobPostingId)),
+  ]);
+  const assignedIds = new Set(assigned.map((a) => a.teamMemberId));
+  return members
+    .filter(
+      (m) =>
+        m.status === "active" &&
+        m.userId &&
+        (hasFullAccess(m.role) || (m.role === "hiring_manager" && assignedIds.has(m.id))),
+    )
+    .map((m) => m.userId as string);
 }
 
 // What a jobseeker is told when their application moves — only the moves

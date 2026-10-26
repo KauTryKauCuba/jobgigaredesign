@@ -1,8 +1,9 @@
 import "server-only";
+import { cache } from "react";
 import { and, eq } from "drizzle-orm";
 import type { AuthUser, Role } from "@/components/AuthModal";
 import { db } from "./db";
-import { getEmployerAccess } from "./employer-profile";
+import { getEmployerAccess, type EmployerRole } from "./employer-profile";
 import {
   employerOnboardingDrafts,
   employerProfiles,
@@ -11,7 +12,11 @@ import {
   jobseekerProfiles,
   users,
 } from "./db/schema";
+import { getRewardHints } from "./campaigns";
+import { isPhoneVerificationAvailable, isPhoneVerifiedFor } from "./phone-verification";
+import { companyHasSampleData } from "./sample-data";
 import { getSession } from "./session";
+import { isSuperadminEmail } from "./superadmin";
 
 /**
  * Avatars are per-role — a user's employer photo and jobseeker photo are
@@ -22,14 +27,39 @@ import { getSession } from "./session";
  * its own photo yet.
  */
 export async function resolveAvatarUrl(userId: string, role: Role, accountAvatarUrl: string | null) {
-  const table = role === "employer" ? employerProfiles : jobseekerProfiles;
+  if (role === "employer") {
+    // The company currently selected — its registrant's photo if that's this
+    // user (one account can register several companies), else the account's.
+    const access = await getEmployerAccess(userId);
+    if (!access) return (await onboardingDraftIdentity(userId, role)).avatarUrl ?? accountAvatarUrl;
+    return (access.profile.userId === userId ? access.profile.avatarUrl : null) ?? accountAvatarUrl;
+  }
   const [profile] = await db
-    .select({ avatarUrl: table.avatarUrl })
-    .from(table)
-    .where(eq(table.userId, userId))
+    .select({ avatarUrl: jobseekerProfiles.avatarUrl })
+    .from(jobseekerProfiles)
+    .where(eq(jobseekerProfiles.userId, userId))
     .limit(1);
-  return profile?.avatarUrl ?? accountAvatarUrl;
+  if (!profile) return (await onboardingDraftIdentity(userId, role)).avatarUrl ?? accountAvatarUrl;
+  return profile.avatarUrl ?? accountAvatarUrl;
 }
+
+/**
+ * Mid-onboarding there's no profile yet, but the form autosaves a draft —
+ * so the name and photo typed there show in the navbar on every page (not
+ * just on the onboarding page itself), instead of the Google account's.
+ */
+const onboardingDraftIdentity = cache(async (userId: string, role: Role): Promise<{ name: string | null; avatarUrl: string | null }> => {
+  const table = role === "employer" ? employerOnboardingDrafts : jobseekerOnboardingDrafts;
+  const [draft] = await db.select({ data: table.data }).from(table).where(eq(table.userId, userId)).limit(1);
+  const data = (draft?.data ?? {}) as Record<string, unknown>;
+  const name = role === "employer" ? data.contactName : data.fullName;
+  // Only a stored picture — never a not-yet-uploaded data URL.
+  const avatar = data.avatarUrl;
+  return {
+    name: typeof name === "string" && name.trim() ? name.trim() : null,
+    avatarUrl: typeof avatar === "string" && /^(\/uploads\/|https?:\/\/)/.test(avatar) ? avatar : null,
+  };
+});
 
 /**
  * The display name is per-role too — a jobseeker's `fullName` and an
@@ -39,19 +69,19 @@ export async function resolveAvatarUrl(userId: string, role: Role, accountAvatar
  * for whichever role hasn't completed onboarding yet.
  */
 export async function resolveNameForRole(userId: string, role: Role, accountName: string | null) {
-  const [profile] =
-    role === "employer"
-      ? await db
-          .select({ name: employerProfiles.contactName })
-          .from(employerProfiles)
-          .where(eq(employerProfiles.userId, userId))
-          .limit(1)
-      : await db
-          .select({ name: jobseekerProfiles.fullName })
-          .from(jobseekerProfiles)
-          .where(eq(jobseekerProfiles.userId, userId))
-          .limit(1);
-  return profile?.name ?? accountName;
+  if (role === "employer") {
+    // Same per-company rule as resolveAvatarUrl.
+    const access = await getEmployerAccess(userId);
+    if (!access) return (await onboardingDraftIdentity(userId, role)).name ?? accountName;
+    return (access.profile.userId === userId ? access.profile.contactName : null) ?? accountName;
+  }
+  const [profile] = await db
+    .select({ name: jobseekerProfiles.fullName })
+    .from(jobseekerProfiles)
+    .where(eq(jobseekerProfiles.userId, userId))
+    .limit(1);
+  if (!profile) return (await onboardingDraftIdentity(userId, role)).name ?? accountName;
+  return profile.name ?? accountName;
 }
 
 /**
@@ -117,22 +147,44 @@ export async function getJobseekerResumeInfo(
  */
 /**
  * The signed-in employer's job title and team role at whichever company
- * they're currently acting for (see getEmployerAccess). The owner's title
- * lives on their profile (contactPosition); an invited teammate's lives on
- * their own team-member row.
+ * they're currently acting for (see getEmployerAccess), plus that company's
+ * logo — shown as a small badge on their avatar in the navbar. The owner's
+ * title lives on their profile (contactPosition); an invited teammate's
+ * lives on their own team-member row.
  */
-export async function resolveEmployerBadge(userId: string): Promise<{ position: string | null; teamRole: "owner" | "admin" } | null> {
+export async function resolveEmployerBadge(
+  userId: string,
+): Promise<{ position: string | null; teamRole: EmployerRole; companyLogoUrl: string | null } | null> {
   const access = await getEmployerAccess(userId);
   if (!access) return null;
   if (access.role === "owner" && access.profile.userId === userId) {
-    return { position: access.profile.contactPosition, teamRole: "owner" };
+    return { position: access.profile.contactPosition, teamRole: "owner", companyLogoUrl: access.profile.logoUrl };
   }
   const [member] = await db
     .select({ position: employerTeamMembers.position })
     .from(employerTeamMembers)
     .where(and(eq(employerTeamMembers.userId, userId), eq(employerTeamMembers.employerProfileId, access.profile.id)))
     .limit(1);
-  return { position: member?.position ?? null, teamRole: access.role };
+  return { position: member?.position ?? null, teamRole: access.role, companyLogoUrl: access.profile.logoUrl };
+}
+
+/**
+ * Whether the signed-in person's own phone is verified — the jobseeker's
+ * profile phone, or the employer owner's contact phone at the company they're
+ * acting for. A teammate at someone else's company doesn't verify a phone (v1).
+ */
+export async function resolvePhoneVerified(userId: string, role: Role): Promise<boolean> {
+  if (role === "employer") {
+    const access = await getEmployerAccess(userId);
+    if (!access || access.profile.userId !== userId) return false;
+    return isPhoneVerifiedFor(userId, access.profile.contactPhone);
+  }
+  const [profile] = await db
+    .select({ phone: jobseekerProfiles.phone })
+    .from(jobseekerProfiles)
+    .where(eq(jobseekerProfiles.userId, userId))
+    .limit(1);
+  return isPhoneVerifiedFor(userId, profile?.phone);
 }
 
 export async function getAuthUser(): Promise<AuthUser | null> {
@@ -140,17 +192,49 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   if (!session) return null;
 
   const [user] = await db
-    .select({ email: users.email, name: users.name, avatarUrl: users.avatarUrl })
+    .select({
+      email: users.email,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      phoneVerifyBannerDismissedAt: users.phoneVerifyBannerDismissedAt,
+      sampleDataBannerDismissedAt: users.sampleDataBannerDismissedAt,
+    })
     .from(users)
     .where(eq(users.id, session.userId))
     .limit(1);
   if (!user) return null;
 
-  const [avatarUrl, name, badge] = await Promise.all([
+  const [registrantAvatarUrl, registrantName, badge, access, phoneVerified] = await Promise.all([
     resolveAvatarUrl(session.userId, session.role, user.avatarUrl),
     resolveNameForRole(session.userId, session.role, user.name),
     session.role === "employer" ? resolveEmployerBadge(session.userId) : null,
+    session.role === "employer" ? getEmployerAccess(session.userId) : null,
+    resolvePhoneVerified(session.userId, session.role),
   ]);
+  // Acting as a teammate at someone else's company: show their own teammate
+  // details (account name/photo, edited on that company's My Profile) — not
+  // the contact name/photo from a company they registered themselves.
+  const actingAsTeammate = !!access && access.profile.userId !== session.userId;
+  const name = actingAsTeammate ? (user.name ?? registrantName) : registrantName;
+  const avatarUrl = actingAsTeammate ? (user.avatarUrl ?? registrantAvatarUrl) : registrantAvatarUrl;
+  const mayVerifyPhone = (session.role === "jobseeker" || (!!access && access.role === "owner")) && isPhoneVerificationAvailable();
+  // The "Get sample data" bar: same idea as the phone bar — worked out here,
+  // from the same `access` already fetched above, so it's there on the first
+  // frame instead of popping in after a client-side fetch (which used to
+  // shove the page down on every refresh). Worked out alongside the reward
+  // hints (neither needs the other), so the page waits for one round trip.
+  const [hasSampleData, rewards] = await Promise.all([
+    session.role === "employer" && !user.sampleDataBannerDismissedAt && access ? companyHasSampleData(access.profile.id) : true,
+    // Reward campaigns: never for superadmins (they run them). A failure here
+    // must never break the page — the dashboard just shows no reward bits.
+    isSuperadminEmail(user.email)
+      ? null
+      : getRewardHints(session.userId, user.email, session.role, phoneVerified, mayVerifyPhone).catch((err) => {
+          console.error("Failed to load reward hints", err);
+          return null;
+        }),
+  ]);
+  const showSampleDataBar = session.role === "employer" && !user.sampleDataBannerDismissedAt && !!access && !hasSampleData;
   return {
     id: session.userId,
     email: user.email,
@@ -159,5 +243,13 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     role: session.role,
     position: badge?.position ?? null,
     teamRole: badge?.teamRole ?? null,
+    companyLogoUrl: badge?.companyLogoUrl ?? null,
+    phoneVerified,
+    // The "Verify your phone number" bar: for the people who can verify
+    // (jobseekers, and employers at their own company), until they do or
+    // close it. Worked out here so it's there on the first frame.
+    showPhoneVerifyBar: !phoneVerified && !user.phoneVerifyBannerDismissedAt && mayVerifyPhone,
+    showSampleDataBar,
+    rewards,
   };
 }

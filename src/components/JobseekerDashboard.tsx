@@ -6,6 +6,7 @@ import type { AuthUser } from "./AuthModal";
 import ResponsivenessBadge from "./ResponsivenessBadge";
 import SaveJobButton from "./SaveJobButton";
 import type { EmployerResponsiveness } from "@/lib/responsiveness";
+import { formatSalary } from "@/lib/job-posting-options";
 
 type ActivePostingRow = {
   posting: {
@@ -18,6 +19,7 @@ type ActivePostingRow = {
     location: string;
     salaryMin: number | null;
     salaryMax: number | null;
+    salaryPeriod: string;
     skills: string[];
   };
   companyName: string;
@@ -45,6 +47,8 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
   onsite: "Onsite",
@@ -82,7 +86,7 @@ export default function JobseekerDashboard({
             <div className="flex items-center justify-between gap-[8px]">
               <div className="flex items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">My applications</p>
-                <span className="rounded-full bg-[#FFF3D6] px-[10px] py-[3px] text-xs text-brand-gold-dark">
+                <span className="rounded-full bg-brand-gold-soft px-[10px] py-[3px] text-xs text-brand-gold-dark">
                   {applications.length}
                 </span>
               </div>
@@ -137,7 +141,7 @@ export default function JobseekerDashboard({
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <div className="flex items-center gap-[8px]">
               <p className="text-sm text-[#141B2E]">Jobs hiring now</p>
-              <span className="rounded-full bg-[#FFF3D6] px-[10px] py-[3px] text-xs text-brand-gold-dark">
+              <span className="rounded-full bg-brand-gold-soft px-[10px] py-[3px] text-xs text-brand-gold-dark">
                 {activePostings.length}
               </span>
             </div>
@@ -166,9 +170,8 @@ export default function JobseekerDashboard({
                         <span>{WORK_ARRANGEMENT_LABEL[posting.workArrangement] ?? posting.workArrangement}</span>
                         <span className="text-[#C7CDD7]">·</span>
                         <span>
-                          {posting.salaryMin && posting.salaryMax
-                            ? `RM${posting.salaryMin.toLocaleString()}–${posting.salaryMax.toLocaleString()}`
-                            : "Salary not disclosed"}
+                          {formatSalary(posting.salaryMin, posting.salaryMax, posting.salaryPeriod) ??
+                            "Salary not disclosed"}
                         </span>
                       </div>
                       {posting.skills.length > 0 && (
@@ -176,7 +179,7 @@ export default function JobseekerDashboard({
                           {posting.skills.slice(0, 5).map((skill) => (
                             <span
                               key={skill}
-                              className="rounded-full bg-[#FFF3D6] px-[10px] py-[3px] text-xs text-brand-gold-dark"
+                              className="rounded-full bg-brand-gold-soft px-[10px] py-[3px] text-xs text-brand-gold-dark"
                             >
                               {skill}
                             </span>

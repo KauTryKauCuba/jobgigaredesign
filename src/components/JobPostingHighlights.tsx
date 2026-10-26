@@ -3,13 +3,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import Dropdown from "./Dropdown";
+import FeaturedJobAds, { type FeaturedJobAd } from "./FeaturedJobAds";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
 import { SearchIcon } from "./icons";
 import Modal from "./Modal";
-import RichTextContent from "./RichTextContent";
 import SaveJobButton from "./SaveJobButton";
 import { getRevealOffset, getRevealStyle } from "@/lib/cardReveal";
-import { fullPostingAddress } from "@/lib/postingLocation";
+import { formatLanguageRequirement } from "@/lib/languages";
+import { questionType, type CustomAnswer } from "@/lib/screening-questions";
+import { sampleJobAdFill } from "@/lib/sample-job-ads";
+import JobPostingDetails, {
+  DRIVING_LICENSE_LABEL,
+  LANGUAGE_LEVEL_LABEL,
+  PostingCard,
+  toJobPosting,
+  WORK_AUTHORIZATION_LABEL,
+  type ActivePostingRow,
+  type JobPosting,
+} from "./JobPostingDetails";
+
+export type { ActivePostingRow };
+
+/** A live job ad from the server — the card's job details come from the posting itself (see featuredAds below). */
+export type LiveJobAd = {
+  id: string;
+  jobPostingId: string;
+  mediaType: "image" | "video";
+  mediaUrl: string;
+  companyVerified: boolean;
+};
 
 const REPORT_REASONS = [
   { value: "spam", label: "Spam" },
@@ -20,98 +42,6 @@ const REPORT_REASONS = [
   { value: "other", label: "Other" },
 ] as const;
 
-function PlaceholderLogo({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 20 20" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-      <rect x="3" y="7" width="14" height="9" rx="1.6" />
-      <path d="M7 7V5.6C7 4.72 7.72 4 8.6 4h2.8c.88 0 1.6.72 1.6 1.6V7" />
-    </svg>
-  );
-}
-
-// Decorative-only, one-off icons for this card's footer row (no click
-// behavior — this is the public marketing page, not the real listing view).
-function EyeOffIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-      <path d="M2 2l12 12" strokeLinecap="round" />
-      <path d="M7 3.3A6.8 6.8 0 0 1 8 3.2c3.4 0 6.2 2.4 7 4.8-.3.9-.9 1.9-1.7 2.7M4.6 4.7C3.1 5.6 1.9 7 1 8c.9 2.6 3.8 4.8 7 4.8.9 0 1.8-.2 2.5-.5" strokeLinecap="round" />
-      <path d="M6.6 6.6a2 2 0 0 0 2.8 2.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function BookmarkIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-      <path d="M4 2.6c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v10.8l-4-2.6-4 2.6V2.6Z" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CompanyLogo({ url, className = "" }: { url: string | null; className?: string }) {
-  if (!url) return <PlaceholderLogo className={className} />;
-  // Company logos are stored as arbitrary uploaded URLs/data URIs (same
-  // convention as EmployerOnboardingForm's own logo preview) — not a fixed
-  // set of static assets next/image can optimize.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={url} alt="" className={`${className} object-contain`} />;
-}
-
-function PostingCard({
-  posting,
-  selected = false,
-  onClick,
-}: {
-  posting: JobPosting;
-  selected?: boolean;
-  onClick?: () => void;
-}) {
-  const Wrapper = onClick ? "button" : "div";
-  return (
-    <Wrapper
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
-      className={`h-full text-left ${gradientFrameClass("gold")} ${
-        selected ? "ring-1 ring-inset ring-brand-gold-dark" : ""
-      }`}
-    >
-      <div className="flex h-full flex-col gap-[12px] rounded-[19px] bg-white p-[16px]">
-        <div className="flex items-start justify-between gap-[10px]">
-          <div className="min-w-0">
-            <p className="truncate text-sm text-[#141B2E]">{posting.title}</p>
-            <p className="mt-[2px] truncate text-xs text-[#4B5468]">{posting.company}</p>
-            <span className="mt-[8px] inline-flex items-center rounded-full bg-[#E3F9E5] px-[10px] py-[3px] text-xs text-[#1F7A3F]">
-              New to you
-            </span>
-          </div>
-          <div className="flex h-[68px] w-[68px] shrink-0 items-center justify-center">
-            <CompanyLogo url={posting.logoUrl} className="h-[54px] w-[68px]" />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-[2px] text-xs text-[#141B2E]">
-          <div className="flex items-center justify-between gap-[8px]">
-            <span>{posting.location}</span>
-            <span>{posting.jobType}</span>
-          </div>
-          <span>{posting.salary}</span>
-        </div>
-
-        <div className="mt-auto flex items-center justify-between border-t border-black/[0.06] pt-[10px]">
-          <span className="text-xs text-[#9AA3B2]">{posting.postedAgo}</span>
-          <div className="flex items-center gap-[10px] text-[#9AA3B2]">
-            <EyeOffIcon className="h-[15px] w-[15px]" />
-            <BookmarkIcon className="h-[15px] w-[15px]" />
-          </div>
-        </div>
-      </div>
-    </Wrapper>
-  );
-}
-
-type RequiredLanguage = { language: string; level: string };
-
 // A "curated-*" id marks one of CURATED_JOB_POSTINGS below rather than a
 // real job_postings row — used to gate the actions that assume a real
 // posting exists in the DB (view tracking, apply, report).
@@ -119,113 +49,6 @@ function isCurated(id: string): boolean {
   return id.startsWith("curated-");
 }
 
-// Mirrors every field the employer "Post a job" form (EmployerJobsView)
-// collects, so this preview can show the same depth of detail a jobseeker
-// would actually see — not just the summary shown on the card. Built from
-// real `job_postings` rows (status "active") passed down from the server,
-// not mock data.
-type JobPosting = {
-  id: string;
-  title: string;
-  company: string;
-  logoUrl: string | null;
-  jobType: string;
-  location: string;
-  addressLine1?: string | null;
-  addressLine2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  postcode?: string | null;
-  salary: string;
-  postedAgo: string;
-  description: string;
-  responsibilities: string;
-  industry: string;
-  workArrangement: string;
-  openings: number;
-  skills: string[];
-  softSkills: string[];
-  // null means "no requirement" — distinct from 0 ("requires 0 years",
-  // i.e. open to freshers), which is a real, meetable requirement that must
-  // still show the screening question. Coalescing to 0 here previously
-  // collapsed both cases together and hid the question for either.
-  minYearsExperience: number | null;
-  minQualificationTier: string;
-  drivingLicense?: string;
-  languages: RequiredLanguage[];
-  workAuthorizations: string[];
-  screeningEnabled: boolean;
-  // requiredAnswer stays server-side (see CustomScreeningQuestion below) —
-  // a jobseeker shouldn't be able to read the "correct" answer off the page.
-  customQuestions: { id: string; question: string }[];
-};
-
-export type ActivePostingRow = {
-  posting: {
-    id: string;
-    title: string;
-    description: string;
-    responsibilities: string;
-    industry: string | null;
-    employmentType: string;
-    workArrangement: string;
-    location: string;
-    addressLine1: string | null;
-    addressLine2: string | null;
-    city: string | null;
-    state: string | null;
-    postcode: string | null;
-    salaryMin: number | null;
-    salaryMax: number | null;
-    openings: number;
-    skills: string[];
-    softSkills: string[];
-    minYearsExperience: number | null;
-    minQualificationTier: string | null;
-    languages: { language: string; level: string }[];
-    workAuthorizations: string[];
-    drivingLicense: string | null;
-    screeningEnabled: boolean;
-    // Stripped of requiredAnswer before this ever reaches the client (see
-    // jobseeker/page.tsx) — the page's initial props are visible in the
-    // page source, so the "correct" answer can never travel in this shape.
-    customScreeningQuestions: { id: string; question: string }[];
-    createdAt: string;
-  };
-  companyName: string;
-  companyLogoUrl: string | null;
-};
-
-const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
-  full_time: "Full time",
-  part_time: "Part time",
-  contract: "Contract",
-  internship: "Internship",
-};
-const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
-  onsite: "Onsite",
-  hybrid: "Hybrid",
-  remote: "Remote",
-};
-const WORK_AUTHORIZATION_LABEL: Record<string, string> = {
-  citizen: "Malaysian citizen",
-  permanent_resident: "Permanent resident",
-  work_pass_holder: "Work pass holder",
-  needs_sponsorship: "Open to sponsorship",
-};
-const DRIVING_LICENSE_LABEL: Record<string, string> = {
-  b2: "B2 (motorcycle)",
-  b: "B (car)",
-  d: "D (bus)",
-  da: "DA (bus + trailer)",
-  e: "E (lorry)",
-};
-const LANGUAGE_LEVEL_LABEL: Record<string, string> = {
-  basic: "Basic",
-  conversational: "Conversational",
-  fluent: "Fluent",
-  native: "Native",
-};
 // Mirrors QUALIFICATION_TIERS in EmployerJobsView.tsx — the same fixed list
 // the employer picks a minimum from, offered here for the jobseeker to
 // answer with their own highest level.
@@ -237,10 +60,39 @@ type ScreeningAnswers = {
   drivingLicense: string;
   languageLevels: Record<string, string>;
   workAuthorization: string;
-  // Keyed by question id — "" means unanswered, distinct from an explicit
-  // "no", so the modal can tell the two apart while the jobseeker fills it in.
-  customAnswers: Record<string, "" | "yes" | "no">;
+  // Keyed by question id, kept as typed: "yes"/"no" for yes/no questions, the
+  // picked option, a number as text, or free text. Missing/"" means unanswered,
+  // distinct from an explicit "no".
+  customAnswers: Record<string, string>;
 };
+
+// What the apply request carries for each answered question, by its type.
+function customAnswersPayload(
+  answers: Record<string, string>,
+  questions: { id: string; type: "yesno" | "choice" | "number" | "text" }[],
+): CustomAnswer[] {
+  const out: CustomAnswer[] = [];
+  for (const q of questions) {
+    const raw = (answers[q.id] ?? "").trim();
+    if (!raw) continue;
+    switch (questionType(q)) {
+      case "choice":
+        out.push({ questionId: q.id, choice: raw });
+        break;
+      case "number": {
+        const n = Number(raw);
+        if (Number.isFinite(n)) out.push({ questionId: q.id, number: n });
+        break;
+      }
+      case "text":
+        out.push({ questionId: q.id, text: raw });
+        break;
+      default:
+        out.push({ questionId: q.id, answer: raw === "yes" });
+    }
+  }
+  return out;
+}
 
 function blankScreeningAnswers(): ScreeningAnswers {
   return {
@@ -250,55 +102,6 @@ function blankScreeningAnswers(): ScreeningAnswers {
     languageLevels: {},
     workAuthorization: "",
     customAnswers: {},
-  };
-}
-
-function relativeTimeAgo(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
-  if (days <= 0) return "today";
-  if (days === 1) return "1d ago";
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
-
-function toJobPosting(row: ActivePostingRow): JobPosting {
-  const { posting, companyName, companyLogoUrl } = row;
-  return {
-    id: posting.id,
-    title: posting.title,
-    company: companyName,
-    logoUrl: companyLogoUrl,
-    jobType: EMPLOYMENT_TYPE_LABEL[posting.employmentType] ?? posting.employmentType,
-    location: posting.location || "Not specified",
-    addressLine1: posting.addressLine1,
-    addressLine2: posting.addressLine2,
-    city: posting.city,
-    state: posting.state,
-    postcode: posting.postcode,
-    salary:
-      posting.salaryMin && posting.salaryMax
-        ? `RM ${posting.salaryMin.toLocaleString()} – RM ${posting.salaryMax.toLocaleString()} per month`
-        : "Salary not disclosed",
-    postedAgo: relativeTimeAgo(posting.createdAt),
-    description: posting.description,
-    responsibilities: posting.responsibilities,
-    industry: posting.industry ?? "Not specified",
-    workArrangement: WORK_ARRANGEMENT_LABEL[posting.workArrangement] ?? posting.workArrangement,
-    openings: posting.openings,
-    skills: posting.skills,
-    softSkills: posting.softSkills,
-    minYearsExperience: posting.minYearsExperience,
-    minQualificationTier: posting.minQualificationTier ?? "No requirement",
-    // Kept as raw values (not label-mapped here) — the screening modal needs
-    // the same raw values the posting stored to submit as answers; the
-    // display block below maps them to labels at render time instead.
-    drivingLicense: posting.drivingLicense ?? undefined,
-    languages: posting.languages,
-    workAuthorizations: posting.workAuthorizations,
-    screeningEnabled: posting.screeningEnabled,
-    customQuestions: posting.customScreeningQuestions,
   };
 }
 
@@ -480,6 +283,7 @@ export default function JobPostingHighlights({
   appliedJobPostingIds,
   savedJobPostingIds = [],
   hasVideoPitch = false,
+  jobAds = [],
 }: {
   postings: ActivePostingRow[];
   canApply: boolean;
@@ -487,6 +291,8 @@ export default function JobPostingHighlights({
   savedJobPostingIds?: string[];
   // Without one, a nudge to record a pitch appears right after applying.
   hasVideoPitch?: boolean;
+  // Approved job posting ads running today — shown above the search.
+  jobAds?: LiveJobAd[];
 }) {
   const { ref, progress } = useScrollReveal();
   const [searchQuery, setSearchQuery] = useState("");
@@ -522,13 +328,15 @@ export default function JobPostingHighlights({
                 yearsExperience: answers.yearsExperience.trim() ? Number(answers.yearsExperience) : null,
                 qualificationTier: answers.qualificationTier || null,
                 drivingLicense: answers.drivingLicense || null,
+                // Keyed "language|dialect" — one answer per requirement.
                 languages: Object.entries(answers.languageLevels)
                   .filter(([, level]) => level)
-                  .map(([language, level]) => ({ language, level })),
+                  .map(([key, level]) => {
+                    const [language, dialect] = key.split("|");
+                    return { language, dialect: dialect || null, level };
+                  }),
                 workAuthorization: answers.workAuthorization || null,
-                customAnswers: Object.entries(answers.customAnswers)
-                  .filter(([, answer]) => answer)
-                  .map(([questionId, answer]) => ({ questionId, answer: answer === "yes" })),
+                customAnswers: customAnswersPayload(answers.customAnswers, screeningPosting?.customQuestions ?? []),
               }
             : undefined,
         }),
@@ -627,6 +435,64 @@ export default function JobPostingHighlights({
     }
   }
   const selectedPosting = filteredPostings.find((p) => p.id === selectedId) ?? filteredPostings[0];
+
+  // Each ad's job details come from the posting shown on this page (same
+  // labels as its listing); an ad whose posting isn't listed is skipped.
+  // Like the employer page's Company spotlight, sample ads for the curated
+  // showcase companies fill the slots real ads don't use (see
+  // sampleJobAdFill) — a sample opens its sample listing while that's shown.
+  const featuredAds = useMemo<FeaturedJobAd[]>(() => {
+    const byId = new Map(allPostings.map((p) => [p.id, p]));
+    const real = jobAds.flatMap((ad) => {
+      const posting = byId.get(ad.jobPostingId);
+      if (!posting) return [];
+      return [
+        {
+          ...ad,
+          jobTitle: posting.title,
+          companyName: posting.company,
+          companyLogoUrl: posting.logoUrl,
+          location: posting.location,
+          jobType: posting.jobType,
+        },
+      ];
+    });
+    const samples = sampleJobAdFill(
+      real.length,
+      real.map((a) => a.companyName),
+    ).map((sample) => {
+      const listing = CURATED_JOB_POSTINGS.find((p) => p.company === sample.company && p.title === sample.jobTitle);
+      return {
+        id: `sample-${sample.company}-${sample.jobTitle}`,
+        jobPostingId: listing?.id ?? "",
+        mediaType: "image" as const,
+        mediaUrl: sample.artwork,
+        companyVerified: false,
+        jobTitle: sample.jobTitle,
+        companyName: sample.company,
+        companyLogoUrl: sample.companyLogoUrl,
+        location: sample.location,
+        jobType: sample.jobType,
+        selectable: !!listing && byId.has(listing.id),
+      };
+    });
+    return [...real, ...samples];
+  }, [jobAds, allPostings]);
+
+  const resultsRef = useRef<HTMLDivElement>(null);
+  // A featured job opens in the details panel: filters are cleared so it's
+  // in the results, then the results are brought into view.
+  function openFeaturedJob(id: string) {
+    setSearchQuery("");
+    setLocationQuery("");
+    setLocationFilter(locations[0]);
+    setTypeFilter(jobTypes[0]);
+    setSelectedId(id);
+    const wide = window.matchMedia("(min-width: 1024px)").matches;
+    requestAnimationFrame(() =>
+      (wide ? resultsRef : detailRef).current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }
   const screeningPosting = screeningPostingId ? allPostings.find((p) => p.id === screeningPostingId) : undefined;
 
   // Records a unique view once per posting per jobseeker — the endpoint
@@ -657,13 +523,34 @@ export default function JobPostingHighlights({
 
   return (
     <div className="shell relative z-[1] -mt-[32px] pt-[clamp(32px,5vh,56px)] pb-[128px]">
-      <div className="relative z-[1] mx-auto max-w-[560px] text-center">
-        <span className="inline-flex items-center rounded-full bg-[#F1F4F8] px-[14px] py-[7px] text-xs text-[#4B5468]">
-          Latest openings
-        </span>
+      <div className="relative z-[1] mx-auto max-w-[720px] text-center">
+        {/* Wider than a typical centered pill section, so "Jobs posted on
+            JobGiga" fits on one line at the hero's font size.
+            A block wrapper, not just the inline-flex span itself — the h2
+            below is display:inline-block (needed for the gradient-clip
+            trick), so without this the pill and heading can share a text
+            line and get centered together as one group instead of each
+            getting its own row. */}
+        <div>
+          <span className="inline-flex items-center rounded-full bg-brand-gold-soft px-[14px] py-[7px] text-xs text-brand-gold-dark">
+            Latest openings
+          </span>
+        </div>
         <h2
           className="mt-[16px] font-sans font-semibold text-[#141B2E]"
-          style={{ fontSize: "clamp(24px,2.6vw,32px)", lineHeight: 1.15, letterSpacing: "-0.02em" }}
+          style={{
+            fontSize: "clamp(34px, 4vw, 56px)",
+            lineHeight: 1.08,
+            letterSpacing: "-0.02em",
+            // Same size and gold-into-teal gradient as the jobseeker landing
+            // page's own hero heading ("Start With What You Already Have.").
+            backgroundImage: "var(--brand-gradient-jobseeker)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+            display: "inline-block",
+            paddingBottom: "0.08em",
+          }}
         >
           Jobs posted on JobGiga
         </h2>
@@ -698,7 +585,13 @@ export default function JobPostingHighlights({
         </div>
       )}
 
-      <div className="z-30 mx-auto mt-[64px] flex w-full flex-col gap-[14px] bg-[#FDFAF0] py-[14px] lg:sticky lg:top-0">
+      <FeaturedJobAds ads={featuredAds} onSelect={openFeaturedJob} />
+
+      <div
+        className={`z-30 mx-auto flex w-full flex-col gap-[14px] bg-brand-gold-page py-[14px] lg:sticky lg:top-0 ${
+          featuredAds.length > 0 ? "mt-[56px]" : "mt-[64px]"
+        }`}
+      >
         <div
           role="group"
           aria-label="Filter jobs by location and type"
@@ -713,7 +606,7 @@ export default function JobPostingHighlights({
               onClick={() => setLocationFilter(location)}
               className={`flex h-[30px] shrink-0 items-center justify-center whitespace-nowrap rounded-full px-[14px] text-sm transition-colors ${
                 locationFilter === location
-                  ? "bg-[#FFE9A6] text-[#141B2E]"
+                  ? "bg-brand-gold text-[#141B2E]"
                   : "text-[#4B5468] hover:bg-black/[0.03]"
               }`}
             >
@@ -773,7 +666,11 @@ export default function JobPostingHighlights({
       </div>
 
       {selectedPosting && (
-        <div className="relative z-0 mx-auto mt-[32px] grid w-full grid-cols-1 gap-[16px] lg:grid-cols-[340px_1fr] lg:items-start">
+        <div
+          ref={resultsRef}
+          // Clears the sticky search bar above when a featured job scrolls here.
+          className="relative z-0 mx-auto mt-[32px] grid w-full scroll-mt-[16px] grid-cols-1 gap-[16px] lg:scroll-mt-[170px] lg:grid-cols-[340px_1fr] lg:items-start"
+        >
           <div className="flex flex-col gap-[12px] p-[4px]">
             <div
               role="radiogroup"
@@ -811,155 +708,7 @@ export default function JobPostingHighlights({
 
           <div ref={detailRef} className={`scroll-mt-[16px] lg:sticky lg:top-[150px] ${gradientFrameClass("gold")}`}>
             <div className="rounded-[19px] bg-white p-[16px] sm:p-[24px]">
-              <div className="flex items-start justify-between gap-[16px]">
-                <div>
-                  <p className="text-lg text-[#141B2E]">{selectedPosting.title}</p>
-                  <p className="mt-[4px] text-sm text-[#4B5468]">{selectedPosting.company}</p>
-                </div>
-                <div className="flex h-[56px] w-[56px] shrink-0 items-center justify-center">
-                  <CompanyLogo url={selectedPosting.logoUrl} className="h-[44px] w-[56px]" />
-                </div>
-              </div>
-
-              <div className="mt-[16px] flex flex-wrap items-center gap-[8px] text-xs">
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {selectedPosting.industry}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {selectedPosting.location}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {selectedPosting.jobType}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {selectedPosting.workArrangement}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {selectedPosting.salary}
-                </span>
-                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px] text-[#4B5468]">
-                  {selectedPosting.openings} opening{selectedPosting.openings === 1 ? "" : "s"}
-                </span>
-                <span className="text-[#9AA3B2]">Posted {selectedPosting.postedAgo}</span>
-              </div>
-
-              <RichTextContent
-                html={selectedPosting.description}
-                className="mt-[20px] text-sm leading-[22px] text-[#4B5468]"
-              />
-
-              <div className="mt-[20px]">
-                <p className="text-xs text-[#141B2E]">Job description</p>
-                <RichTextContent
-                  html={selectedPosting.responsibilities}
-                  className="mt-[6px] text-sm leading-[22px] text-[#4B5468]"
-                />
-              </div>
-
-              {selectedPosting.skills.length > 0 && (
-                <div className="mt-[20px]">
-                  <p className="text-xs text-[#141B2E]">Skills required</p>
-                  <div className="mt-[8px] flex flex-wrap gap-[6px]">
-                    {selectedPosting.skills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="rounded-full bg-[#FFE9A6] px-[12px] py-[6px] text-xs text-[#141B2E]"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedPosting.softSkills.length > 0 && (
-                <div className="mt-[16px]">
-                  <p className="text-xs text-[#141B2E]">Soft skills</p>
-                  <div className="mt-[8px] flex flex-wrap gap-[6px]">
-                    {selectedPosting.softSkills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="rounded-full bg-[#F1F4F8] px-[12px] py-[6px] text-xs text-[#141B2E]"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedPosting.location && (
-                <div className="mt-[16px]">
-                  <p className="text-xs text-[#141B2E]">Location</p>
-                  <p className="mt-[2px] text-sm text-[#4B5468]">{fullPostingAddress(selectedPosting)}</p>
-                  <iframe
-                    title={`Map for ${selectedPosting.location}`}
-                    src={`https://www.google.com/maps?q=${encodeURIComponent(fullPostingAddress(selectedPosting))}&output=embed`}
-                    loading="lazy"
-                    className="mt-[8px] h-[160px] w-full rounded-[12px] border border-black/[0.08]"
-                  />
-                </div>
-              )}
-
-              {selectedPosting.screeningEnabled && (
-              <div className="mt-[24px] border-t border-black/[0.06] pt-[16px]">
-                <p className="text-sm text-[#141B2E]">Screening requirements</p>
-                <p className="mt-[2px] text-xs text-[#9AA3B2]">
-                  You&rsquo;ll be asked to answer these when you apply.
-                </p>
-                <div className="mt-[12px] grid grid-cols-1 gap-x-[20px] gap-y-[12px] sm:grid-cols-2">
-                  {selectedPosting.minYearsExperience != null && (
-                    <div>
-                      <p className="text-xs text-[#4B5468]">Minimum experience</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {selectedPosting.minYearsExperience} year{selectedPosting.minYearsExperience === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                  )}
-                  {selectedPosting.minQualificationTier !== "No requirement" && (
-                    <div>
-                      <p className="text-xs text-[#4B5468]">Minimum education</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">{selectedPosting.minQualificationTier}</p>
-                    </div>
-                  )}
-                  {selectedPosting.drivingLicense && (
-                    <div>
-                      <p className="text-xs text-[#4B5468]">Driving license</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {DRIVING_LICENSE_LABEL[selectedPosting.drivingLicense] ?? selectedPosting.drivingLicense}
-                      </p>
-                    </div>
-                  )}
-                  {selectedPosting.languages.length > 0 && (
-                    <div>
-                      <p className="text-xs text-[#4B5468]">Languages required</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {selectedPosting.languages
-                          .map((l) => `${l.language} (${LANGUAGE_LEVEL_LABEL[l.level] ?? l.level})`)
-                          .join(", ")}
-                      </p>
-                    </div>
-                  )}
-                  {selectedPosting.workAuthorizations.length > 0 && (
-                    <div className="sm:col-span-2">
-                      <p className="text-xs text-[#4B5468]">Accepted work authorization</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {selectedPosting.workAuthorizations.map((w) => WORK_AUTHORIZATION_LABEL[w] ?? w).join(", ")}
-                      </p>
-                    </div>
-                  )}
-                  {selectedPosting.customQuestions.length > 0 && (
-                    <div className="sm:col-span-2">
-                      <p className="text-xs text-[#4B5468]">Additional questions</p>
-                      <p className="mt-[2px] text-sm text-[#141B2E]">
-                        {selectedPosting.customQuestions.length} yes/no question
-                        {selectedPosting.customQuestions.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              )}
+              <JobPostingDetails posting={selectedPosting} />
 
               {(() => {
                 // Curated postings have no real job_postings row behind
@@ -989,7 +738,7 @@ export default function JobPostingHighlights({
                         type="button"
                         disabled={applied || applying}
                         onClick={() => startApply(selectedPosting)}
-                        className="flex h-[42px] items-center rounded-full bg-[#FFE9A6] px-[22px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex h-[42px] items-center rounded-full bg-brand-gold px-[22px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {applied ? "Applied" : applying ? "Applying…" : "Apply now"}
                       </button>
@@ -1011,7 +760,7 @@ export default function JobPostingHighlights({
                     </div>
                     {applyError && <p className="mt-[8px] text-xs text-red-500">{applyError}</p>}
                     {applied && !hasVideoPitch && (
-                      <p className="mt-[10px] rounded-[12px] bg-[#FFF3D6] px-[12px] py-[8px] text-xs text-[#4B5468]">
+                      <p className="mt-[10px] rounded-[12px] bg-brand-gold-soft px-[12px] py-[8px] text-xs text-[#4B5468]">
                         🎥 Want to stand out? Add a 60-second video pitch — employers see it first.{" "}
                         <a href="/jobseeker/profile#video-pitch" className="text-brand-gold-dark underline">
                           Record it now
@@ -1061,7 +810,7 @@ export default function JobPostingHighlights({
                 role="radio"
                 aria-checked={reportReason === r.value}
                 onClick={() => setReportReason(r.value)}
-                className="h-[34px] rounded-full border border-black/[0.1] text-sm text-[#4B5468] transition-colors aria-checked:border-brand-gold-dark aria-checked:bg-[#FFF3D6] aria-checked:text-[#A67C00]"
+                className="h-[34px] rounded-full border border-black/[0.1] text-sm text-[#4B5468] transition-colors aria-checked:border-brand-gold-dark aria-checked:bg-brand-gold-soft aria-checked:text-brand-gold-dark"
               >
                 {r.label}
               </button>
@@ -1083,7 +832,7 @@ export default function JobPostingHighlights({
               type="button"
               disabled={!reportReason || reporting}
               onClick={submitReport}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {reporting ? "Submitting…" : "Submit report"}
             </button>
@@ -1160,26 +909,30 @@ export default function JobPostingHighlights({
               </label>
             )}
 
-            {screeningPosting.languages.map((required) => (
-              <label key={required.language} className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
-                {required.language} (requires {LANGUAGE_LEVEL_LABEL[required.level] ?? required.level}+)
-                <Dropdown
-                  label={`${required.language} level`}
-                  value={screeningAnswers.languageLevels[required.language] ?? ""}
-                  accent="gold"
-                  options={[
-                    { value: "", label: "Select" },
-                    ...Object.entries(LANGUAGE_LEVEL_LABEL).map(([value, label]) => ({ value, label })),
-                  ]}
-                  onChange={(value) =>
-                    setScreeningAnswers((prev) => ({
-                      ...prev,
-                      languageLevels: { ...prev.languageLevels, [required.language]: value },
-                    }))
-                  }
-                />
-              </label>
-            ))}
+            {(screeningPosting.screeningLanguages ?? screeningPosting.languages).map((required) => {
+              const answerKey = `${required.language}|${required.dialect ?? ""}`;
+              const name = formatLanguageRequirement(required.language, required.dialect);
+              return (
+                <label key={answerKey} className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                  {name} (requires {LANGUAGE_LEVEL_LABEL[required.level] ?? required.level}+)
+                  <Dropdown
+                    label={`${name} level`}
+                    value={screeningAnswers.languageLevels[answerKey] ?? ""}
+                    accent="gold"
+                    options={[
+                      { value: "", label: "Select" },
+                      ...Object.entries(LANGUAGE_LEVEL_LABEL).map(([value, label]) => ({ value, label })),
+                    ]}
+                    onChange={(value) =>
+                      setScreeningAnswers((prev) => ({
+                        ...prev,
+                        languageLevels: { ...prev.languageLevels, [answerKey]: value },
+                      }))
+                    }
+                  />
+                </label>
+              );
+            })}
 
             {screeningPosting.workAuthorizations.length > 0 && (
               <label className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
@@ -1198,29 +951,65 @@ export default function JobPostingHighlights({
               </label>
             )}
 
-            {screeningPosting.customQuestions.map((q) => (
-              <div key={q.id} className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
-                {q.question}
-                <div className="flex gap-[8px]">
-                  {(["yes", "no"] as const).map((choice) => (
-                    <button
-                      key={choice}
-                      type="button"
-                      aria-pressed={screeningAnswers.customAnswers[q.id] === choice}
-                      onClick={() =>
-                        setScreeningAnswers((prev) => ({
-                          ...prev,
-                          customAnswers: { ...prev.customAnswers, [q.id]: choice },
-                        }))
-                      }
-                      className="h-[34px] flex-1 rounded-[10px] border border-black/[0.1] text-sm text-[#4B5468] transition-colors aria-pressed:border-brand-gold-dark aria-pressed:bg-[#FFF3D6] aria-pressed:text-[#A67C00]"
-                    >
-                      {choice === "yes" ? "Yes" : "No"}
-                    </button>
-                  ))}
+            {screeningPosting.customQuestions.map((q) => {
+              const setAnswer = (value: string) =>
+                setScreeningAnswers((prev) => ({ ...prev, customAnswers: { ...prev.customAnswers, [q.id]: value } }));
+              const value = screeningAnswers.customAnswers[q.id] ?? "";
+              const type = questionType(q);
+              const pillClass =
+                "min-h-[34px] rounded-[10px] border border-black/[0.1] px-[12px] text-sm text-[#4B5468] transition-colors aria-pressed:border-brand-gold-dark aria-pressed:bg-brand-gold-soft aria-pressed:text-brand-gold-dark";
+              return (
+                <div key={q.id} className="flex flex-col gap-[4px] text-xs text-[#4B5468]">
+                  {q.question}
+                  {type === "choice" ? (
+                    <div className="flex flex-wrap gap-[8px]">
+                      {(q.options ?? []).map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          aria-pressed={value === option}
+                          onClick={() => setAnswer(option)}
+                          className={pillClass}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  ) : type === "number" ? (
+                    <input
+                      type="number"
+                      value={value}
+                      onChange={(e) => setAnswer(e.target.value)}
+                      aria-label={q.question}
+                      className={formInputClass("gold")}
+                    />
+                  ) : type === "text" ? (
+                    <textarea
+                      value={value}
+                      onChange={(e) => setAnswer(e.target.value)}
+                      aria-label={q.question}
+                      rows={3}
+                      maxLength={1000}
+                      className="w-full resize-none rounded-[12px] border border-black/[0.1] px-[14px] py-[10px] text-sm text-[#141B2E] outline-none placeholder:text-[#9AA3B2] focus:border-brand-gold-dark"
+                    />
+                  ) : (
+                    <div className="flex gap-[8px]">
+                      {(["yes", "no"] as const).map((choice) => (
+                        <button
+                          key={choice}
+                          type="button"
+                          aria-pressed={value === choice}
+                          onClick={() => setAnswer(choice)}
+                          className={`${pillClass} flex-1`}
+                        >
+                          {choice === "yes" ? "Yes" : "No"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {applyError && <p className="mt-[10px] text-xs text-red-500">{applyError}</p>}
@@ -1230,7 +1019,7 @@ export default function JobPostingHighlights({
               type="button"
               disabled={applying}
               onClick={() => apply(screeningPosting.id, screeningAnswers)}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {applying ? "Submitting…" : "Submit and apply"}
             </button>

@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import AnimatedRibbon from "@/components/AnimatedRibbon";
 import FloatingAssistant from "@/components/FloatingAssistant";
 import Footer from "@/components/Footer";
@@ -7,25 +6,31 @@ import JobPostingBadges from "@/components/JobPostingBadges";
 import JobPostingHighlights from "@/components/JobPostingHighlights";
 import JobseekerHowItWorks from "@/components/JobseekerHowItWorks";
 import Navbar from "@/components/Navbar";
+import WelcomeModal from "@/components/WelcomeModal";
 import ResumeUpload from "@/components/ResumeUpload";
 import { getAuthUser, getJobseekerResumeInfo } from "@/lib/auth-user";
+import { getLiveJobAds } from "@/lib/job-ads";
 import { getAppliedJobPostingIds, getJobseekerProfileId } from "@/lib/job-applications";
 import { getJobPostingsByStatus, stripCustomQuestionAnswers } from "@/lib/job-postings";
-import { getOnboardingRedirect } from "@/lib/onboarding";
+import { getPostingContacts } from "@/lib/posting-extras";
 import { getSavedJobPostingIds } from "@/lib/saved-jobs";
 import { getVideoPitchForProfile } from "@/lib/video-pitch";
 import { getSession } from "@/lib/session";
+import { getWelcomeImageUrl } from "@/lib/welcome-images";
 
 export default async function JobseekerPage() {
-  const [onboardingRedirect, authUser, activePostings] = await Promise.all([
-    getOnboardingRedirect(),
+  const [authUser, activePostings, liveJobAds, welcomeImage] = await Promise.all([
     getAuthUser(),
     getJobPostingsByStatus("active"),
+    getLiveJobAds(),
+    getWelcomeImageUrl("jobseeker"),
   ]);
-  if (onboardingRedirect) redirect(onboardingRedirect);
+  // Each posting's "Posted by" contact — public details only.
+  const contacts = await getPostingContacts(activePostings.map((row) => row.posting));
 
   // This is the public marketing page — like "/employer", it never
-  // auto-redirects a signed-in visitor away. The "Jobseeker" toggle above is
+  // auto-redirects a signed-in visitor away, not even one still in onboarding
+  // (the navbar logo brings them here). The "Jobseeker" toggle above is
   // a "preview this view" control, not a "take me to my area" shortcut; the
   // navbar's own "Dashboard" button (and the post-sign-in redirect) are what
   // actually take a jobseeker to "/jobseeker/dashboard".
@@ -44,8 +49,9 @@ export default async function JobseekerPage() {
     : [[], [], null];
 
   return (
-    <main id="top" className="flex min-h-[100svh] flex-col overflow-x-clip bg-[#FDFAF0] pb-[92px]">
+    <main id="top" className="flex min-h-[100svh] flex-col overflow-x-clip bg-brand-gold-page pb-[92px]">
       <Navbar initialUser={authUser} pageRole="jobseeker" />
+      {!authUser && <WelcomeModal role="jobseeker" image={welcomeImage} />}
       <Hero
         heading={
           <>
@@ -55,6 +61,10 @@ export default async function JobseekerPage() {
           </>
         }
         subheading="Then review it. Refine it. Make it yours."
+        // The jobseeker gradient — the employer one mirrored: deep gold
+        // (the jobseeker accent) flowing into teal, dark enough to read on cream.
+        // (Defined in globals.css; a site theme can replace it.)
+        headingGradient="var(--brand-gradient-jobseeker)"
         overlay={<JobPostingBadges />}
         belowNav={<ResumeUpload existingResume={existingResume} />}
       />
@@ -62,12 +72,27 @@ export default async function JobseekerPage() {
       <AnimatedRibbon accent="gold" />
       <JobPostingHighlights
         postings={JSON.parse(
-          JSON.stringify(activePostings.map((row) => ({ ...row, posting: stripCustomQuestionAnswers(row.posting) }))),
+          JSON.stringify(
+            activePostings.map((row) => ({
+              ...row,
+              posting: {
+                ...stripCustomQuestionAnswers(row.posting),
+                contact: contacts.get(`${row.posting.employerProfileId}:${row.posting.contactUserId}`) ?? null,
+              },
+            })),
+          ),
         )}
         canApply={authUser?.role === "jobseeker"}
         appliedJobPostingIds={appliedJobPostingIds}
         savedJobPostingIds={savedJobPostingIds}
         hasVideoPitch={!!videoPitch}
+        jobAds={liveJobAds.map((ad) => ({
+          id: ad.id,
+          jobPostingId: ad.jobPostingId,
+          mediaType: ad.mediaType,
+          mediaUrl: ad.mediaUrl,
+          companyVerified: ad.companyVerified,
+        }))}
       />
       <Footer accent="gold" />
       {/* Clipped to its top half and pulled down past the floating-chat

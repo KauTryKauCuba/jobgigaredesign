@@ -16,7 +16,7 @@ import {
   type ChatScope,
 } from "@/lib/assistant-history";
 import type { AssistantAction } from "@/lib/assistant-types";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getSession } from "@/lib/session";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -274,9 +274,9 @@ export async function POST(request: Request) {
 
   try {
     if (session?.role === "employer") {
-      const access = await getEmployerAccess(session.userId);
+      const access = await getScopedEmployerAccess(session.userId);
       if (access) {
-        const context = await buildEmployerContext(session.userId, access.profile, pathname);
+        const context = await buildEmployerContext(session.userId, access.profile, pathname, access.scope);
         employerProfileId = access.profile.id;
         employerPostings = context.postings;
         systemPrompt = employerSystemPrompt(context.text);

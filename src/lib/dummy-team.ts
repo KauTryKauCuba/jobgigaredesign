@@ -1,3 +1,5 @@
+import type { TeamRole } from "./team-roles";
+
 // Shared between the "Get/Remove dummy data" button's team-dummy API route
 // (src/app/api/employer/team/dummy) and EmployerJobsView's own hasDummyData
 // detection, so both agree on exactly what counts as a dummy teammate row —
@@ -52,16 +54,82 @@ export const DUMMY_TEAM_ROSTER: {
   name: string;
   position: string;
   status: "active" | "pending";
+  // Team role — Admin when unset. A couple of Hiring managers and Panel
+  // members so every Team tab has someone in it.
+  role?: TeamRole;
   avatarUrl: string | null;
+  // Only meaningful (and only set) for "active" rows — a pending invite
+  // hasn't gone through the "About you" welcome step yet, so it has no
+  // hiring role or phone, same as a real not-yet-accepted invite.
+  hiringRole?: string;
+  phone?: string;
+  // Sample job postings (DUMMY_JOB_POSTINGS titles) this teammate works on:
+  // a Hiring manager is assigned to them, and anyone active sits on their
+  // sample interview panels (with whoever added the sample data).
+  jobTitles?: string[];
 }[] = [
-  { name: "Aisyah Rahman", position: "Talent Acquisition Manager", status: "active", avatarUrl: dummyTeamAvatarUrl(20) },
-  { name: "Farid Hassan", position: "HR Manager", status: "active", avatarUrl: dummyTeamAvatarUrl(21) },
-  { name: "Nurul Huda", position: "HR Executive", status: "active", avatarUrl: dummyTeamAvatarUrl(22) },
-  { name: "Kevin Tan", position: "Recruiter", status: "active", avatarUrl: dummyTeamAvatarUrl(23) },
-  { name: "Priya Ramesh", position: "HR Business Partner", status: "active", avatarUrl: dummyTeamAvatarUrl(24) },
-  { name: "Daniel Lee", position: "People Operations Manager", status: "active", avatarUrl: dummyTeamAvatarUrl(25) },
+  {
+    name: "Aisyah Rahman",
+    position: "Talent Acquisition Manager",
+    status: "active",
+    avatarUrl: dummyTeamAvatarUrl(20),
+    hiringRole: "Talent Acquisition / Recruiter",
+    phone: "+60123456001",
+    jobTitles: ["Registered Nurse", "Temporary Event Crew"],
+  },
+  {
+    name: "Farid Hassan",
+    position: "HR Manager",
+    status: "active",
+    avatarUrl: dummyTeamAvatarUrl(21),
+    hiringRole: "HR Manager",
+    phone: "+60123456002",
+  },
+  {
+    name: "Nurul Huda",
+    position: "HR Executive",
+    status: "active",
+    avatarUrl: dummyTeamAvatarUrl(22),
+    hiringRole: "HR Executive",
+    phone: "+60123456003",
+  },
+  {
+    name: "Kevin Tan",
+    position: "Engineering Manager",
+    role: "hiring_manager",
+    status: "active",
+    avatarUrl: dummyTeamAvatarUrl(23),
+    hiringRole: "Hiring Manager",
+    phone: "+60123456004",
+    jobTitles: ["Frontend Engineer", "Backend Engineer", "Freelance UI/UX Designer"],
+  },
+  {
+    name: "Priya Ramesh",
+    position: "Senior Software Engineer",
+    role: "panel",
+    status: "active",
+    avatarUrl: dummyTeamAvatarUrl(24),
+    hiringRole: "Other",
+    phone: "+60123456005",
+    jobTitles: ["Frontend Engineer", "Backend Engineer"],
+  },
+  {
+    name: "Daniel Lee",
+    position: "People Operations Manager",
+    status: "active",
+    avatarUrl: dummyTeamAvatarUrl(25),
+    hiringRole: "Director / C-level",
+    phone: "+60123456006",
+  },
   { name: "Zarina Yusof", position: "HR Director", status: "pending", avatarUrl: null },
-  { name: "Amirul Hakim", position: "Recruitment Consultant", status: "pending", avatarUrl: null },
+  {
+    name: "Amirul Hakim",
+    position: "Sales Manager",
+    role: "hiring_manager",
+    status: "pending",
+    avatarUrl: null,
+    jobTitles: ["Store Supervisor", "Telesales Executive"],
+  },
   { name: "Chong Mei Yee", position: "HR Officer", status: "pending", avatarUrl: null },
-  { name: "Haziq Rizal", position: "Office Manager", status: "pending", avatarUrl: null },
+  { name: "Haziq Rizal", position: "Operations Manager", role: "panel", status: "pending", avatarUrl: null },
 ];

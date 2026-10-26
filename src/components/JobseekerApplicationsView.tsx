@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import JobseekerDashboardShell from "./JobseekerDashboardShell";
 import { gradientFrameClass } from "./formStyles";
@@ -19,6 +20,7 @@ import InterviewCountdown from "./InterviewCountdown";
 import type { AuthUser } from "./AuthModal";
 import ApplicationTracker from "./ApplicationTracker";
 import type { ApplicationEvent, EmployerResponsiveness } from "@/lib/responsiveness";
+import type { AiInterviewStatus } from "@/lib/ai-interview-shared";
 
 type ApplicationRow = {
   application: {
@@ -38,6 +40,8 @@ type ApplicationRow = {
   // Step-by-step history and the employer's typical reply time, for the tracker.
   events: ApplicationEvent[];
   responsiveness: EmployerResponsiveness | null;
+  // An AI interview the employer sent for this application, if any.
+  aiInterview?: { id: string; status: AiInterviewStatus; deadlineAt: string } | null;
 };
 
 const STATUS_ORDER = [
@@ -190,7 +194,7 @@ export default function JobseekerApplicationsView({
               </p>
             ) : (
               <div className="mt-[10px] flex flex-col gap-[10px]">
-                {rows.map(({ application, posting, companyName, events, responsiveness }) => {
+                {rows.map(({ application, posting, companyName, events, responsiveness, aiInterview }) => {
                   const color = APPLICATION_STATUS_COLOR[application.status] ?? APPLICATION_STATUS_COLOR.applied;
                   const details = application.interviewDetails;
                   const responseStatus = application.interviewResponseStatus;
@@ -228,6 +232,29 @@ export default function JobseekerApplicationsView({
                         responsiveness={responsiveness}
                         now={now}
                       />
+
+                      {aiInterview && aiInterview.status !== "cancelled" && (
+                        <div className="flex flex-col gap-[8px] rounded-[12px] bg-brand-gold-soft p-[12px] sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-xs text-brand-gold-dark">AI interview</p>
+                            <p className="mt-[2px] text-xs text-[#4B5468]">
+                              {aiInterview.status === "invited" || aiInterview.status === "in_progress"
+                                ? `${companyName} sent you 5 short questions about the job. Finish by ${new Date(aiInterview.deadlineAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.`
+                                : aiInterview.status === "expired"
+                                  ? "The deadline passed. Ask the employer if they can give you more time."
+                                  : `You've finished it. ${companyName} will review your answers.`}
+                            </p>
+                          </div>
+                          {(aiInterview.status === "invited" || aiInterview.status === "in_progress") && (
+                            <Link
+                              href={`/jobseeker/ai-interview/${aiInterview.id}`}
+                              className="flex h-[34px] shrink-0 items-center justify-center rounded-full bg-brand-gold px-[18px] text-xs text-[#141B2E] hover:opacity-90"
+                            >
+                              {aiInterview.status === "in_progress" ? "Continue" : "Start interview"}
+                            </Link>
+                          )}
+                        </div>
+                      )}
 
                       {(application.status === "interview" ||
                         application.status === "interviewed" ||
@@ -318,7 +345,7 @@ export default function JobseekerApplicationsView({
                               </div>
                             )}
                           {application.jobseekerConfirmedAttendance && (
-                            <p className="mt-[10px] text-xs text-[#008990]">
+                            <p className="mt-[10px] text-xs text-brand-teal-dark">
                               ✓ You confirmed attendance
                             </p>
                           )}

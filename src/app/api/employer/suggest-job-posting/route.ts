@@ -2,13 +2,14 @@ import { after, NextResponse } from "next/server";
 import { logAiUsage } from "@/lib/ai-usage";
 import { getSession } from "@/lib/session";
 import { INDUSTRIES } from "@/lib/industries";
+import { normalizeLanguageRequirements } from "@/lib/languages";
 
 const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
 const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
 const RETRY_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 20_000;
 
-const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"] as const;
+const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship", "freelance", "temporary"] as const;
 const WORK_ARRANGEMENTS = ["remote", "hybrid", "onsite"] as const;
 const QUALIFICATION_TIERS = ["SPM", "STPM", "Diploma", "Degree", "Master", "PhD", "Other"] as const;
 const WORK_AUTHORIZATIONS = [
@@ -93,6 +94,8 @@ function validateSuggestion(raw: unknown): SuggestionResult {
         })
         .filter((entry): entry is { language: string; level: (typeof LANGUAGE_LEVELS)[number] } => entry !== null)
     : [];
+  // "Malay" → Malay (any dialect); "Mandarin" → Chinese, Mandarin specifically.
+  const normalizedLanguages = normalizeLanguageRequirements(languages);
 
   const workAuthorizations = Array.isArray(obj.workAuthorizations)
     ? obj.workAuthorizations.filter((v): v is (typeof WORK_AUTHORIZATIONS)[number] =>
@@ -122,7 +125,7 @@ function validateSuggestion(raw: unknown): SuggestionResult {
       : [],
     minYearsExperience: nonNegativeInt(obj.minYearsExperience),
     minQualificationTier: isOneOf(obj.minQualificationTier, QUALIFICATION_TIERS) ? obj.minQualificationTier : null,
-    languages,
+    languages: normalizedLanguages,
     workAuthorizations,
     drivingLicense: isOneOf(obj.drivingLicense, DRIVING_LICENSES) ? obj.drivingLicense : null,
   };

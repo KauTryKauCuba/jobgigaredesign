@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#EEEBFE"/>
+  <circle cx="900" cy="190" r="300" fill="#6551F3" opacity="0.16"/>
+  <circle cx="900" cy="190" r="170" fill="#6551F3" opacity="0.22"/>
+  <circle cx="120" cy="1000" r="240" fill="#24104F" opacity="0.06"/>
+  <g font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="96" y="300" width="262" height="56" rx="28" fill="#6551F3" fill-opacity="0.14"/>
+    <text x="227" y="337" text-anchor="middle" font-size="26" font-weight="600" letter-spacing="3" fill="#6551F3">WE&#8217;RE HIRING</text>
+    <text x="96" y="476" font-size="96" font-weight="700" fill="#24104F">Product</text>
+    <text x="96" y="582" font-size="96" font-weight="700" fill="#24104F">Designer</text>
+    <text x="96" y="660" font-size="36" fill="#24104F" fill-opacity="0.75">Kuala Lumpur · RM 6,500 – RM 9,500</text>
+    <rect x="96" y="830" width="372" height="88" rx="44" fill="#24104F"/>
+    <text x="282" y="886" text-anchor="middle" font-size="34" font-weight="600" fill="#EEEBFE">Apply on JobGiga</text>
+  </g>
+</svg>

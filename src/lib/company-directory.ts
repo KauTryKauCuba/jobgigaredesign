@@ -5,6 +5,7 @@ import { db } from "./db";
 import { employerAddresses, employerProfiles, jobPostings } from "./db/schema";
 import { getEmployerResponsiveness } from "./application-events";
 import { getEarnedBadges, type BadgeKey } from "./badges";
+import { isPhoneVerifiedFor } from "./phone-verification";
 import { isUuid } from "./uuid";
 
 // The public "Find companies" directory. Only public-facing company details
@@ -47,6 +48,7 @@ export async function getCompanyDirectory() {
       location: headlineLocation.as("location"),
       openRoles: openRoles.as("open_roles"),
       badgeKeys: badgeKeys.as("badge_keys"),
+      ssmVerified: sql<boolean>`${employerProfiles.ssmVerificationStatus} = 'verified'`.as("ssm_verified"),
     })
     .from(employerProfiles)
     .orderBy(desc(openRoles), asc(employerProfiles.companyName));
@@ -88,7 +90,13 @@ export const getPublicCompany = cache(async (id: string) => {
       companyFacebook: employerProfiles.companyFacebook,
       companyInstagram: employerProfiles.companyInstagram,
       officePhotoUrl: employerProfiles.officePhotoUrl,
+      galleryPhotos: employerProfiles.galleryPhotos,
+      facilities: employerProfiles.facilities,
+      dressCode: employerProfiles.dressCode,
+      awards: employerProfiles.awards,
+      leaders: employerProfiles.leaders,
       location: headlineLocation.as("location"),
+      ssmVerified: sql<boolean>`${employerProfiles.ssmVerificationStatus} = 'verified'`.as("ssm_verified"),
     })
     .from(employerProfiles)
     .where(eq(employerProfiles.id, id))
@@ -101,6 +109,7 @@ export const getPublicCompany = cache(async (id: string) => {
       label: employerAddresses.label,
       addressLine1: employerAddresses.addressLine1,
       addressLine2: employerAddresses.addressLine2,
+      area: employerAddresses.area,
       city: employerAddresses.city,
       state: employerAddresses.state,
       postcode: employerAddresses.postcode,
@@ -119,17 +128,28 @@ export const getPublicCompany = cache(async (id: string) => {
       workArrangement: jobPostings.workArrangement,
       salaryMin: jobPostings.salaryMin,
       salaryMax: jobPostings.salaryMax,
+      salaryPeriod: jobPostings.salaryPeriod,
+      showSalary: jobPostings.showSalary,
       createdAt: jobPostings.createdAt,
     })
     .from(jobPostings)
     .where(and(eq(jobPostings.employerProfileId, id), eq(jobPostings.status, "active")))
     .orderBy(desc(jobPostings.createdAt));
 
-  const [addresses, jobs, badges, responsiveness] = await Promise.all([
+  // Whether the company's owner verified their phone — only the yes/no, never the number.
+  const contactVerifiedQuery = db
+    .select({ userId: employerProfiles.userId, phone: employerProfiles.contactPhone })
+    .from(employerProfiles)
+    .where(eq(employerProfiles.id, id))
+    .limit(1)
+    .then(([owner]) => (owner ? isPhoneVerifiedFor(owner.userId, owner.phone) : false));
+
+  const [addresses, jobs, badges, responsiveness, contactVerified] = await Promise.all([
     addressesQuery,
     jobsQuery,
     getEarnedBadges(id),
     getEmployerResponsiveness([id]),
+    contactVerifiedQuery,
   ]);
   return {
     company,
@@ -137,6 +157,7 @@ export const getPublicCompany = cache(async (id: string) => {
     jobs,
     badges,
     responsiveness: responsiveness.get(id) ?? null,
+    contactVerified,
   };
 });
 

@@ -6,6 +6,7 @@ import { logAiUsage } from "./ai-usage";
 import { db } from "./db";
 import { aiUsageLogs } from "./db/schema";
 import type { getJobseekerProfile } from "./jobseeker-profile";
+import { formatSpokenLanguage } from "./languages";
 import { htmlToLines } from "./poster-content";
 import { plainTextToHtml } from "./richText";
 import { sanitizeDescriptionHtml } from "./sanitizeHtml";
@@ -67,7 +68,7 @@ function buildUserContent(profile: Profile, companyName: string, jobTitle: strin
     .map((c) => `- ${joinParts([c.name, c.issuer, c.year], ", ")}`)
     .join("\n");
   const languages = profile.languages
-    .map((l) => `${l.language} (spoken: ${l.spokenLevel}, written: ${l.writtenLevel})`)
+    .map((l) => `${formatSpokenLanguage(l.language, l.dialects)} (spoken: ${l.spokenLevel}, written: ${l.writtenLevel})`)
     .join(", ");
   const bio = profile.bio ? htmlToLines(profile.bio, 8).join(" ") : "";
 

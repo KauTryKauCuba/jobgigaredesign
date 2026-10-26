@@ -2,12 +2,13 @@ import { redirect } from "next/navigation";
 import EmployerDashboard from "@/components/EmployerDashboard";
 import { getAuthUser } from "@/lib/auth-user";
 import { buildDashboardData } from "@/lib/employer-dashboard";
-import { getEmployerProfileForUser } from "@/lib/employer-profile";
+import { getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getApplicationsForEmployer } from "@/lib/job-applications";
 import { getApplicantCounts, getJobPostingsForEmployer, getViewCounts } from "@/lib/job-postings";
 import { withCriteriaDefaults } from "@/lib/matching";
 import { getOnboardingRedirect } from "@/lib/onboarding";
 import { getSession } from "@/lib/session";
+import { employerHomePath } from "@/lib/team-roles";
 
 export default async function EmployerDashboardPage() {
   const session = await getSession();
@@ -19,13 +20,20 @@ export default async function EmployerDashboardPage() {
   const authUser = await getAuthUser();
   if (!authUser) redirect("/employer");
 
-  const profile = await getEmployerProfileForUser(session.userId);
+  const access = await getScopedEmployerAccess(session.userId);
+  // A Panel member's dashboard is their interviews — they have no postings.
+  if (access?.role === "panel") redirect(employerHomePath("panel"));
+  const profile = access?.profile ?? null;
 
   let dashboardData = null;
   let loadError = false;
   try {
-    const [applications, postings] = profile
-      ? await Promise.all([getApplicationsForEmployer(profile.id), getJobPostingsForEmployer(profile.id)])
+    // A Hiring manager's dashboard covers only their own postings.
+    const [applications, postings] = access
+      ? await Promise.all([
+          getApplicationsForEmployer(access.profile.id, access.scope),
+          getJobPostingsForEmployer(access.profile.id, access.scope),
+        ])
       : [[], []];
 
     const postingIds = postings.map((p) => p.id);

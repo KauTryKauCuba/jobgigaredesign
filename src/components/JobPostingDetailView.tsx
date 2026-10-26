@@ -12,6 +12,10 @@ import { relativeTimeAgo } from "@/lib/applicationStatus";
 import { fullPostingAddress } from "@/lib/postingLocation";
 import type { EmployerResponsiveness } from "@/lib/responsiveness";
 import type { AuthUser } from "./AuthModal";
+import PostingConditions from "./PostingConditions";
+import { formatSalary, officeDaysLabel, startAvailabilityLabel } from "@/lib/job-posting-options";
+import { formatLanguageRequirement } from "@/lib/languages";
+import type { PostingContact } from "@/lib/posting-contact-types";
 
 type Posting = {
   id: string;
@@ -24,17 +28,25 @@ type Posting = {
   location: string;
   addressLine1: string | null;
   addressLine2: string | null;
+  area?: string | null;
   city: string | null;
   state: string | null;
   postcode: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
+  salaryPeriod: string;
   openings: number;
   skills: string[];
   softSkills: string[];
   minYearsExperience: number | null;
   minQualificationTier: string | null;
-  languages: { language: string; level: string }[];
+  languages: { language: string; dialect?: string | null; level: string }[];
+  askLanguages?: boolean;
+  benefits?: string[];
+  startAvailability?: string | null;
+  workingHours?: string | null;
+  officeDaysPerWeek?: number | null;
+  contact?: PostingContact | null;
   workAuthorizations: string[];
   drivingLicense: string | null;
   screeningEnabled: boolean;
@@ -46,6 +58,8 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
   onsite: "Onsite",
@@ -85,7 +99,7 @@ const BREAKDOWN_LABELS: { key: keyof MatchBreakdown; label: string }[] = [
 
 function matchBand(score: number): { label: string; bg: string; text: string } {
   if (score >= 80) return { label: "Strong match", bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]" };
-  if (score >= 60) return { label: "Good match", bg: "bg-[#E6F9FA]", text: "text-[#008990]" };
+  if (score >= 60) return { label: "Good match", bg: "bg-brand-teal-soft", text: "text-brand-teal-dark" };
   return { label: "Possible match", bg: "bg-[#F1F4F8]", text: "text-[#4B5468]" };
 }
 
@@ -129,10 +143,7 @@ export default function JobPostingDetailView({
     fetch(`/api/jobseeker/job-postings/${posting.id}/view`, { method: "POST" }).catch(() => {});
   }, [posting.id]);
 
-  const salary =
-    posting.salaryMin && posting.salaryMax
-      ? `RM${posting.salaryMin.toLocaleString()}–${posting.salaryMax.toLocaleString()}`
-      : "Salary not disclosed";
+  const salary = formatSalary(posting.salaryMin, posting.salaryMax, posting.salaryPeriod) ?? "Salary not disclosed";
 
   return (
     <JobseekerDashboardShell
@@ -240,7 +251,7 @@ export default function JobPostingDetailView({
                 {posting.skills.map((skill) => (
                   <span
                     key={skill}
-                    className="rounded-full bg-[#FFE9A6] px-[12px] py-[6px] text-xs text-[#141B2E]"
+                    className="rounded-full bg-brand-gold px-[12px] py-[6px] text-xs text-[#141B2E]"
                   >
                     {skill}
                   </span>
@@ -264,6 +275,30 @@ export default function JobPostingDetailView({
               </div>
             </div>
           )}
+
+          {posting.languages.length > 0 && (
+            <div className="mt-[16px]">
+              <p className="text-xs text-[#141B2E]">Languages</p>
+              <div className="mt-[8px] flex flex-wrap gap-[6px]">
+                {posting.languages.map((l) => (
+                  <span
+                    key={`${l.language}|${l.dialect ?? ""}`}
+                    className="rounded-full bg-[#F1F4F8] px-[12px] py-[6px] text-xs text-[#141B2E]"
+                  >
+                    {formatLanguageRequirement(l.language, l.dialect)} · {l.level.charAt(0).toUpperCase() + l.level.slice(1)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <PostingConditions
+            benefits={posting.benefits ?? []}
+            startLabel={startAvailabilityLabel(posting.startAvailability)}
+            workingHours={posting.workingHours ?? null}
+            officeDays={posting.workArrangement === "hybrid" ? officeDaysLabel(posting.officeDaysPerWeek) : null}
+            contact={posting.contact ?? null}
+          />
 
           {posting.location && (
             <div className="mt-[16px]">
@@ -300,11 +335,11 @@ export default function JobPostingDetailView({
                     <p className="mt-[2px] text-sm text-[#141B2E]">{posting.drivingLicense}</p>
                   </div>
                 )}
-                {posting.languages.length > 0 && (
+                {posting.askLanguages !== false && posting.languages.length > 0 && (
                   <div>
                     <p className="text-xs text-[#4B5468]">Languages required</p>
                     <p className="mt-[2px] text-sm text-[#141B2E]">
-                      {posting.languages.map((l) => `${l.language} (${l.level})`).join(", ")}
+                      {posting.languages.map((l) => `${formatLanguageRequirement(l.language, l.dialect)} — ${l.level}`).join(", ")}
                     </p>
                   </div>
                 )}

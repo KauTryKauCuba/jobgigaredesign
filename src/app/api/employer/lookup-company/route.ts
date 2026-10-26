@@ -1,5 +1,16 @@
 import { after, NextResponse } from "next/server";
 import { logAiUsage } from "@/lib/ai-usage";
+import {
+  AWARD_TITLE_MAX,
+  DRESS_CODES,
+  FACILITIES,
+  LEADER_FIELD_MAX,
+  MAX_AWARDS,
+  MAX_LEADERS,
+  type Award,
+  type DressCode,
+  type Facility,
+} from "@/lib/company-workplace";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { getSession } from "@/lib/session";
 
@@ -37,9 +48,13 @@ const STRUCTURE_SYSTEM_PROMPT = `You structure live web search results about a c
   "foundedYear": number | null,
   "companyType": ${COMPANY_TYPES.map((t) => `"${t}"`).join(" | ")} | null,
   "ssmNumber": string | null,
-  "benefits": string[]
+  "benefits": string[],
+  "awards": { "title": string, "year": number | null }[],
+  "leaders": { "name": string, "title": string }[],
+  "facilities": (${FACILITIES.map((f) => `"${f}"`).join(" | ")})[],
+  "dressCode": ${DRESS_CODES.map((d) => `"${d}"`).join(" | ")} | null
 }
-Use null for anything the search results don't clearly support — never invent specifics. If the search results are about a different company than the one named, or are too thin/irrelevant to say anything useful, return all nulls (empty array for benefits) rather than guessing. "description" is a 3-5 sentence company profile blurb (not a one-liner) covering what the company does, its industry/services, and any other notable stated facts (size, founding story, notable clients or projects, specialties) — written in your own words but strictly grounded in the search results, no invented specifics. "addressLine1" is the street-level part of the company's office/registered address exactly as published (building/unit number, street name — e.g. "12-3, Jalan SS 2/24"), only when an actual street address is stated somewhere (official site's Contact page, SSM filing, Google Maps listing, etc.) — null if only a city/area is mentioned with no street-level detail, never a P.O. box or a different branch's address if multiple locations are listed and it's unclear which is the main one. "city" is the city/town the company is based in (include the neighbourhood/area if that's what's actually stated, e.g. "Bangsar South" for an address that only names the area, not the wider city), or null if no city-level location is mentioned anywhere. "state" is the exact one of the 16 listed Malaysian states/federal territories the company is based in, inferred from the city if the state itself isn't stated (e.g. a Petaling Jaya address implies "Selangor"), or null if not Malaysia-based or the location can't be placed in any of them. "postcode" is the 5-digit Malaysian postcode from that same address, only if explicitly stated alongside it — null if not given, never guessed from the city. "companySize" should be your best estimate from the closest list option based on stated employee count, or null if not mentioned. "websiteUrl" is the company's own official website (not a directory/listing/social media page), or null if not clearly stated. "companyEmail" is the company's official contact/enquiry email address as explicitly published on their own website or official listing (e.g. found on a "Contact Us" page, next to the company's address/phone, or as a stated general enquiry channel) — extract it even if the address itself looks like a person's first name (e.g. "jane@company.com"), since many smaller companies list a named individual as their sole official contact point and that's still the right answer here; only reject an email that has nothing to do with contacting the company at all — e.g. one mentioned only in an unrelated context like a news article about a specific executive, or scraped from a page about a different person or company entirely. Never guess or construct one from the domain name; null if none is stated anywhere. "companyPhone" is the company's general contact phone number, published the same way and under the same rules as "companyEmail" above (e.g. from the same "Contact Us" page, often listed right next to the email) — keep whatever format it's stated in (don't reformat/normalize it), null if none is stated anywhere. "foundedYear" is the year the company was founded/established, a 4-digit year between 1800 and ${CURRENT_YEAR}, or null. "companyType" is your best classification from the list based on ownership/size/stated description (Startup = early-stage/small and newly founded, SME = small-medium established business, MNC = multinational, GLC = government-linked company, Government = a government body/agency itself), or null if unclear. "ssmNumber" is the company's Companies Commission of Malaysia (SSM) registration number — often shown as "Company No.: 881993-M" (older format) or a 12-digit number (newer format, e.g. "202301012345") in an annual report, official filing, or the company's own site footer; null if not stated anywhere. "benefits" is a list of concrete employee perks/benefits explicitly mentioned (e.g. on a careers page, job listing, or review site) — short phrases like "Medical insurance" or "Performance bonus", not full sentences; empty array if none are mentioned, never invented from what's "typical" for the industry. Review-site content (e.g. Glassdoor, Indeed) mixes genuine benefits with complaints ("cons") about pay, workload, or management — only list something as a benefit if it's a perk actually offered (stated as a "pro," in a "what benefits does X offer" answer, or on a benefits/perks-specific page), never a complaint about a benefit being absent, small, or capped (e.g. "no bonus," "medical with limit" is not a benefit — only list "Medical insurance" if it's otherwise confirmed as offered).`;
+Use null for anything the search results don't clearly support — never invent specifics. If the search results are about a different company than the one named, or are too thin/irrelevant to say anything useful, return all nulls (empty array for benefits) rather than guessing. "description" is a 3-5 sentence company profile blurb (not a one-liner) covering what the company does, its industry/services, and any other notable stated facts (size, founding story, notable clients or projects, specialties) — written in your own words but strictly grounded in the search results, no invented specifics. "addressLine1" is the street-level part of the company's office/registered address exactly as published (building/unit number, street name — e.g. "12-3, Jalan SS 2/24"), only when an actual street address is stated somewhere (official site's Contact page, SSM filing, Google Maps listing, etc.) — null if only a city/area is mentioned with no street-level detail, never a P.O. box or a different branch's address if multiple locations are listed and it's unclear which is the main one. "city" is the city/town the company is based in (include the neighbourhood/area if that's what's actually stated, e.g. "Bangsar South" for an address that only names the area, not the wider city), or null if no city-level location is mentioned anywhere. "state" is the exact one of the 16 listed Malaysian states/federal territories the company is based in, inferred from the city if the state itself isn't stated (e.g. a Petaling Jaya address implies "Selangor"), or null if not Malaysia-based or the location can't be placed in any of them. "postcode" is the 5-digit Malaysian postcode from that same address, only if explicitly stated alongside it — null if not given, never guessed from the city. "companySize" should be your best estimate from the closest list option based on stated employee count, or null if not mentioned. "websiteUrl" is the company's own official website (not a directory/listing/social media page), or null if not clearly stated. "companyEmail" is the company's official contact/enquiry email address as explicitly published on their own website or official listing (e.g. found on a "Contact Us" page, next to the company's address/phone, or as a stated general enquiry channel) — extract it even if the address itself looks like a person's first name (e.g. "jane@company.com"), since many smaller companies list a named individual as their sole official contact point and that's still the right answer here; only reject an email that has nothing to do with contacting the company at all — e.g. one mentioned only in an unrelated context like a news article about a specific executive, or scraped from a page about a different person or company entirely. Never guess or construct one from the domain name; null if none is stated anywhere. "companyPhone" is the company's general contact phone number, published the same way and under the same rules as "companyEmail" above (e.g. from the same "Contact Us" page, often listed right next to the email) — keep whatever format it's stated in (don't reformat/normalize it), null if none is stated anywhere. "foundedYear" is the year the company was founded/established, a 4-digit year between 1800 and ${CURRENT_YEAR}, or null. "companyType" is your best classification from the list based on ownership/size/stated description (Startup = early-stage/small and newly founded, SME = small-medium established business, MNC = multinational, GLC = government-linked company, Government = a government body/agency itself), or null if unclear. "ssmNumber" is the company's Companies Commission of Malaysia (SSM) registration number — often shown as "Company No.: 881993-M" (older format) or a 12-digit number (newer format, e.g. "202301012345") in an annual report, official filing, or the company's own site footer; null if not stated anywhere. "benefits" is a list of concrete employee perks/benefits explicitly mentioned (e.g. on a careers page, job listing, or review site) — short phrases like "Medical insurance" or "Performance bonus", not full sentences; empty array if none are mentioned, never invented from what's "typical" for the industry. Review-site content (e.g. Glassdoor, Indeed) mixes genuine benefits with complaints ("cons") about pay, workload, or management — only list something as a benefit if it's a perk actually offered (stated as a "pro," in a "what benefits does X offer" answer, or on a benefits/perks-specific page), never a complaint about a benefit being absent, small, or capped (e.g. "no bonus," "medical with limit" is not a benefit — only list "Medical insurance" if it's otherwise confirmed as offered). "awards" lists awards, rankings and certifications the company itself has received or holds, as explicitly stated (e.g. "Great Place to Work Certified", "ISO 9001:2015", "SME100 Award") — short titles, with "year" the 4-digit year it was received if stated, else null; at most ${MAX_AWARDS}, newest first; never awards given to a different company or to an individual's personal career, and empty if none are stated. "leaders" lists the company's founder(s) and top executives (CEO, managing director, founder, director, CTO etc.) as explicitly named in the sources — "name" is the person's name exactly as written, "title" their role at THIS company (e.g. "Founder & CEO"); at most ${MAX_LEADERS}, most senior first; never invent a name or guess a role, and empty if none are named. "facilities" picks only from the listed options, and only ones the sources actually say the workplace has (e.g. a careers page or review mentioning a surau, gym, free lunch, parking or being next to an LRT station → "Prayer room (surau)", "Gym", "Free meals or snacks", "Parking", "Near public transport") — empty if none are stated, never assumed from what's typical. "dressCode" is one of the listed options only when the sources clearly describe the dress code (e.g. "casual dress", "smart casual attire", "uniform provided"), else null.`;
 
 type PerplexityResult = {
   title?: string;
@@ -100,6 +115,10 @@ type LookupResult = {
   companyType: (typeof COMPANY_TYPES)[number] | null;
   ssmNumber: string | null;
   benefits: string[];
+  awards: Award[];
+  leaders: { name: string; title: string }[];
+  facilities: Facility[];
+  dressCode: DressCode | null;
   logoUrl: string | null;
   recentNews: NewsItem[];
 };
@@ -175,6 +194,33 @@ function validateStructured(
     benefits: Array.isArray(obj.benefits)
       ? obj.benefits.filter((b): b is string => typeof b === "string" && b.trim().length > 0).map((b) => b.trim())
       : [],
+    awards: (Array.isArray(obj.awards) ? obj.awards : [])
+      .map((a) => (a ?? {}) as Record<string, unknown>)
+      .filter((a) => typeof a.title === "string" && a.title.trim().length > 0 && a.title.trim().length <= AWARD_TITLE_MAX)
+      .map((a) => ({
+        title: (a.title as string).trim(),
+        year:
+          typeof a.year === "number" && Number.isInteger(a.year) && a.year >= 1900 && a.year <= CURRENT_YEAR ? a.year : null,
+      }))
+      .slice(0, MAX_AWARDS),
+    leaders: (Array.isArray(obj.leaders) ? obj.leaders : [])
+      .map((l) => (l ?? {}) as Record<string, unknown>)
+      .filter(
+        (l) =>
+          typeof l.name === "string" &&
+          typeof l.title === "string" &&
+          l.name.trim().length > 0 &&
+          l.title.trim().length > 0 &&
+          l.name.trim().length <= LEADER_FIELD_MAX &&
+          l.title.trim().length <= LEADER_FIELD_MAX,
+      )
+      .map((l) => ({ name: (l.name as string).trim(), title: (l.title as string).trim() }))
+      .slice(0, MAX_LEADERS),
+    // Only the fixed options — anything else the model returns is dropped.
+    facilities: Array.isArray(obj.facilities)
+      ? [...new Set(obj.facilities.filter((f): f is Facility => (FACILITIES as readonly unknown[]).includes(f)))]
+      : [],
+    dressCode: (DRESS_CODES as readonly unknown[]).includes(obj.dressCode) ? (obj.dressCode as DressCode) : null,
   };
 }
 
@@ -342,6 +388,23 @@ async function searchCompanyContact(
   const result = await searchPerplexity(apiKey, `"${companyName}" contact email office address city Malaysia`, {
     maxResults: 5,
   });
+  if (!result.ok) return { ok: false, data: null };
+  return { ok: true, data: result.data };
+}
+
+// The workplace details (awards, leadership, facilities, dress code) rarely
+// turn up in the main company-profile query — it favours registry and
+// directory pages — so, like benefits and contact above, they get a search
+// of their own: careers/about pages, award announcements and review sites.
+async function searchWorkplace(
+  apiKey: string,
+  companyName: string,
+): Promise<{ ok: true; data: PerplexityResponse } | { ok: false; data: null }> {
+  const result = await searchPerplexity(
+    apiKey,
+    `"${companyName}" Malaysia founder CEO leadership team awards certification office workplace culture`,
+    { maxResults: 6 },
+  );
   if (!result.ok) return { ok: false, data: null };
   return { ok: true, data: result.data };
 }
@@ -602,7 +665,8 @@ async function callStructuringProvider(
           model,
           response_format: { type: "json_object" },
           temperature: 0,
-          max_tokens: 500,
+          // Room for the awards/leaders/facilities arrays on top of the rest.
+          max_tokens: 1000,
           messages: [
             { role: "system", content: STRUCTURE_SYSTEM_PROMPT },
             { role: "user", content: userContent },
@@ -653,6 +717,7 @@ async function raceStructuring(
   searchData: PerplexityResponse,
   benefitsData: PerplexityResponse | null,
   contactData: PerplexityResponse | null,
+  workplaceData: PerplexityResponse | null,
   deepseekKey: string | null,
   mimoKey: string | null,
   // Every attempt this call makes gets pushed here (mutated, not returned)
@@ -672,8 +737,9 @@ async function raceStructuring(
   // short review/listing snippets, not another full-page-extraction batch.
   const benefitsSnippets = formatSnippets(benefitsData?.results, 6_000);
   const contactSnippets = formatSnippets(contactData?.results, 6_000);
+  const workplaceSnippets = formatSnippets(workplaceData?.results, 6_000);
 
-  if (!snippets && !benefitsSnippets && !contactSnippets) {
+  if (!snippets && !benefitsSnippets && !contactSnippets && !workplaceSnippets) {
     return { ok: true, content: "{}", usage: null, provider: "none", model: "none" };
   }
 
@@ -684,6 +750,10 @@ async function raceStructuring(
   }${
     contactSnippets
       ? `\n\nWeb search results (company contact info — use ONLY for the "companyEmail", "companyPhone", "city", and "state" fields):\n${contactSnippets}`
+      : ""
+  }${
+    workplaceSnippets
+      ? `\n\nWeb search results (leadership, awards and workplace — use for the "awards", "leaders", "facilities" and "dressCode" fields, only where the result is clearly about this same company):\n${workplaceSnippets}`
       : ""
   }`;
 
@@ -762,6 +832,8 @@ export async function POST(request: Request) {
   perplexityCalls++;
   const contactPromise = searchCompanyContact(perplexityKey, trimmedName);
   perplexityCalls++;
+  const workplacePromise = searchWorkplace(perplexityKey, trimmedName);
+  perplexityCalls++;
   // Deterministic (not fed into structuring), so unlike the two above this
   // doesn't need to be re-fetched per retry attempt below — fired once,
   // awaited once, right before the final result is assembled.
@@ -788,12 +860,13 @@ export async function POST(request: Request) {
     // main search below instead of blocking ahead of it — awaiting an
     // already-settled promise resolves immediately, so this costs nothing
     // once benefitsPromise has finished.
-    const [search_, benefitsResult, contactResult] = await Promise.all([
+    const [search_, benefitsResult, contactResult, workplaceResult] = await Promise.all([
       searchPerplexity(perplexityKey, `"${trimmedName}" company profile, industry, office address, and city in Malaysia`, {
         maxResults: 10,
       }),
       benefitsPromise,
       contactPromise,
+      workplacePromise,
     ]);
     perplexityCalls++;
     search = search_;
@@ -808,6 +881,7 @@ export async function POST(request: Request) {
       search.data,
       benefitsResult.data,
       contactResult.data,
+      workplaceResult.data,
       deepseekKey,
       mimoKey,
       structuringAttempts,
@@ -828,6 +902,7 @@ export async function POST(request: Request) {
       ...(search.data.results ?? []),
       ...(benefitsResult.data?.results ?? []),
       ...(contactResult.data?.results ?? []),
+      ...(workplaceResult.data?.results ?? []),
     ]
       .map((r) => r.url)
       .filter((u): u is string => Boolean(u));
@@ -835,9 +910,7 @@ export async function POST(request: Request) {
     usage = structured.usage;
     usedProvider = structured.provider;
 
-    const isEmpty = Object.entries(structuredResult).every(
-      ([key, v]) => (key === "benefits" ? (v as string[]).length === 0 : v === null),
-    );
+    const isEmpty = Object.values(structuredResult).every((v) => (Array.isArray(v) ? v.length === 0 : v === null));
     if (!isEmpty || attempt === MAX_LOOKUP_ATTEMPTS) break;
   }
 

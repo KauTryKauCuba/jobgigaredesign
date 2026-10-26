@@ -1,8 +1,12 @@
+import { normalizeLanguageRequirements } from "@/lib/languages";
+import { parsePostingExtras } from "@/lib/posting-extras";
 import { NextResponse } from "next/server";
 import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
 import { jobPostings } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
+import { getScopedEmployerAccess, parseHiringManagerIds, setJobHiringManagers } from "@/lib/hiring-scope";
+import { hasFullAccess } from "@/lib/team-roles";
 import { generateUniqueJobPostingSlug, getJobPostingsForEmployer } from "@/lib/job-postings";
 import {
   DRIVING_LICENSES,
@@ -14,6 +18,7 @@ import {
   isNonEmptyString,
   isOptionalInt,
   isOptionalString,
+  isPreferredKeys,
   isSkillSuggestions,
   isStringArray,
 } from "@/lib/job-posting-validation";
@@ -33,10 +38,11 @@ export async function GET() {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
 
-  const access = await getEmployerAccess(session.userId);
+  const access = await getScopedEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ postings: [] });
 
-  const postings = await getJobPostingsForEmployer(access.profile.id);
+  // A Hiring manager sees only the postings they're assigned to.
+  const postings = await getJobPostingsForEmployer(access.profile.id, access.scope);
   return NextResponse.json({ postings });
 }
 
@@ -49,6 +55,9 @@ export async function POST(request: Request) {
   const access = await getEmployerAccess(session.userId);
   if (!access) {
     return NextResponse.json({ error: "Finish your company profile first." }, { status: 400 });
+  }
+  if (!hasFullAccess(access.role)) {
+    return NextResponse.json({ error: "Only an owner or admin can post jobs." }, { status: 403 });
   }
   const profile = access.profile;
 
@@ -71,6 +80,7 @@ export async function POST(request: Request) {
     location,
     addressLine1,
     addressLine2,
+    area,
     city,
     state,
     postcode,
@@ -87,6 +97,7 @@ export async function POST(request: Request) {
     drivingLicense,
     screeningEnabled,
     customScreeningQuestions,
+    screeningPreferred,
     skillSuggestions,
     askMinYearsExperience,
     askMinQualificationTier,
@@ -178,6 +189,9 @@ export async function POST(request: Request) {
   if (customScreeningQuestions !== undefined && !isCustomQuestionArray(customScreeningQuestions)) {
     return NextResponse.json({ error: "Invalid custom screening questions." }, { status: 400 });
   }
+  if (screeningPreferred !== undefined && !isPreferredKeys(screeningPreferred)) {
+    return NextResponse.json({ error: "Invalid preferred requirements." }, { status: 400 });
+  }
   if (skillSuggestions !== undefined && !isSkillSuggestions(skillSuggestions)) {
     return NextResponse.json({ error: "Invalid skill suggestions." }, { status: 400 });
   }
@@ -199,6 +213,16 @@ export async function POST(request: Request) {
   if (!isOptionalString(city) || !isOptionalString(state) || !isOptionalString(postcode)) {
     return NextResponse.json({ error: "Invalid address." }, { status: 400 });
   }
+  if (!isOptionalString(area) || (typeof area === "string" && area.trim().length > 80)) {
+    return NextResponse.json({ error: "Keep the area to 80 characters." }, { status: 400 });
+  }
+
+  // Benefits, start date, working hours and contact person.
+  const extras = await parsePostingExtras(body as Record<string, unknown>, { id: profile.id, ownerUserId: profile.userId });
+  if (!extras.ok) return NextResponse.json({ error: extras.error }, { status: 400 });
+  // Who's notified about (and can review) this posting's applicants.
+  const hiringManagers = await parseHiringManagerIds(profile.id, (body as Record<string, unknown>).hiringManagerIds);
+  if (!hiringManagers.ok) return NextResponse.json({ error: hiringManagers.error }, { status: 400 });
 
   const slug = await generateUniqueJobPostingSlug(profile.companyName, (title as string).trim());
 
@@ -218,6 +242,7 @@ export async function POST(request: Request) {
       location: isNonEmptyString(location) ? location.trim() : "",
       addressLine1: isNonEmptyString(addressLine1) ? addressLine1.trim() : null,
       addressLine2: isNonEmptyString(addressLine2) ? addressLine2.trim() : null,
+      area: isNonEmptyString(area) ? area.trim() : null,
       city: isNonEmptyString(city) ? city.trim() : null,
       state: isNonEmptyString(state) ? state.trim() : null,
       postcode: isNonEmptyString(postcode) ? postcode.trim() : null,
@@ -233,7 +258,10 @@ export async function POST(request: Request) {
       // applicants anything.
       minYearsExperience: screening ? ((minYearsExperience as number | null) ?? null) : null,
       minQualificationTier: screening && isNonEmptyString(minQualificationTier) ? minQualificationTier : null,
-      languages: screening && isLanguageArray(languages) ? languages : [],
+      // Languages are part of the job itself (shown on every posting), not
+      // only a screening requirement — kept whether or not screening is on.
+      // Applicants are only screened by them when screening + askLanguages.
+      languages: isLanguageArray(languages) ? normalizeLanguageRequirements(languages) : [],
       workAuthorizations:
         screening && isStringArray(workAuthorizations)
           ? (workAuthorizations as (typeof WORK_AUTHORIZATIONS)[number][])
@@ -243,14 +271,27 @@ export async function POST(request: Request) {
         : null,
       screeningEnabled: screening,
       customScreeningQuestions: screening && isCustomQuestionArray(customScreeningQuestions) ? customScreeningQuestions : [],
+      screeningPreferred: screening && isPreferredKeys(screeningPreferred) ? screeningPreferred : [],
       askMinYearsExperience: askMinYearsExperience !== false,
       askMinQualificationTier: askMinQualificationTier !== false,
       askDrivingLicense: askDrivingLicense !== false,
       askLanguages: askLanguages !== false,
       askWorkAuthorizations: askWorkAuthorizations !== false,
       skillSuggestions: isSkillSuggestions(skillSuggestions) ? skillSuggestions : null,
+      ...extras.values,
     })
     .returning();
+
+  if (hiringManagers.ids && hiringManagers.ids.length > 0) {
+    await setJobHiringManagers({
+      employerProfileId: profile.id,
+      companyName: profile.companyName,
+      jobPostingId: inserted.id,
+      jobTitle: inserted.title,
+      teamMemberIds: hiringManagers.ids,
+      actor: { userId: session.userId },
+    });
+  }
 
   await awardBadge(profile.id, "first_job_posted");
   if (screening) await awardBadge(profile.id, "screening_enabled");

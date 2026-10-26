@@ -2,9 +2,9 @@ import { gradientFrameClass } from "./formStyles";
 
 const AI_PROVIDER_ORDER = ["deepseek", "mimo", "perplexity", "icreat"] as const;
 const AI_PROVIDER_META: Record<string, { label: string; bg: string; text: string; iconBg: string; iconText: string }> = {
-  deepseek: { label: "DeepSeek", bg: "bg-[#E6F9FA]", text: "text-brand-teal-dark", iconBg: "bg-brand-teal-dark", iconText: "text-white" },
+  deepseek: { label: "DeepSeek", bg: "bg-brand-teal-soft", text: "text-brand-teal-dark", iconBg: "bg-brand-teal-dark", iconText: "text-white" },
   mimo: { label: "MiMo", bg: "bg-[#F1ECFB]", text: "text-[#7C5CD1]", iconBg: "bg-[#7C5CD1]", iconText: "text-white" },
-  perplexity: { label: "Perplexity", bg: "bg-[#FFF3D6]", text: "text-brand-gold-dark", iconBg: "bg-brand-gold-dark", iconText: "text-white" },
+  perplexity: { label: "Perplexity", bg: "bg-brand-gold-soft", text: "text-brand-gold-dark", iconBg: "bg-brand-gold-dark", iconText: "text-white" },
   // icreat.ai (hosts the Seedream 5.0 image model the Poster Generator uses)
   // — no published brand mark, same monogram-fallback treatment as MiMo.
   icreat: { label: "icreat (Seedream)", bg: "bg-[#FDECEC]", text: "text-[#C2452F]", iconBg: "bg-[#C2452F]", iconText: "text-white" },

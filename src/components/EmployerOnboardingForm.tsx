@@ -1,68 +1,61 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import AddressSearchInput from "./AddressSearchInput";
 import CompanyBadgesCard from "./CompanyBadgesCard";
 import CompanyBanner from "./CompanyBanner";
 import Dropdown from "./Dropdown";
 import { useDraftName } from "./DraftNameContext";
 import Field from "./Field";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
-import { CheckIcon, PencilIcon, PlusIcon, UserIcon, XIcon } from "./icons";
+import { CheckIcon, ChevronDownIcon, PencilIcon, PlusIcon, UserIcon, XIcon } from "./icons";
 import InlineIllustration from "./InlineIllustration";
 import Modal from "./Modal";
 import PhoneInput from "./PhoneInput";
+import PhoneVerifiedAvatarBadge from "./PhoneVerifiedAvatarBadge";
 import RichTextEditor from "./RichTextEditor";
 import SiriOrb from "./SiriOrb";
 import { useRegisterUnsavedChangesGuard } from "./UnsavedChangesGuard";
+import { VerifiedBadgeIcon } from "./VerifiedBadge";
 import type { BadgeKey } from "@/lib/badge-definitions";
 import type { EmployerAddress, EmployerProfile } from "@/lib/employer-profile";
 import { INDUSTRIES } from "@/lib/industries";
+import { defaultJobAddress } from "@/lib/job-address";
+import {
+  AWARD_TITLE_MAX,
+  DRESS_CODES,
+  FACILITIES,
+  FACILITY_MAX,
+  LEADER_FIELD_MAX,
+  MAX_AWARDS,
+  MAX_CUSTOM_FACILITIES,
+  MAX_GALLERY_PHOTOS,
+  MAX_LEADERS,
+  facilityProblem,
+  isKnownFacility,
+  normalizeFacility,
+  type Award,
+  type DressCode,
+  type Facility,
+  type Leader,
+} from "@/lib/company-workplace";
+import { COMPANY_BENEFITS } from "@/lib/job-posting-options";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
-import { POSITIONS } from "@/lib/positions";
+import { isValidMalaysianPhone } from "@/lib/phone";
+import type { AddressSuggestion } from "@/lib/address-search";
+import { areaAfterRoad, extractRoad, splitPostcode, titleCase } from "@/lib/address-text";
+import type { PostcodeMatch } from "@/lib/postcodes";
+import { CONTACT_ROLES, POSITIONS } from "@/lib/positions";
 
 const OTHER_POSITION = "__other__" as const;
 
 const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"] as const;
 const COMPANY_TYPES = ["Startup", "SME", "MNC", "GLC", "Government"] as const;
-const SUGGESTED_BENEFITS = [
-  "Medical insurance",
-  "Dental coverage",
-  "Outpatient coverage",
-  "Performance bonus",
-  "Transport allowance",
-  "Meal allowance",
-  "Phone/internet allowance",
-  "Flexible working hours",
-  "Remote/hybrid work",
-  "Extra annual leave",
-  "Maternity/paternity leave",
-  "Training & development",
-  "Parking",
-  "Life insurance",
-  "Personal accident insurance",
-  "Wellness/gym allowance",
-  "Stock options (ESOS)",
-  "Festive bonus",
-  "Housing allowance",
-  "Birthday leave",
-  "Compassionate leave",
-  "Marriage leave",
-  "Study/education assistance",
-  "Staff discount",
-  "Team building/company trips",
-] as const;
-const CONTACT_ROLES = [
-  "Founder / Owner",
-  "Director / C-level",
-  "HR Manager",
-  "HR Executive",
-  "Talent Acquisition / Recruiter",
-  "Hiring Manager",
-  "Admin / Office Manager",
-  "Other",
-] as const;
-
+// Shared with Post a job (POSTING_BENEFITS adds EPF/SOCSO/EIS on top).
+const SUGGESTED_BENEFITS = COMPANY_BENEFITS;
+// Suggested benefits shown before "Show all".
+const BENEFITS_SHOWN_FIRST = 8;
 const CURRENT_YEAR = new Date().getFullYear();
 
 // `key` is client-only (React list identity / draft round-tripping) — the
@@ -73,9 +66,13 @@ type AddressEntry = {
   label: string;
   addressLine1: string;
   addressLine2: string;
+  // Optional neighbourhood, e.g. "Bangsar South" (missing from older drafts).
+  area?: string;
   city: string;
   state: (typeof MALAYSIA_STATES)[number] | "";
   postcode: string;
+  // The address new job postings start with — see jobDefaultKey below.
+  isJobDefault?: boolean;
 };
 
 // `key` doubles as the inputs' id/htmlFor, so the address rendered on first
@@ -87,6 +84,7 @@ function blankAddress(label = "", key = Math.random().toString(36).slice(2)): Ad
     label,
     addressLine1: "",
     addressLine2: "",
+    area: "",
     city: "",
     state: "",
     postcode: "",
@@ -99,9 +97,11 @@ function addressFromSaved(address: EmployerAddress): AddressEntry {
     label: address.label,
     addressLine1: address.addressLine1,
     addressLine2: address.addressLine2 ?? "",
+    area: address.area ?? "",
     city: address.city,
     state: MALAYSIA_STATES.find((s) => s === address.state) ?? "",
     postcode: address.postcode,
+    isJobDefault: address.isJobDefault,
   };
 }
 
@@ -129,6 +129,10 @@ function isValidOptionalEmail(value: string) {
   return value.trim() === "" || isValidEmail(value);
 }
 
+function isValidOptionalPhone(value: string) {
+  return value.trim() === "" || isValidMalaysianPhone(value);
+}
+
 const AVATAR_ACCEPT = "image/*";
 const AVATAR_MAX_BYTES = 3 * 1024 * 1024;
 const LOGO_ACCEPT = "image/*";
@@ -136,6 +140,30 @@ const LOGO_MAX_BYTES = 3 * 1024 * 1024;
 // A phone photo straight off the camera fits; the server shrinks it to a
 // light 1500x500 WebP anyway.
 const BANNER_MAX_BYTES = 8 * 1024 * 1024;
+
+// Year kept as typed text while editing; converted to a number on save.
+type AwardEntry = { title: string; year: string };
+
+function awardsFromSaved(awards: Award[] | undefined): AwardEntry[] {
+  return (awards ?? []).map((a) => ({ title: a.title, year: a.year ? String(a.year) : "" }));
+}
+
+function isValidAwardYear(value: string) {
+  if (value.trim() === "") return true;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1900 && n <= CURRENT_YEAR;
+}
+
+/** Uploads one profile photo straight away (see /api/employer/uploads) and returns its URL. */
+async function uploadProfilePhoto(kind: "gallery" | "leader", file: File): Promise<string> {
+  const form = new FormData();
+  form.set("kind", kind);
+  form.set("image", file);
+  const res = await fetch("/api/employer/uploads", { method: "POST", body: form });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || typeof data?.url !== "string") throw new Error(data?.error ?? "Couldn't upload that photo.");
+  return data.url;
+}
 
 const cardClass = gradientFrameClass("teal");
 const inputClass = formInputClass("teal");
@@ -151,7 +179,7 @@ type DraftData = {
   ssmNumber: string;
   industry: string;
   industryCategory: (typeof INDUSTRIES)[number] | "";
-  companySize: (typeof COMPANY_SIZES)[number];
+  companySize: (typeof COMPANY_SIZES)[number] | "";
   addresses: AddressEntry[];
   companyDescription: string;
   websiteUrl: string;
@@ -164,8 +192,17 @@ type DraftData = {
   companyType: (typeof COMPANY_TYPES)[number] | "";
   logoUrl: string | null;
   officePhotoUrl: string | null;
+  // Saved by the draft route as soon as they're picked, so a refresh keeps them.
+  bannerUrl: string | null;
+  ssmDocumentUrl: string | null;
   recentNews: { title: string; url: string }[];
   benefits: string[];
+  // The workplace (see company-workplace.ts) — photos are already-uploaded URLs.
+  galleryPhotos: string[];
+  facilities: Facility[];
+  dressCode: DressCode | "";
+  awards: AwardEntry[];
+  leaders: Leader[];
   // Whether "Fill with AI" has actually completed for the current company
   // name — persisted explicitly rather than inferred from which other
   // fields happen to be non-empty, so resuming this draft later can restore
@@ -185,8 +222,17 @@ export default function EmployerOnboardingForm({
   only,
   sidebarSlot,
   earnedBadges,
+  createNew = false,
+  initialPhoneStatus,
 }: {
+  // Whether the phone the form starts with is verified (from the server), so
+  // it shows correctly on the first frame instead of loading in.
+  initialPhoneStatus?: { canVerify: boolean; verified: boolean };
   mode?: "onboarding" | "edit";
+  // "Add a company": an existing employer registering another company —
+  // onboarding layout, but never touches the onboarding draft and asks the
+  // server to create a new company rather than update the current one.
+  createNew?: boolean;
   initialProfile?: EmployerProfile;
   initialAddresses?: EmployerAddress[];
   initialAvatarUrl?: string | null;
@@ -219,6 +265,9 @@ export default function EmployerOnboardingForm({
   // saving prompts a confirm dialog instead of silently discarding edits.
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [pendingProceed, setPendingProceed] = useState<(() => void) | null>(null);
+  // Shown once, right after onboarding (or "Add a company") finishes saving
+  // — same "you're all set" moment the jobseeker side already has.
+  const [showFinishSuccess, setShowFinishSuccess] = useState(false);
   function guardNavigation(proceed: () => void) {
     if (mode === "edit" && (isContactDirty || isCompanyDirty)) {
       setPendingProceed(() => proceed);
@@ -285,6 +334,13 @@ export default function EmployerOnboardingForm({
   );
   const contactPosition = contactPositionChoice === OTHER_POSITION ? contactPositionOther : contactPositionChoice;
   const [contactPhone, setContactPhone] = useState(initialProfile?.contactPhone ?? initialDraft?.contactPhone ?? "");
+  // Whether the number in the phone field is verified — shown as a seal on the avatar
+  // here, and (during onboarding) on the navbar's avatar too.
+  const [phoneVerified, setPhoneVerified] = useState(initialPhoneStatus?.verified ?? false);
+  const setDraftPhoneVerified = draftContext?.setDraftPhoneVerified;
+  useEffect(() => {
+    setDraftPhoneVerified?.(phoneVerified);
+  }, [phoneVerified, setDraftPhoneVerified]);
   const [contactEmail] = useState(
     initialProfile?.contactEmail ?? initialDraft?.contactEmail ?? initialContactEmail ?? "",
   );
@@ -308,10 +364,12 @@ export default function EmployerOnboardingForm({
       INDUSTRIES.find((i) => i === initialDraft?.industryCategory) ??
       "",
   );
-  const [companySize, setCompanySize] = useState<(typeof COMPANY_SIZES)[number]>(
+  // Starts unpicked (and required) — a pre-selected "1-10" let a big company
+  // finish onboarding as a tiny one without ever noticing.
+  const [companySize, setCompanySize] = useState<(typeof COMPANY_SIZES)[number] | "">(
     (initialProfile?.companySize as (typeof COMPANY_SIZES)[number] | undefined) ??
       initialDraft?.companySize ??
-      "1-10",
+      "",
   );
   const [addresses, setAddresses] = useState<AddressEntry[]>(
     initialAddresses?.length
@@ -328,6 +386,162 @@ export default function EmployerOnboardingForm({
   function updateAddress(key: string, patch: Partial<Omit<AddressEntry, "key">>) {
     setAddresses((prev) => prev.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   }
+  function setJobDefault(key: string) {
+    setAddresses((prev) => prev.map((a) => ({ ...a, isJobDefault: a.key === key })));
+  }
+
+  // Postcode → town and state. A full 5-digit postcode is looked up (results
+  // cached per postcode) and fills in the state, plus the city unless the
+  // employer typed their own.
+  const postcodeCache = useRef(new Map<string, PostcodeMatch[]>());
+  const [postcodeResults, setPostcodeResults] = useState<Record<string, { postcode: string; matches: PostcodeMatch[] }>>(
+    {},
+  );
+  // address key → the city/area these lookups last filled in, so a later
+  // change can replace them without ever touching what was typed by hand.
+  const autoFilledCity = useRef<Record<string, string>>({});
+  const autoFilledArea = useRef<Record<string, string>>({});
+
+  function handlePostcodeChange(key: string, raw: string) {
+    const postcode = raw.replace(/\D/g, "").slice(0, 5);
+    updateAddress(key, { postcode });
+    if (postcode.length === 5) void fillFromPostcode(key, postcode);
+  }
+
+  async function fillFromPostcode(key: string, postcode: string) {
+    let matches = postcodeCache.current.get(postcode);
+    if (!matches) {
+      try {
+        const res = await fetch(`/api/postcodes/${postcode}`);
+        const data = res.ok ? await res.json() : null;
+        matches = Array.isArray(data?.matches) ? (data.matches as PostcodeMatch[]) : [];
+      } catch {
+        return; // Offline — the employer can still fill these in by hand.
+      }
+      postcodeCache.current.set(postcode, matches);
+    }
+    setPostcodeResults((prev) => ({ ...prev, [key]: { postcode, matches } }));
+    if (matches.length === 0) return;
+    const [first] = matches;
+    // Read once, outside the updater — React may run an updater twice, and
+    // the second run must see the same "was this city ours?" answer.
+    const previousAutoCity = autoFilledCity.current[key];
+    setAddresses((prev) =>
+      prev.map((a) => {
+        // Skipped if the postcode changed again while this was looking up.
+        if (a.key !== key || a.postcode !== postcode) return a;
+        const cityIsOurs = !a.city.trim() || a.city === previousAutoCity;
+        if (cityIsOurs) autoFilledCity.current[key] = first.city;
+        return { ...a, city: cityIsOurs ? first.city : a.city, state: first.state };
+      }),
+    );
+  }
+
+  // Street address + postcode → area (e.g. "Jalan Kerinchi", 59200 →
+  // "Bangsar South"), looked up once both are filled in and typing pauses.
+  // Only fills an empty area or one it filled itself. Addresses as they first
+  // load (an existing profile, a resumed draft) are left alone until edited,
+  // so opening the page never changes anything by itself.
+  const areaLookedUp = useRef<Record<string, string> | null>(null);
+  const [areaLookupKeys, setAreaLookupKeys] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const signature = (a: AddressEntry) => `${a.addressLine1.trim().toLowerCase()}|${a.postcode}`;
+    if (!areaLookedUp.current) {
+      areaLookedUp.current = Object.fromEntries(addresses.map((a) => [a.key, signature(a)]));
+      return;
+    }
+    const timeout = setTimeout(() => {
+      for (const a of addresses) {
+        const street = a.addressLine1.trim();
+        if (!street || !/^\d{5}$/.test(a.postcode)) continue;
+        const sig = signature(a);
+        if (areaLookedUp.current?.[a.key] === sig) continue;
+        const areaIsOurs = !a.area?.trim() || a.area === autoFilledArea.current[a.key];
+        if (!areaIsOurs) continue;
+        areaLookedUp.current![a.key] = sig;
+        void fillAreaFromAddress(a.key, street, a.postcode, sig);
+      }
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, [addresses]);
+
+  // A picked address suggestion fills in the whole address at once. What was
+  // typed around the road is kept: the unit/lot/building before it ("no. 1
+  // lot 4139", "Menara Test") stays in front, and a neighbourhood typed after
+  // it ("kampung sungai pinang dalam") is used as the area.
+  function pickAddressSuggestion(key: string, s: AddressSuggestion, typed: string) {
+    const parts = extractRoad(splitPostcode(typed).rest);
+    const houseNumber = parts
+      ? parts.before
+      : typed.match(/^\s*((?:no\.?\s*)?[a-z]?\d[\w-/]*)\s*,?\s+/i)?.[1];
+    // Not repeated when the suggestion is itself "Building, Road".
+    const keepPrefix =
+      !!houseNumber && !/^\d/.test(s.addressLine1) && !s.addressLine1.toLowerCase().startsWith(houseNumber.toLowerCase());
+    const addressLine1 = keepPrefix ? `${houseNumber}, ${s.addressLine1}` : s.addressLine1;
+    const typedArea = parts ? areaAfterRoad(parts.after) : null;
+    const area =
+      typedArea && typedArea.toLowerCase() !== s.city.toLowerCase() ? titleCase(typedArea) : (s.area ?? "");
+    autoFilledCity.current[key] = s.city;
+    autoFilledArea.current[key] = area;
+    // Already complete — the street + postcode area lookup has nothing to add.
+    if (areaLookedUp.current) areaLookedUp.current[key] = `${addressLine1.trim().toLowerCase()}|${s.postcode}`;
+    setPostcodeResults((prev) => ({ ...prev, [key]: { postcode: s.postcode, matches: [{ city: s.city, state: s.state }] } }));
+    updateAddress(key, { addressLine1, postcode: s.postcode, city: s.city, state: s.state, area });
+  }
+
+  // A whole address typed into the street field ("…, 41400 klang selangor")
+  // without picking a suggestion is split into the fields: the postcode moves
+  // to Postcode (which fills in the city and state), a neighbourhood named
+  // after the road to Area (if that's empty), and the town/state at the end
+  // — now in their own fields — are dropped from the street line.
+  function splitPastedAddress(key: string) {
+    const address = addresses.find((a) => a.key === key);
+    if (!address) return;
+    const { rest, postcode } = splitPostcode(address.addressLine1);
+    if (!postcode) return;
+    const parts = extractRoad(rest);
+    const typedArea = parts ? areaAfterRoad(parts.after) : null;
+    const moveArea = !!typedArea && !address.area?.trim();
+    updateAddress(key, {
+      addressLine1: moveArea && parts ? [parts.before, parts.road].filter(Boolean).join(", ") : rest,
+      ...(moveArea && typedArea ? { area: titleCase(typedArea) } : {}),
+    });
+    handlePostcodeChange(key, postcode);
+  }
+
+  async function fillAreaFromAddress(key: string, street: string, postcode: string, sig: string) {
+    setAreaLookupKeys((prev) => ({ ...prev, [key]: true }));
+    let area: string | null = null;
+    try {
+      const res = await fetch(`/api/address-area?${new URLSearchParams({ street, postcode })}`);
+      const data = res.ok ? await res.json() : null;
+      area = typeof data?.area === "string" ? data.area : null;
+    } catch {
+      // Offline — the area can be typed in.
+    } finally {
+      setAreaLookupKeys((prev) => ({ ...prev, [key]: false }));
+    }
+    const previousAutoArea = autoFilledArea.current[key];
+    setAddresses((prev) =>
+      prev.map((a) => {
+        // Skipped if the address changed again, or the area was typed in, meanwhile.
+        if (a.key !== key || `${a.addressLine1.trim().toLowerCase()}|${a.postcode}` !== sig) return a;
+        const areaIsOurs = !a.area?.trim() || a.area === previousAutoArea;
+        if (!areaIsOurs) return a;
+        // Nothing found for the new address: an area filled in for the old one is cleared.
+        autoFilledArea.current[key] = area ?? "";
+        return { ...a, area: area ?? "" };
+      }),
+    );
+  }
+
+  function pickPostcodeTown(key: string, city: string) {
+    autoFilledCity.current[key] = city;
+    updateAddress(key, { city });
+  }
+  // The address Post a job pre-fills: the one marked, else the first — the
+  // same rule the server applies on save (defaultJobAddress).
+  const jobDefaultKey = defaultJobAddress(addresses)?.key ?? null;
   const [companyDescription, setCompanyDescription] = useState(
     initialProfile?.companyDescription ?? initialDraft?.companyDescription ?? "",
   );
@@ -356,13 +570,25 @@ export default function EmployerOnboardingForm({
   const [logoUrl, setLogoUrl] = useState<string | null>(initialProfile?.logoUrl ?? initialDraft?.logoUrl ?? null);
   const [logoError, setLogoError] = useState<string | null>(null);
 
+  // SSM verification document — a freshly picked file is a data URL until
+  // the draft autosave (onboarding) or Save (edit) stores it privately.
+  const ssmDocumentInputRef = useRef<HTMLInputElement>(null);
+  const [ssmDocumentUrl, setSsmDocumentUrl] = useState<string | null>(
+    initialProfile?.ssmDocumentUrl ?? initialDraft?.ssmDocumentUrl ?? null,
+  );
+  const [ssmDocumentError, setSsmDocumentError] = useState<string | null>(null);
+  const ssmVerificationStatus = initialProfile?.ssmVerificationStatus ?? "unverified";
+  const ssmRejectionReason = initialProfile?.ssmRejectionReason ?? null;
+
   const [officePhotoUrl, setOfficePhotoUrl] = useState<string | null>(
     initialProfile?.officePhotoUrl ?? initialDraft?.officePhotoUrl ?? null,
   );
-  // Cover banner — a freshly picked image is a data URL until saved (the
-  // server crops it to 3:1 and stores it); not kept in the onboarding draft.
+  // Cover banner — a freshly picked image is a data URL until the draft
+  // autosave (onboarding) or Save (edit) crops it to 3:1 and stores it.
   const bannerInputRef = useRef<HTMLInputElement>(null);
-  const [bannerUrl, setBannerUrl] = useState<string | null>(initialProfile?.bannerUrl ?? null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(
+    initialProfile?.bannerUrl ?? initialDraft?.bannerUrl ?? null,
+  );
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [recentNews, setRecentNews] = useState<{ title: string; url: string }[]>(
     initialProfile?.recentNews ?? initialDraft?.recentNews ?? [],
@@ -373,17 +599,145 @@ export default function EmployerOnboardingForm({
   );
   const [benefitInput, setBenefitInput] = useState("");
 
+  // Workplace — office/team photos, facilities, dress code, awards, leadership.
+  const [galleryPhotos, setGalleryPhotos] = useState<string[]>(
+    initialProfile?.galleryPhotos ?? initialDraft?.galleryPhotos ?? [],
+  );
+  const [galleryUploading, setGalleryUploading] = useState(0);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [facilities, setFacilities] = useState<Facility[]>(
+    ((initialProfile?.facilities ?? initialDraft?.facilities ?? []) as unknown[]).filter(
+      (f): f is Facility => typeof f === "string" && facilityProblem(f) === null,
+    ),
+  );
+  // The "Add another facility" box.
+  const [customFacility, setCustomFacility] = useState("");
+  const [customFacilityError, setCustomFacilityError] = useState<string | null>(null);
+  const customFacilityCount = facilities.filter((f) => !isKnownFacility(f)).length;
+  const [dressCode, setDressCode] = useState<DressCode | "">(
+    DRESS_CODES.find((d) => d === initialProfile?.dressCode) ?? DRESS_CODES.find((d) => d === initialDraft?.dressCode) ?? "",
+  );
+  const [awards, setAwards] = useState<AwardEntry[]>(
+    initialProfile ? awardsFromSaved(initialProfile.awards) : (initialDraft?.awards ?? []),
+  );
+  const [leaders, setLeaders] = useState<Leader[]>(initialProfile?.leaders ?? initialDraft?.leaders ?? []);
+  const [leaderUploading, setLeaderUploading] = useState<number | null>(null);
+  const [leaderError, setLeaderError] = useState<string | null>(null);
+  const leaderPhotoInputRef = useRef<HTMLInputElement>(null);
+  const leaderPhotoTarget = useRef<number | null>(null);
+
+  async function addGalleryFiles(files: FileList | File[] | null) {
+    const picked = Array.from(files ?? []);
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
+    if (picked.length === 0) return;
+    const room = MAX_GALLERY_PHOTOS - galleryPhotos.length - galleryUploading;
+    if (room <= 0) {
+      setGalleryError(`You can add up to ${MAX_GALLERY_PHOTOS} photos — remove one to add another.`);
+      return;
+    }
+    const usable = picked.filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type) && f.size <= 10 * 1024 * 1024);
+    const toUpload = usable.slice(0, room);
+    const skipped = picked.length - toUpload.length;
+    setGalleryError(
+      skipped > 0
+        ? usable.length < picked.length
+          ? "Some files were skipped — use JPG, PNG or WebP photos up to 10 MB."
+          : `Only ${room} more photo${room === 1 ? "" : "s"} fit — up to ${MAX_GALLERY_PHOTOS} in total.`
+        : null,
+    );
+    setGalleryUploading((n) => n + toUpload.length);
+    await Promise.all(
+      toUpload.map(async (file) => {
+        try {
+          const url = await uploadProfilePhoto("gallery", file);
+          setGalleryPhotos((prev) => (prev.length < MAX_GALLERY_PHOTOS ? [...prev, url] : prev));
+        } catch (err) {
+          setGalleryError(err instanceof Error ? err.message : "Couldn't upload that photo.");
+        } finally {
+          setGalleryUploading((n) => n - 1);
+        }
+      }),
+    );
+  }
+
+  function toggleFacility(facility: Facility) {
+    setFacilities((prev) => (prev.includes(facility) ? prev.filter((f) => f !== facility) : [...prev, facility]));
+  }
+
+  // Adds what they typed as a facility of their own. Typing one already on the
+  // list (in any letter case) just ticks that one. Returns whether it was added.
+  function addCustomFacility(): boolean {
+    const value = normalizeFacility(customFacility);
+    if (!value) return false;
+    const problem = facilityProblem(value);
+    if (problem) {
+      setCustomFacilityError(problem);
+      return false;
+    }
+    if (facilities.some((f) => f.toLowerCase() === value.toLowerCase())) {
+      setCustomFacilityError("You've already added that one.");
+      return false;
+    }
+    if (!isKnownFacility(value) && customFacilityCount >= MAX_CUSTOM_FACILITIES) {
+      setCustomFacilityError(`You can add up to ${MAX_CUSTOM_FACILITIES} of your own.`);
+      return false;
+    }
+    setFacilities((prev) => [...prev, value]);
+    setCustomFacility("");
+    setCustomFacilityError(null);
+    return true;
+  }
+
+  function updateAward(index: number, patch: Partial<AwardEntry>) {
+    setAwards((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+  }
+
+  function updateLeader(index: number, patch: Partial<Leader>) {
+    setLeaders((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  }
+
+  async function uploadLeaderPhoto(file: File | undefined) {
+    const index = leaderPhotoTarget.current;
+    if (leaderPhotoInputRef.current) leaderPhotoInputRef.current.value = "";
+    if (!file || index === null) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 10 * 1024 * 1024) {
+      setLeaderError("Use a JPG, PNG or WebP photo up to 10 MB.");
+      return;
+    }
+    setLeaderError(null);
+    setLeaderUploading(index);
+    try {
+      const url = await uploadProfilePhoto("leader", file);
+      updateLeader(index, { photoUrl: url });
+    } catch (err) {
+      setLeaderError(err instanceof Error ? err.message : "Couldn't upload that photo.");
+    } finally {
+      setLeaderUploading(null);
+    }
+  }
+
   // Same idea as initialContactSnapshot — the company fields as they loaded
   // (or were last saved), serialized so any edit, including to addresses,
   // benefits or news entries, flips isCompanyDirty for the leave-confirm guard.
   const companySnapshotValue = JSON.stringify({
     companyName,
     ssmNumber,
+    ssmDocumentUrl,
     industry,
     industryCategory,
     companySize,
     // `key` is a client-only React list id, not saved data — left out.
-    addresses: addresses.map((a) => [a.label, a.addressLine1, a.addressLine2, a.city, a.state, a.postcode]),
+    addresses: addresses.map((a) => [
+      a.label,
+      a.addressLine1,
+      a.addressLine2,
+      a.area ?? "",
+      a.city,
+      a.state,
+      a.postcode,
+      a.key === jobDefaultKey,
+    ]),
     companyDescription,
     websiteUrl,
     companyEmail,
@@ -398,6 +752,11 @@ export default function EmployerOnboardingForm({
     bannerUrl,
     recentNews,
     benefits,
+    galleryPhotos,
+    facilities,
+    dressCode,
+    awards,
+    leaders,
   });
   const initialCompanySnapshot = useRef(companySnapshotValue);
   const isCompanyDirty = companySnapshotValue !== initialCompanySnapshot.current;
@@ -423,6 +782,14 @@ export default function EmployerOnboardingForm({
   const [aiLookupStatus, setAiLookupStatus] = useState<string | null>(null);
   const [aiLookupTokens, setAiLookupTokens] = useState<number | null>(null);
   const [aiLookupDurationMs, setAiLookupDurationMs] = useState<number | null>(null);
+  // An address "Fill with AI" found that differs from the one already filled
+  // in — shown under the first address to use or dismiss.
+  const [aiAddressSuggestion, setAiAddressSuggestion] = useState<{
+    addressLine1: string;
+    city: string | null;
+    state: (typeof MALAYSIA_STATES)[number] | null;
+    postcode: string | null;
+  } | null>(null);
 
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiLookupRequestId = useRef(0);
@@ -472,8 +839,61 @@ export default function EmployerOnboardingForm({
   // Debounced autosave — waits for a pause in typing rather than saving on
   // every keystroke. Skipped in edit mode — there's no draft to autosave to
   // once a profile exists.
+  // Draft saves go out one at a time, newest last: while one is still
+  // uploading, a newer draft waits (replacing any older one waiting), so they
+  // can't finish out of order. Files a save already stored are remembered
+  // and swapped in before the next send, so the same picture is never
+  // uploaded twice even before the form's state catches up.
+  const draftSaving = useRef(false);
+  const draftWaiting = useRef<DraftData | null>(null);
+  const storedUploads = useRef(new Map<string, string | null>());
+  const UPLOAD_FIELDS = ["avatarUrl", "logoUrl", "officePhotoUrl", "bannerUrl", "ssmDocumentUrl"] as const;
+
+  const queueDraftSave = useEffectEvent((payload: DraftData) => {
+    draftWaiting.current = payload;
+    if (draftSaving.current) return;
+    draftSaving.current = true;
+    void (async () => {
+      while (draftWaiting.current) {
+        const draft: DraftData = { ...draftWaiting.current };
+        draftWaiting.current = null;
+        for (const field of UPLOAD_FIELDS) {
+          const value = draft[field];
+          if (typeof value === "string" && storedUploads.current.has(value)) draft[field] = storedUploads.current.get(value) ?? null;
+        }
+        try {
+          const res = await fetch("/api/employer/onboarding-draft", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(draft),
+          });
+          const data: { resolved?: Record<string, string | null> } | null = res.ok ? await res.json() : null;
+          // Freshly picked files come back as their stored paths — used from
+          // now on, so later autosaves (and Finish) don't upload them again.
+          // Skipped if the file was changed again while this request ran.
+          const resolved = data?.resolved ?? {};
+          const swap = (field: (typeof UPLOAD_FIELDS)[number], set: (update: (prev: string | null) => string | null) => void) => {
+            const next = resolved[field];
+            const sent = draft[field];
+            if (next === undefined) return;
+            if (typeof sent === "string") storedUploads.current.set(sent, next);
+            set((prev) => (prev === sent ? next : prev));
+          };
+          swap("avatarUrl", setAvatarUrl);
+          swap("logoUrl", setLogoUrl);
+          swap("officePhotoUrl", setOfficePhotoUrl);
+          swap("bannerUrl", setBannerUrl);
+          swap("ssmDocumentUrl", setSsmDocumentUrl);
+        } catch {
+          // Best-effort — the next change saves again.
+        }
+      }
+      draftSaving.current = false;
+    })();
+  });
+
   useEffect(() => {
-    if (mode === "edit") return;
+    if (mode === "edit" || createNew) return;
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     draftSaveTimeout.current = setTimeout(() => {
       const payload: DraftData = {
@@ -500,21 +920,25 @@ export default function EmployerOnboardingForm({
         companyType,
         logoUrl,
         officePhotoUrl,
+        bannerUrl,
+        ssmDocumentUrl,
         recentNews,
         benefits,
+        galleryPhotos,
+        facilities,
+        dressCode,
+        awards,
+        leaders,
         hasConfirmedCompanyName,
       };
-      fetch("/api/employer/onboarding-draft", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch(() => {});
+      queueDraftSave(payload);
     }, 1000);
     return () => {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     };
   }, [
     mode,
+    createNew,
     avatarUrl,
     contactName,
     contactRole,
@@ -538,8 +962,15 @@ export default function EmployerOnboardingForm({
     companyType,
     logoUrl,
     officePhotoUrl,
+    bannerUrl,
+    ssmDocumentUrl,
     recentNews,
     benefits,
+    galleryPhotos,
+    facilities,
+    dressCode,
+    awards,
+    leaders,
     hasConfirmedCompanyName,
   ]);
 
@@ -560,10 +991,12 @@ export default function EmployerOnboardingForm({
     ssmNumber.trim().length > 0 &&
     industry.trim().length > 0 &&
     industryCategory.length > 0 &&
+    companySize.length > 0 &&
     addresses.length > 0 &&
     addresses.every(isCompleteAddress) &&
     isValidFoundedYear(foundedYear) &&
-    isValidOptionalEmail(companyEmail);
+    isValidOptionalEmail(companyEmail) &&
+    isValidOptionalPhone(companyPhone);
 
   // Tells the employer which required field(s) are blocking the disabled
   // Finish button — otherwise it just sits unclickable with no explanation.
@@ -583,6 +1016,7 @@ export default function EmployerOnboardingForm({
       done: addresses.length > 0 && addresses.every(isCompleteAddress),
       fieldId: addresses.find((a) => !isCompleteAddress(a))?.key ?? "addresses",
     },
+    { label: "Company size", done: companySize.length > 0, fieldId: "companySize" },
   ];
   // Full onboarding shows one continuous list; the standalone My Profile /
   // Company Profile pages each only show the fields that live on that page.
@@ -597,52 +1031,78 @@ export default function EmployerOnboardingForm({
   // touches formValid.
   const boostChecklist = [
     {
-      label: "Add a company logo — postings with a logo get more clicks.",
+      label: "Company logo",
       done: Boolean(logoUrl),
       fieldId: "logoUploadButton",
     },
     {
-      label: "Write a company description — tell candidates what it's like to work there.",
+      label: "Company description",
       done: companyDescription.trim().length > 0,
       fieldId: "companyDescription",
     },
     {
-      label: "Add your website — gives candidates somewhere to learn more.",
+      label: "Website",
       done: websiteUrl.trim().length > 0,
       fieldId: "websiteUrl",
     },
     {
-      label: "Add a company email — an extra way for candidates to reach you.",
+      label: "Company email",
       done: companyEmail.trim().length > 0,
       fieldId: "companyEmail",
     },
     {
-      label: "Add a company phone number — for candidates who prefer to call.",
+      label: "Company phone",
       done: companyPhone.trim().length > 0,
       fieldId: "companyPhone",
     },
     {
-      label: "Link your LinkedIn — let candidates verify you're a real company.",
+      label: "LinkedIn",
       done: companyLinkedin.trim().length > 0,
       fieldId: "companyLinkedin",
     },
     {
-      label: "Add your founded year — builds a bit more trust and context.",
+      label: "Founded year",
       done: foundedYear.trim().length > 0,
       fieldId: "foundedYear",
     },
     {
-      label: "Pick a company type — helps candidates know what to expect.",
+      label: "Company type",
       done: companyType.trim().length > 0,
       fieldId: "companyType",
+    },
+    {
+      label: "Office photos",
+      done: galleryPhotos.length > 0,
+      fieldId: "galleryAddButton",
+    },
+    {
+      label: "Facilities",
+      done: facilities.length > 0,
+      fieldId: "facilities",
+    },
+    {
+      label: "Leadership",
+      done: leaders.some((l) => l.name.trim() && l.title.trim()),
+      fieldId: "leadership",
     },
   ];
   const boostChecklistRemaining = boostChecklist.filter((item) => !item.done).length;
   const requiredChecklistComplete = requiredFieldChecklist.every((item) => item.done);
 
+  // Folded away during onboarding (see "Make your company stand out").
+  const [extrasOpen, setExtrasOpen] = useState(false);
+  const [showAllBenefits, setShowAllBenefits] = useState(false);
+
   function goToField(fieldId: string) {
     const el = document.getElementById(fieldId);
-    if (!el) return;
+    if (!el) {
+      // Inside the folded optional card: open it, then go there once it's shown.
+      if (!extrasOpen) {
+        setExtrasOpen(true);
+        setTimeout(() => goToField(fieldId), 60);
+      }
+      return;
+    }
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.focus({ preventScroll: true });
   }
@@ -718,6 +1178,32 @@ export default function EmployerOnboardingForm({
     if (logoInputRef.current) logoInputRef.current.value = "";
   }
 
+  const SSM_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
+  function handleSsmDocumentFile(files: FileList | null) {
+    const picked = files?.[0];
+    if (ssmDocumentInputRef.current) ssmDocumentInputRef.current.value = "";
+    if (!picked) return;
+    if (!/^(application\/pdf|image\/(jpeg|png|webp))$/.test(picked.type)) {
+      setSsmDocumentError("Choose a PDF, JPG, PNG or WebP file.");
+      return;
+    }
+    if (picked.size > SSM_DOCUMENT_MAX_BYTES) {
+      setSsmDocumentError("File is too large — max 10 MB.");
+      return;
+    }
+    setSsmDocumentError(null);
+    const reader = new FileReader();
+    reader.onload = () => setSsmDocumentUrl(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setSsmDocumentError("Couldn't read that file.");
+    reader.readAsDataURL(picked);
+  }
+
+  function clearSsmDocument() {
+    setSsmDocumentUrl(null);
+    setSsmDocumentError(null);
+    if (ssmDocumentInputRef.current) ssmDocumentInputRef.current.value = "";
+  }
+
   async function handleAiLookup() {
     if (!companyName.trim()) return;
     // Belt-and-suspenders with the button's own `disabled` prop below —
@@ -739,6 +1225,7 @@ export default function EmployerOnboardingForm({
       lastLookedUpCompanyName.current !== null && lastLookedUpCompanyName.current !== targetCompanyName;
     if (isFreshCompany) clearAiFilledFields();
     lastLookedUpCompanyName.current = targetCompanyName;
+    setAiAddressSuggestion(null);
     const requestId = ++aiLookupRequestId.current;
     setAiLookupLoading(true);
     setAiLookupError(null);
@@ -790,9 +1277,16 @@ export default function EmployerOnboardingForm({
         companyType: (typeof COMPANY_TYPES)[number] | null;
         ssmNumber: string | null;
         benefits: string[];
+        awards?: Award[];
+        leaders?: { name: string; title: string }[];
+        facilities?: Facility[];
+        dressCode?: DressCode | null;
         logoUrl: string | null;
         recentNews: { title: string; url: string }[];
       };
+      const foundAwards = result.awards ?? [];
+      const foundLeaders = result.leaders ?? [];
+      const foundFacilities = result.facilities ?? [];
       // The AI lookup's free-text industry guess also drives industryCategory
       // when it happens to land on one of the standardized INDUSTRIES values
       // verbatim — same "never write a value the Dropdown can't render" rule
@@ -823,10 +1317,13 @@ export default function EmployerOnboardingForm({
       if (result.city && (isFreshCompany || !addresses[0]?.city.trim())) filled++;
       if (result.state && (isFreshCompany || !addresses[0]?.state)) filled++;
       if (result.postcode && (isFreshCompany || !addresses[0]?.postcode.trim())) filled++;
-      if (result.companySize) filled++;
+      if (result.companySize && (isFreshCompany || !companySize)) filled++;
       if (result.websiteUrl && (isFreshCompany || !websiteUrl.trim())) filled++;
       if (result.companyEmail && (isFreshCompany || !companyEmail.trim())) filled++;
-      if (result.companyPhone && (isFreshCompany || !companyPhone.trim())) filled++;
+      // Only a number that passes the same check as typing one in — the
+      // lookup keeps whatever format it found (sometimes two numbers in one).
+      const lookedUpPhone = result.companyPhone && isValidMalaysianPhone(result.companyPhone) ? result.companyPhone : null;
+      if (lookedUpPhone && (isFreshCompany || !companyPhone.trim())) filled++;
       if (result.companyLinkedin && (isFreshCompany || !companyLinkedin.trim())) filled++;
       if (result.companyFacebook && (isFreshCompany || !companyFacebook.trim())) filled++;
       if (result.companyInstagram && (isFreshCompany || !companyInstagram.trim())) filled++;
@@ -837,6 +1334,10 @@ export default function EmployerOnboardingForm({
       if (result.logoUrl && (isFreshCompany || !logoUrl)) filled++;
       if (result.recentNews.some((item) => isFreshCompany || !recentNews.some((r) => r.url === item.url)))
         filled++;
+      if (foundAwards.length > 0 && (isFreshCompany || awards.length === 0)) filled++;
+      if (foundLeaders.length > 0 && (isFreshCompany || leaders.length === 0)) filled++;
+      if (foundFacilities.some((f) => isFreshCompany || !facilities.includes(f))) filled++;
+      if (result.dressCode && (isFreshCompany || !dressCode)) filled++;
 
       // Only fills fields the user hasn't already entered by hand — an AI
       // guess should never clobber a manual correction. Uses functional
@@ -850,6 +1351,27 @@ export default function EmployerOnboardingForm({
       }
       if (matchedIndustry) {
         setIndustryCategory((prev) => (prev ? prev : matchedIndustry));
+      }
+      // The first address already holds one (typed, picked, or from an
+      // earlier lookup), so it's left as is — but if the lookup found a
+      // different one, it's offered beside it rather than silently dropped.
+      const current = addresses[0];
+      const currentFilled =
+        !isFreshCompany &&
+        !!current &&
+        !!(current.addressLine1.trim() || current.city.trim() || current.state || current.postcode.trim());
+      if (
+        currentFilled &&
+        result.addressLine1 &&
+        (result.addressLine1.trim().toLowerCase() !== current.addressLine1.trim().toLowerCase() ||
+          (!!result.postcode && result.postcode !== current.postcode))
+      ) {
+        setAiAddressSuggestion({
+          addressLine1: result.addressLine1,
+          city: result.city,
+          state: result.state,
+          postcode: result.postcode,
+        });
       }
       if (result.addressLine1 || result.city || result.state || result.postcode) {
         setAddresses((prev) =>
@@ -871,7 +1393,8 @@ export default function EmployerOnboardingForm({
         );
       }
       if (result.companySize) {
-        setCompanySize(result.companySize);
+        // Like every other field: a size already picked is never overwritten.
+        setCompanySize((prev) => prev || (result.companySize as (typeof COMPANY_SIZES)[number]));
       }
       if (result.websiteUrl) {
         setWebsiteUrl((prev) => (prev.trim() ? prev : (result.websiteUrl as string)));
@@ -879,8 +1402,8 @@ export default function EmployerOnboardingForm({
       if (result.companyEmail) {
         setCompanyEmail((prev) => (prev.trim() ? prev : (result.companyEmail as string)));
       }
-      if (result.companyPhone) {
-        setCompanyPhone((prev) => (prev.trim() ? prev : (result.companyPhone as string)));
+      if (lookedUpPhone) {
+        setCompanyPhone((prev) => (prev.trim() ? prev : lookedUpPhone));
       }
       if (result.companyLinkedin) {
         setCompanyLinkedin((prev) => (prev.trim() ? prev : (result.companyLinkedin as string)));
@@ -911,6 +1434,20 @@ export default function EmployerOnboardingForm({
       }
       if (result.logoUrl) {
         setLogoUrl((prev) => prev ?? result.logoUrl);
+      }
+      // Lists are filled only when empty (never merged into what was typed);
+      // facilities are added to, like benefits.
+      if (foundAwards.length > 0) {
+        setAwards((prev) => (prev.length > 0 ? prev : awardsFromSaved(foundAwards)));
+      }
+      if (foundLeaders.length > 0) {
+        setLeaders((prev) => (prev.length > 0 ? prev : foundLeaders.map((l) => ({ ...l, photoUrl: null }))));
+      }
+      if (foundFacilities.length > 0) {
+        setFacilities((prev) => [...prev, ...foundFacilities.filter((f) => !prev.includes(f))]);
+      }
+      if (result.dressCode) {
+        setDressCode((prev) => prev || (result.dressCode as DressCode));
       }
       if (result.recentNews.length > 0) {
         setRecentNews((prev) => {
@@ -949,10 +1486,12 @@ export default function EmployerOnboardingForm({
     setCompanyDescription("");
     setIndustry("");
     setIndustryCategory("");
+    // The area too — it described the previous company's street.
     setAddresses((prev) =>
-      prev.map((a, i) => (i === 0 ? { ...a, addressLine1: "", city: "", state: "", postcode: "" } : a)),
+      prev.map((a, i) => (i === 0 ? { ...a, addressLine1: "", area: "", city: "", state: "", postcode: "" } : a)),
     );
-    setCompanySize("1-10");
+    setAiAddressSuggestion(null);
+    setCompanySize("");
     setWebsiteUrl("");
     setCompanyEmail("");
     setCompanyPhone("");
@@ -965,13 +1504,46 @@ export default function EmployerOnboardingForm({
     setBenefits(["EPF", "SOCSO", "EIS"]);
     setLogoUrl(null);
     setOfficePhotoUrl(null);
+    // Uploaded by hand, but they belong to the old company all the same.
+    setBannerUrl(null);
+    setBannerError(null);
+    setSsmDocumentUrl(null);
+    setSsmDocumentError(null);
     setRecentNews([]);
+    // The workplace belongs to the old company too.
+    setGalleryPhotos([]);
+    setFacilities([]);
+    setDressCode("");
+    setAwards([]);
+    setLeaders([]);
+    setGalleryError(null);
+    setLeaderError(null);
     setAiLookupStatus(null);
     setAiLookupError(null);
     setAiLookupTokens(null);
     setAiLookupDurationMs(null);
     setAiLookupElapsedMs(0);
   }
+
+  function applyAiAddress(key: string) {
+    const s = aiAddressSuggestion;
+    if (!s) return;
+    const city = s.city ?? "";
+    autoFilledCity.current[key] = city;
+    // Cleared so the area is looked up again for the new street.
+    autoFilledArea.current[key] = "";
+    updateAddress(key, {
+      addressLine1: s.addressLine1,
+      city,
+      ...(s.state ? { state: s.state } : {}),
+      postcode: s.postcode ?? "",
+      area: "",
+    });
+    setAiAddressSuggestion(null);
+  }
+
+  // Reset wipes everything typed by hand too, with no undo — so it asks first.
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Not an undo to a prior state, a full reset so the employer can start
   // over from a clean slate, including re-typing the company name itself.
@@ -982,6 +1554,13 @@ export default function EmployerOnboardingForm({
     setCompanyNameLocked(false);
     setHasConfirmedCompanyName(false);
     clearAiFilledFields();
+    // A true start-over: back to one empty Headquarters address (the AI clear
+    // above only empties the first one), and the address autofill forgets
+    // what it filled in.
+    setAddresses([blankAddress("Headquarters")]);
+    autoFilledCity.current = {};
+    autoFilledArea.current = {};
+    setAiAddressSuggestion(null);
   }
 
   function updateNewsItem(index: number, patch: Partial<{ title: string; url: string }>) {
@@ -1024,6 +1603,22 @@ export default function EmployerOnboardingForm({
       setError("Finish or remove the incomplete news entry (needs both a headline and a URL).");
       return false;
     }
+    if (awards.some((a) => a.year.trim() && !a.title.trim())) {
+      setError("Give each award a name, or remove the empty one.");
+      return false;
+    }
+    if (awards.some((a) => !isValidAwardYear(a.year))) {
+      setError(`Award years must be between 1900 and ${CURRENT_YEAR}.`);
+      return false;
+    }
+    if (leaders.some((l) => (l.name.trim() || l.title.trim() || l.photoUrl) && !(l.name.trim() && l.title.trim()))) {
+      setError("Each person in Leadership needs both a name and a role — or remove them.");
+      return false;
+    }
+    if (galleryUploading > 0 || leaderUploading !== null) {
+      setError("A photo is still uploading — give it a moment, then try again.");
+      return false;
+    }
 
     setSubmitting(true);
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
@@ -1041,6 +1636,7 @@ export default function EmployerOnboardingForm({
           contactEmail,
           companyName,
           ssmNumber,
+          ssmDocumentUrl,
           industry,
           industryCategory: industryCategory || null,
           companySize,
@@ -1048,9 +1644,11 @@ export default function EmployerOnboardingForm({
             label: a.label.trim(),
             addressLine1: a.addressLine1.trim(),
             addressLine2: a.addressLine2.trim() || null,
+            area: a.area?.trim() || null,
             city: a.city.trim(),
             state: a.state || null,
             postcode: a.postcode.trim(),
+            isJobDefault: a.key === jobDefaultKey,
           })),
           companyDescription: companyDescription.trim() || null,
           logoUrl,
@@ -1066,6 +1664,17 @@ export default function EmployerOnboardingForm({
           officePhotoUrl,
           bannerUrl,
           recentNews: recentNews.filter((item) => item.title.trim() && item.url.trim()),
+          galleryPhotos,
+          facilities,
+          dressCode: dressCode || null,
+          // Rows left completely blank are dropped, not sent as errors.
+          awards: awards
+            .filter((a) => a.title.trim() || a.year.trim())
+            .map((a) => ({ title: a.title.trim(), year: a.year.trim() ? Number(a.year) : null })),
+          leaders: leaders
+            .filter((l) => l.name.trim() || l.title.trim() || l.photoUrl)
+            .map((l) => ({ name: l.name.trim(), title: l.title.trim(), photoUrl: l.photoUrl })),
+          createNew,
         }),
       });
       let data;
@@ -1082,11 +1691,21 @@ export default function EmployerOnboardingForm({
         // from now on, and count it as the saved value.
         const savedBannerUrl: string | null = data.bannerUrl !== undefined ? data.bannerUrl : bannerUrl;
         setBannerUrl(savedBannerUrl);
-        initialCompanySnapshot.current = JSON.stringify({ ...JSON.parse(companySnapshotValue), bannerUrl: savedBannerUrl });
+        // Same deal for a freshly uploaded SSM document.
+        const savedSsmDocumentUrl: string | null = data.ssmDocumentUrl !== undefined ? data.ssmDocumentUrl : ssmDocumentUrl;
+        setSsmDocumentUrl(savedSsmDocumentUrl);
+        initialCompanySnapshot.current = JSON.stringify({
+          ...JSON.parse(companySnapshotValue),
+          bannerUrl: savedBannerUrl,
+          ssmDocumentUrl: savedSsmDocumentUrl,
+        });
         router.refresh();
       } else {
-        router.push("/employer/dashboard");
-        router.refresh();
+        // Same reasoning as the jobseeker form: no router.refresh()/push here
+        // — the modal's own button takes them to the dashboard, which loads
+        // fresh anyway. Re-rendering this page now that a company exists
+        // would otherwise redirect it away before the modal is ever seen.
+        setShowFinishSuccess(true);
       }
       return true;
     } catch (err) {
@@ -1152,19 +1771,23 @@ export default function EmployerOnboardingForm({
                 className="hidden"
                 onChange={(e) => handleAvatarFile(e.target.files)}
               />
-              <button
-                type="button"
-                onClick={() => avatarInputRef.current?.click()}
-                aria-label={avatarUrl ? "Change profile photo" : "Upload profile photo"}
-                className="flex h-[64px] w-[64px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/[0.1] bg-[#F1F4F8] text-[#9AA3B2] hover:border-brand-teal-dark"
-              >
-                {avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
-                ) : (
-                  <UserIcon className="h-[26px] w-[26px]" />
-                )}
-              </button>
+              {/* Wrapped so the "phone verified" tick can sit on the avatar's edge. */}
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  aria-label={avatarUrl ? "Change profile photo" : "Upload profile photo"}
+                  className="flex h-[64px] w-[64px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/[0.1] bg-[#F1F4F8] text-[#9AA3B2] hover:border-brand-teal-dark"
+                >
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl} referrerPolicy="no-referrer" alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    <UserIcon className="h-[26px] w-[26px]" />
+                  )}
+                </button>
+                {phoneVerified && <PhoneVerifiedAvatarBadge />}
+              </div>
               <div className="flex flex-col gap-[4px]">
                 <div className="flex items-center gap-[10px]">
                   <button
@@ -1238,15 +1861,23 @@ export default function EmployerOnboardingForm({
                 />
               </Field>
             )}
-            <PhoneInput
-              required
-              id="contactPhone"
-              label="Phone number"
-              accent="teal"
-              className="col-span-full"
-              value={contactPhone}
-              onChange={setContactPhone}
-            />
+            {/* Its own box: the number and its verification belong together.
+                Framed with the employer gradient, like the cards. */}
+            <div className="col-span-full rounded-[14px] bg-gradient-to-br from-brand-teal via-white to-brand-teal p-px">
+            <div className="rounded-[13px] bg-brand-teal-page p-[12px]">
+              <PhoneInput
+                required
+                id="contactPhone"
+                label="Phone number"
+                accent="teal"
+                value={contactPhone}
+                onChange={setContactPhone}
+                verifiable
+                initialStatus={initialPhoneStatus}
+                onVerifiedChange={setPhoneVerified}
+              />
+            </div>
+            </div>
             <Field label="Email address" htmlFor="contactEmail" className="col-span-full">
               <input
                 id="contactEmail"
@@ -1269,7 +1900,7 @@ export default function EmployerOnboardingForm({
                 >
                   {submitting ? "Saving…" : saveLabel}
                 </button>
-                {savedAt && !error && <p className="text-xs text-[#008990]">Saved.</p>}
+                {savedAt && !error && <p className="text-xs text-brand-teal-dark">Saved.</p>}
               </div>
             )}
           </div>
@@ -1284,9 +1915,11 @@ export default function EmployerOnboardingForm({
       {earnedBadges && <CompanyBadgesCard earnedBadges={earnedBadges} />}
       <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "60ms" } : undefined}>
         <div className="@container relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
+          {/* A fixed size (not the card's full height) — sized to the card,
+              it grew as the card did and spread over the buttons beside it. */}
           <InlineIllustration
             src="/illustrations/company-name-web-search.svg"
-            className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-auto [&>svg]:h-full [&>svg]:w-auto @[34rem]:block"
+            className="pointer-events-none absolute right-[8px] top-1/2 hidden h-[200px] w-[200px] -translate-y-1/2 [&>svg]:h-full [&>svg]:w-full @[34rem]:block"
           />
 
           <h1 className="relative text-xl font-semibold text-[#141B2E] @[34rem]:max-w-[calc(100%-220px)]">Company name</h1>
@@ -1296,9 +1929,7 @@ export default function EmployerOnboardingForm({
 
           <div className="relative mt-[16px] @[34rem]:max-w-[calc(100%-220px)]">
             <Field required label="Company name" htmlFor="companyName">
-              {/* Wraps below ~360px of card width so the input keeps a
-                  usable width instead of shrinking behind its buttons. */}
-              <div className="flex flex-wrap gap-[8px]">
+              <div className="flex gap-[8px]">
                 <input
                   ref={companyNameInputRef}
                   id="companyName"
@@ -1346,7 +1977,7 @@ export default function EmployerOnboardingForm({
                   }}
                   disabled={companyNameLocked || aiLookupLoading}
                   placeholder="e.g. Maju Jaya Sdn Bhd"
-                  className={`${inputClass} min-w-[180px] flex-1 disabled:bg-[#F8FAFB] disabled:text-[#4B5468]`}
+                  className={`${inputClass} min-w-0 flex-1 disabled:bg-[#F8FAFB] disabled:text-[#4B5468]`}
                 />
                 {hasConfirmedCompanyName &&
                   (companyNameLocked ? (
@@ -1405,6 +2036,9 @@ export default function EmployerOnboardingForm({
                       Save
                     </button>
                   ))}
+              </div>
+              {/* The actions on their own row, so they never wrap into odd gaps. */}
+              <div className="mt-[8px] flex flex-wrap gap-[8px]">
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
@@ -1429,7 +2063,7 @@ export default function EmployerOnboardingForm({
                     (hasConfirmedCompanyName && !companyNameLocked) ||
                     companyName.trim() === lastLookedUpCompanyName.current
                   }
-                  className={`flex h-[38px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`flex h-[38px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[12px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] px-[14px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
                     aiLookupLoading ? "ai-fill-pulse" : ""
                   }`}
                 >
@@ -1439,7 +2073,7 @@ export default function EmployerOnboardingForm({
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={resetAiFields}
+                  onClick={() => setShowResetConfirm(true)}
                   disabled={aiLookupLoading}
                   aria-label="Clear AI-filled details"
                   className="h-[38px] shrink-0 whitespace-nowrap rounded-[12px] bg-[#F1F4F8] px-[14px] text-sm text-[#4B5468] hover:bg-black/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
@@ -1448,7 +2082,7 @@ export default function EmployerOnboardingForm({
                 </button>
               </div>
               {(aiLookupStatus || aiLookupError) && (
-                <p className={`mt-[6px] text-xs ${aiLookupError ? "text-red-500" : "text-[#008990]"}`}>
+                <p className={`mt-[6px] text-xs ${aiLookupError ? "text-red-500" : "text-brand-teal-dark"}`}>
                   {aiLookupError ??
                     `${aiLookupStatus}${
                       aiLookupTokens || aiLookupDurationMs
@@ -1467,6 +2101,521 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "240ms" } : undefined}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
+          <h1 className="text-xl font-semibold text-[#141B2E]">About your company</h1>
+          <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
+            Tell us a bit about your company so we can help you hire faster.
+          </p>
+
+          <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
+            <fieldset className="contents">
+            <Field required label="Industry" htmlFor="industry">
+              <input
+                id="industry"
+                type="text"
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                placeholder="e.g. F&B, Retail, Logistics"
+                className={inputClass}
+              />
+            </Field>
+            <Field required label="Industry category" htmlFor="industryCategory">
+              <Dropdown
+                id="industryCategory"
+                label="Industry category"
+                value={industryCategory}
+                options={[
+                  { value: "" as const, label: "Select industry" },
+                  ...INDUSTRIES.map((i) => ({ value: i, label: i })),
+                ]}
+                onChange={(value) => setIndustryCategory(value as (typeof INDUSTRIES)[number] | "")}
+                searchable
+                searchPlaceholder="Search industries..."
+              />
+            </Field>
+            <div className="col-span-full flex flex-col gap-[12px]">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-[#4B5468]">
+                  Company address{addresses.length > 1 ? "es" : ""}
+                </p>
+                <button
+                  type="button"
+                  onClick={addAddress}
+                  className="flex shrink-0 items-center gap-[4px] rounded-full bg-brand-teal-soft py-[6px] pl-[10px] pr-[12px] text-sm text-brand-teal-dark hover:bg-[#CFF4F6]"
+                >
+                  <PlusIcon className="h-[12px] w-[12px]" />
+                  Add another address
+                </button>
+              </div>
+
+              {addresses.map((address, i) => (
+                <div
+                  key={address.key}
+                  className="flex flex-col gap-[10px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
+                >
+                  <div className="flex items-center justify-between gap-[10px]">
+                    <input
+                      type="text"
+                      value={address.label}
+                      onChange={(e) => updateAddress(address.key, { label: e.target.value })}
+                      placeholder="e.g. Headquarters, Branch office"
+                      className={`${inputClass} max-w-[260px]`}
+                    />
+                    {/* With more than one address, pick which one new job
+                        postings start with (one address is always it). */}
+                    {addresses.length > 1 &&
+                      (address.key === jobDefaultKey ? (
+                        <span className="ml-auto flex h-[28px] shrink-0 items-center gap-[5px] rounded-full bg-brand-teal-soft px-[10px] text-xs text-brand-teal-dark">
+                          <CheckIcon className="h-[10px] w-[10px]" />
+                          Default for job posts
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setJobDefault(address.key)}
+                          className="ml-auto flex h-[28px] shrink-0 items-center rounded-full border border-black/[0.1] px-[10px] text-xs text-[#4B5468] hover:bg-black/[0.03]"
+                        >
+                          Set as default for job posts
+                        </button>
+                      ))}
+                    {addresses.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeAddress(address.key)}
+                        className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.06] hover:text-red-500"
+                        aria-label={`Remove ${address.label || "this address"}`}
+                      >
+                        <XIcon className="h-[12px] w-[12px]" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-x-[14px] gap-y-[10px] sm:grid-cols-2">
+                    <Field required label="Street address" htmlFor={address.key} className="col-span-full">
+                      <AddressSearchInput
+                        id={address.key}
+                        value={address.addressLine1}
+                        onChange={(addressLine1) => updateAddress(address.key, { addressLine1 })}
+                        onPick={(suggestion, typed) => pickAddressSuggestion(address.key, suggestion, typed)}
+                        onLeave={() => splitPastedAddress(address.key)}
+                        placeholder="Start typing your street or building, e.g. Jalan SS 2/24"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="Address line 2 (optional)" htmlFor={`${address.key}-line2`} className="col-span-full">
+                      <input
+                        id={`${address.key}-line2`}
+                        type="text"
+                        value={address.addressLine2}
+                        onChange={(e) => updateAddress(address.key, { addressLine2: e.target.value })}
+                        placeholder="e.g. Unit 5-1, Level 5"
+                        className={inputClass}
+                      />
+                    </Field>
+                    {/* Postcode first — it fills in the city and state. */}
+                    <Field required label="Postcode" htmlFor={`${address.key}-postcode`}>
+                      <input
+                        id={`${address.key}-postcode`}
+                        type="text"
+                        inputMode="numeric"
+                        value={address.postcode}
+                        onChange={(e) => handlePostcodeChange(address.key, e.target.value)}
+                        placeholder="e.g. 47300"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field required label="City" htmlFor={`${address.key}-city`}>
+                      <input
+                        id={`${address.key}-city`}
+                        type="text"
+                        value={address.city}
+                        onChange={(e) => updateAddress(address.key, { city: e.target.value })}
+                        placeholder="e.g. Petaling Jaya"
+                        className={inputClass}
+                      />
+                    </Field>
+                    {(() => {
+                      const lookup = postcodeResults[address.key];
+                      if (!lookup || lookup.postcode !== address.postcode) return null;
+                      if (lookup.matches.length === 0) {
+                        return (
+                          <p className="col-span-full -mt-[4px] text-xs text-[#9AA3B2]">
+                            We couldn&rsquo;t find postcode {lookup.postcode} — check it, or fill in the city and state
+                            yourself.
+                          </p>
+                        );
+                      }
+                      // The postcode's town(s), offered when there's a choice
+                      // or the city typed differs from it.
+                      const otherTowns = lookup.matches.filter((m) => m.city !== address.city);
+                      if (lookup.matches.length === 1 && otherTowns.length === 0) return null;
+                      return (
+                        <div className="col-span-full -mt-[4px] flex flex-wrap items-center gap-[6px]">
+                          <span className="text-xs text-[#9AA3B2]">
+                            {lookup.matches.length > 1 ? `Towns for ${lookup.postcode}:` : `Postcode ${lookup.postcode} is in`}
+                          </span>
+                          {lookup.matches.map((m) =>
+                            m.city === address.city ? (
+                              <span
+                                key={m.city}
+                                className="flex items-center gap-[4px] rounded-full bg-brand-teal-dark px-[10px] py-[3px] text-xs text-white"
+                              >
+                                <CheckIcon className="h-[9px] w-[9px]" />
+                                {m.city}
+                              </span>
+                            ) : (
+                              <button
+                                key={m.city}
+                                type="button"
+                                onClick={() => pickPostcodeTown(address.key, m.city)}
+                                className="rounded-full bg-brand-teal-soft px-[10px] py-[3px] text-xs text-brand-teal-dark hover:bg-[#CFF4F6]"
+                              >
+                                {lookup.matches.length > 1 ? m.city : `Use ${m.city}`}
+                              </button>
+                            ),
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <Field label="Area / neighbourhood (optional)" htmlFor={`${address.key}-area`}>
+                      <input
+                        id={`${address.key}-area`}
+                        type="text"
+                        maxLength={80}
+                        value={address.area ?? ""}
+                        onChange={(e) => updateAddress(address.key, { area: e.target.value })}
+                        placeholder={
+                          areaLookupKeys[address.key]
+                            ? "Finding the area…"
+                            : address.addressLine1.trim() && address.postcode.length === 5
+                              ? "e.g. Bangsar South"
+                              : "Filled in from the street address and postcode"
+                        }
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field required label="State" htmlFor={`${address.key}-state`}>
+                      <Dropdown
+                        id={`${address.key}-state`}
+                        label="State"
+                        value={address.state}
+                        options={[
+                          { value: "" as const, label: "Select state" },
+                          ...MALAYSIA_STATES.map((s) => ({ value: s, label: s })),
+                        ]}
+                        onChange={(value) =>
+                          updateAddress(address.key, { state: value as (typeof MALAYSIA_STATES)[number] | "" })
+                        }
+                      />
+                    </Field>
+                    <Field label="Country" htmlFor={`${address.key}-country`}>
+                      <input
+                        id={`${address.key}-country`}
+                        type="text"
+                        value="Malaysia"
+                        disabled
+                        readOnly
+                        className={`${inputClass} cursor-not-allowed bg-[#F8FAFB] text-[#9AA3B2]`}
+                      />
+                    </Field>
+                  </div>
+                  {isCompleteAddress(address) && (
+                    <iframe
+                      title={`Map for ${address.label || "this address"}`}
+                      src={`https://www.google.com/maps?q=${encodeURIComponent(
+                        `${address.addressLine1}, ${address.addressLine2 ? `${address.addressLine2}, ` : ""}${address.area?.trim() ? `${address.area.trim()}, ` : ""}${address.city}, ${address.state} ${address.postcode}, Malaysia`,
+                      )}&output=embed`}
+                      loading="lazy"
+                      className="h-[180px] w-full rounded-[12px] border border-black/[0.08]"
+                    />
+                  )}
+                  {i === 0 && aiAddressSuggestion && (
+                    <div className="flex flex-col gap-[8px] rounded-[12px] border border-brand-teal-dark/30 bg-brand-teal-page p-[12px] sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-[6px] text-xs text-brand-teal-dark">
+                          <SiriOrb className="h-[12px] w-[12px]" />
+                          &ldquo;Fill with AI&rdquo; found a different address
+                        </p>
+                        <p className="mt-[2px] text-sm text-[#141B2E]">
+                          {[
+                            aiAddressSuggestion.addressLine1,
+                            [aiAddressSuggestion.postcode, aiAddressSuggestion.city].filter(Boolean).join(" "),
+                            aiAddressSuggestion.state !== aiAddressSuggestion.city ? aiAddressSuggestion.state : null,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-[6px]">
+                        <button
+                          type="button"
+                          onClick={() => applyAiAddress(address.key)}
+                          className="h-[30px] rounded-full bg-brand-teal-dark px-[12px] text-xs text-white hover:opacity-90"
+                        >
+                          Use this address
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAiAddressSuggestion(null)}
+                          className="h-[30px] rounded-full px-[10px] text-xs text-[#4B5468] hover:bg-black/[0.04]"
+                        >
+                          Keep mine
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {i === 0 && (
+                    <p className="text-xs text-[#9AA3B2]">
+                      This is the address &ldquo;Fill with AI&rdquo; fills in for you, when it can find one.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <Field required label="Company size" htmlFor="companySize" className="col-span-full">
+              <div
+                id="companySize"
+                role="radiogroup"
+                aria-label="Company size"
+                className="grid h-[38px] grid-cols-5 gap-[4px] rounded-full border border-black/[0.1] p-[3px]"
+              >
+                {COMPANY_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    role="radio"
+                    onClick={() => setCompanySize(size)}
+                    aria-checked={companySize === size}
+                    className="flex h-[30px] items-center justify-center whitespace-nowrap rounded-full text-xs sm:text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Default benefits" htmlFor="benefitInput" className="col-span-full">
+              {/* Same layout as Facilities and Post a job: chips, then a text box with an Add button, then dashed "+" suggestions. */}
+              {benefits.length > 0 && (
+                <div className="mb-[10px] flex flex-wrap gap-[6px]">
+                  {benefits.map((benefit) => (
+                    <span
+                      key={benefit}
+                      className="flex items-center gap-[6px] rounded-full bg-brand-teal-dark py-[6px] pl-[12px] pr-[8px] text-xs text-white"
+                    >
+                      {benefit}
+                      <button
+                        type="button"
+                        onClick={() => removeBenefit(benefit)}
+                        aria-label={`Remove ${benefit}`}
+                        className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-white/70 hover:bg-white/20 hover:text-white"
+                      >
+                        <XIcon className="h-[9px] w-[9px]" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-[8px]">
+                <input
+                  id="benefitInput"
+                  type="text"
+                  value={benefitInput}
+                  onChange={(e) => setBenefitInput(e.target.value)}
+                  onKeyDown={handleBenefitKeyDown}
+                  onBlur={addBenefit}
+                  placeholder="Add another benefit"
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  type="button"
+                  // mousedown, so it runs before the box's blur adds the same text a second time.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    addBenefit();
+                  }}
+                  disabled={!benefitInput.trim()}
+                  className="h-[38px] shrink-0 whitespace-nowrap rounded-[12px] bg-brand-teal-soft px-[14px] text-sm text-brand-teal-dark hover:bg-[#CFF4F6] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+              {SUGGESTED_BENEFITS.some((b) => !benefits.includes(b)) && (
+                <div className="mt-[10px] flex flex-wrap gap-[6px]">
+                  {/* The most common few first; the full list is one tap away. */}
+                  {SUGGESTED_BENEFITS.filter((b) => !benefits.includes(b))
+                    .slice(0, showAllBenefits ? undefined : BENEFITS_SHOWN_FIRST)
+                    .map((benefit) => (
+                    <button
+                      key={benefit}
+                      type="button"
+                      onClick={() => addBenefitValue(benefit)}
+                      className="flex items-center gap-[4px] rounded-full border border-dashed border-black/[0.15] py-[6px] pl-[12px] pr-[10px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+                    >
+                      <PlusIcon className="h-[8px] w-[8px]" />
+                      {benefit}
+                    </button>
+                  ))}
+                  {!showAllBenefits && SUGGESTED_BENEFITS.filter((b) => !benefits.includes(b)).length > BENEFITS_SHOWN_FIRST && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllBenefits(true)}
+                      className="flex items-center rounded-full px-[10px] py-[6px] text-sm text-brand-teal-dark hover:underline"
+                    >
+                      Show all ({SUGGESTED_BENEFITS.filter((b) => !benefits.includes(b)).length})
+                    </button>
+                  )}
+                </div>
+              )}
+            </Field>
+            </fieldset>
+          </div>
+        </div>
+      </div>
+
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "180ms" } : undefined}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
+          <h1 className="text-xl font-semibold text-[#141B2E]">Business verification</h1>
+          <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
+            Upload your SSM certificate so we can verify your company — verified companies get a badge on their logo.
+          </p>
+
+          <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
+            <fieldset className="contents">
+            <Field required label="SSM registration number" htmlFor="ssmNumber">
+              <input
+                id="ssmNumber"
+                type="text"
+                value={ssmNumber}
+                onChange={(e) => setSsmNumber(e.target.value)}
+                placeholder="e.g. 202301012345"
+                className={inputClass}
+              />
+            </Field>
+
+            <div className="col-span-full flex flex-col gap-[6px]">
+              <p className="text-xs text-[#4B5468]">SSM certificate / business registration document</p>
+              <input
+                ref={ssmDocumentInputRef}
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => handleSsmDocumentFile(e.target.files)}
+              />
+              {ssmDocumentUrl ? (
+                <div className="flex items-center justify-between gap-[10px] rounded-[12px] border border-[#EAEDF2] bg-[#F8FAFB] px-[14px] py-[10px]">
+                  {/* A just-picked file is a data: URL, which browsers won't
+                      open in a new tab — and during onboarding the stored
+                      file only opens once the company exists — so both show
+                      a note instead of a link until then. */}
+                  {ssmDocumentUrl.startsWith("data:") || mode !== "edit" ? (
+                    <span className="truncate text-sm text-[#141B2E]">
+                      SSM document attached{" "}
+                      <span className="text-[#9AA3B2]">
+                        · {mode === "edit" ? "uploads when you save" : "sent for review when you finish"}
+                      </span>
+                    </span>
+                  ) : (
+                    <a
+                      href={ssmDocumentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-sm text-brand-teal-dark hover:underline"
+                    >
+                      {ssmDocumentUrl.endsWith(".pdf") ? "SSM document.pdf" : "SSM document"}
+                    </a>
+                  )}
+                  <div className="flex shrink-0 items-center gap-[6px]">
+                    <button
+                      type="button"
+                      onClick={() => ssmDocumentInputRef.current?.click()}
+                      className="rounded-full bg-white px-[12px] py-[6px] text-sm text-[#141B2E] shadow-[0_1px_3px_rgba(0,0,0,0.1)] hover:bg-black/[0.03]"
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearSsmDocument}
+                      className="rounded-full px-[12px] py-[6px] text-sm text-[#9AA3B2] hover:text-[#141B2E]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => ssmDocumentInputRef.current?.click()}
+                  className="flex h-[44px] w-full items-center justify-center rounded-[12px] border border-dashed border-black/[0.15] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+                >
+                  Upload document
+                </button>
+              )}
+              <p className={`text-xs ${ssmDocumentError ? "text-red-500" : "text-[#9AA3B2]"}`}>
+                {ssmDocumentError ?? "PDF, JPG, PNG or WebP · up to 10 MB"}
+              </p>
+
+              {ssmVerificationStatus === "verified" ? (
+                <span className="mt-[2px] inline-flex w-fit items-center gap-[6px] rounded-full bg-brand-teal-soft px-[10px] py-[4px] text-xs text-brand-teal-dark">
+                  <VerifiedBadgeIcon className="h-[12px] w-[12px]" />
+                  Verified
+                </span>
+              ) : ssmVerificationStatus === "pending" ? (
+                <span className="mt-[2px] inline-flex w-fit items-center rounded-full bg-brand-gold-soft px-[10px] py-[4px] text-xs text-brand-gold-dark">
+                  Pending review
+                </span>
+              ) : ssmVerificationStatus === "rejected" ? (
+                <div className="mt-[2px] flex flex-col gap-[4px]">
+                  <span className="inline-flex w-fit items-center rounded-full bg-[#FDE8E8] px-[10px] py-[4px] text-xs text-[#C0362C]">
+                    Rejected — re-upload to try again
+                  </span>
+                  {ssmRejectionReason && <p className="text-xs leading-[16px] text-[#4B5468]">{ssmRejectionReason}</p>}
+                </div>
+              ) : null}
+            </div>
+            </fieldset>
+          </div>
+        </div>
+      </div>
+
+      {/* The nice-to-haves. During onboarding they fold away under one
+          optional card, so a new employer only meets what's required; on
+          Company Profile they're always open. */}
+      {mode !== "edit" && (
+        <div className={cardClass}>
+          <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
+            <button
+              type="button"
+              onClick={() => setExtrasOpen((open) => !open)}
+              aria-expanded={extrasOpen}
+              className="flex w-full items-start justify-between gap-[12px] text-left"
+            >
+              <span className="min-w-0">
+                <span className="block text-xl font-semibold text-[#141B2E]">
+                  Make your company stand out <span className="text-sm font-normal text-[#9AA3B2]">(optional)</span>
+                </span>
+                <span className="mt-[6px] block text-sm leading-[20px] text-[#4B5468]">
+                  Logo, description, photos, facilities, awards and leadership. Skip it for now if you like — you can add these any
+                  time on Company Profile.
+                </span>
+                {boostChecklist.length - boostChecklistRemaining > 0 && (
+                  <span className="mt-[6px] block text-xs text-brand-teal-dark">
+                    {boostChecklist.length - boostChecklistRemaining} of {boostChecklist.length} already filled — have a look before you finish.
+                  </span>
+                )}
+              </span>
+              <span className="mt-[4px] flex shrink-0 items-center gap-[6px] text-sm text-brand-teal-dark">
+                {extrasOpen ? "Hide" : "Show"}
+                <ChevronDownIcon className={`h-[9px] w-[9px] transition-transform ${extrasOpen ? "rotate-180" : ""}`} />
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+      {(mode === "edit" || extrasOpen) && (
+      <>
       <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "120ms" } : undefined}>
         <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
           <h1 className="text-xl font-semibold text-[#141B2E]">Company profile</h1>
@@ -1606,6 +2755,9 @@ export default function EmployerOnboardingForm({
                 placeholder="e.g. 03-1234 5678"
                 className={inputClass}
               />
+              {!isValidOptionalPhone(companyPhone) && (
+                <p className="mt-[4px] text-xs text-red-500">Enter a valid Malaysian phone number, e.g. 03-1234 5678.</p>
+              )}
             </Field>
             <Field label="LinkedIn (optional)" htmlFor="companyLinkedin">
               <input
@@ -1695,7 +2847,7 @@ export default function EmployerOnboardingForm({
                 <button
                   type="button"
                   onClick={() => setRecentNews((prev) => [...prev, { title: "", url: "" }])}
-                  className="flex shrink-0 items-center gap-[4px] rounded-full bg-[#E6F9FA] py-[6px] pl-[10px] pr-[12px] text-sm text-[#008990] hover:bg-[#CFF4F6]"
+                  className="flex shrink-0 items-center gap-[4px] rounded-full bg-brand-teal-soft py-[6px] pl-[10px] pr-[12px] text-sm text-brand-teal-dark hover:bg-[#CFF4F6]"
                 >
                   <PlusIcon className="h-[10px] w-[10px]" />
                   Add
@@ -1738,222 +2890,91 @@ export default function EmployerOnboardingForm({
         </div>
       </div>
 
-      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "180ms" } : undefined}>
-        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
-          <h1 className="text-xl font-semibold text-[#141B2E]">About your company</h1>
+      {/* Your workplace — what it's like to work here. */}
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "150ms" } : undefined}>
+        <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
+          <h1 className="text-xl font-semibold text-[#141B2E]">Your workplace</h1>
           <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
-            Tell us a bit about your company so we can help you hire faster.
+            Help candidates picture working here. &ldquo;Fill with AI&rdquo; ticks the facilities and dress code it can
+            find — add your own photos.
           </p>
 
-          <div className="mt-[16px] grid grid-cols-1 gap-x-[14px] gap-y-[12px] sm:grid-cols-2">
-            <fieldset className="contents">
-            <Field required label="SSM registration number" htmlFor="ssmNumber">
-              <input
-                id="ssmNumber"
-                type="text"
-                value={ssmNumber}
-                onChange={(e) => setSsmNumber(e.target.value)}
-                placeholder="e.g. 202301012345"
-                className={inputClass}
-              />
-            </Field>
-            <Field required label="Industry" htmlFor="industry">
-              <input
-                id="industry"
-                type="text"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                placeholder="e.g. F&B, Retail, Logistics"
-                className={inputClass}
-              />
-            </Field>
-            <Field required label="Industry category" htmlFor="industryCategory">
-              <Dropdown
-                id="industryCategory"
-                label="Industry category"
-                value={industryCategory}
-                options={[
-                  { value: "" as const, label: "Select industry" },
-                  ...INDUSTRIES.map((i) => ({ value: i, label: i })),
-                ]}
-                onChange={(value) => setIndustryCategory(value as (typeof INDUSTRIES)[number] | "")}
-                searchable
-                searchPlaceholder="Search industries..."
-              />
-            </Field>
-            <div className="col-span-full flex flex-col gap-[12px]">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-[#4B5468]">
-                  Company address{addresses.length > 1 ? "es" : ""}
+          <div className="mt-[16px] flex flex-col gap-[18px]">
+            {/* Office & team photos */}
+            <div>
+              <div className="flex items-baseline justify-between gap-[8px]">
+                <p className="text-xs text-[#4B5468]">Office &amp; team photos (optional)</p>
+                <p className="text-xs text-[#9AA3B2]">
+                  {galleryPhotos.length}/{MAX_GALLERY_PHOTOS}
                 </p>
-                <button
-                  type="button"
-                  onClick={addAddress}
-                  className="flex shrink-0 items-center gap-[4px] rounded-full bg-[#E6F9FA] py-[6px] pl-[10px] pr-[12px] text-sm text-[#008990] hover:bg-[#CFF4F6]"
-                >
-                  <PlusIcon className="h-[12px] w-[12px]" />
-                  Add another address
-                </button>
               </div>
-
-              {addresses.map((address, i) => (
-                <div
-                  key={address.key}
-                  className="flex flex-col gap-[10px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px]"
-                >
-                  <div className="flex items-center justify-between gap-[10px]">
-                    <input
-                      type="text"
-                      value={address.label}
-                      onChange={(e) => updateAddress(address.key, { label: e.target.value })}
-                      placeholder="e.g. Headquarters, Branch office"
-                      className={`${inputClass} max-w-[260px]`}
-                    />
-                    {addresses.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeAddress(address.key)}
-                        className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.06] hover:text-red-500"
-                        aria-label={`Remove ${address.label || "this address"}`}
-                      >
-                        <XIcon className="h-[12px] w-[12px]" />
-                      </button>
-                    )}
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={(e) => void addGalleryFiles(e.target.files)}
+              />
+              <div
+                className="mt-[8px] grid grid-cols-3 gap-[8px] sm:grid-cols-4"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void addGalleryFiles(e.dataTransfer.files);
+                }}
+              >
+                {galleryPhotos.map((url, i) => (
+                  <div key={url} className="group relative aspect-square overflow-hidden rounded-[14px] border border-[#EAEDF2] bg-[#F1F4F8]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt={`Workplace photo ${i + 1}`} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setGalleryPhotos((prev) => prev.filter((p) => p !== url))}
+                      aria-label={`Remove photo ${i + 1}`}
+                      className="absolute right-[6px] top-[6px] flex h-[24px] w-[24px] items-center justify-center rounded-full bg-white/90 text-[#4B5468] shadow-[0_1px_3px_rgba(0,0,0,0.15)] hover:text-red-500"
+                    >
+                      <XIcon className="h-[9px] w-[9px]" />
+                    </button>
                   </div>
-
-                  <div className="grid grid-cols-1 gap-x-[14px] gap-y-[10px] sm:grid-cols-2">
-                    <Field required label="Street address" htmlFor={address.key} className="col-span-full">
-                      <input
-                        id={address.key}
-                        type="text"
-                        value={address.addressLine1}
-                        onChange={(e) => updateAddress(address.key, { addressLine1: e.target.value })}
-                        placeholder="e.g. 12, Jalan SS 2/24"
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field label="Address line 2 (optional)" htmlFor={`${address.key}-line2`} className="col-span-full">
-                      <input
-                        id={`${address.key}-line2`}
-                        type="text"
-                        value={address.addressLine2}
-                        onChange={(e) => updateAddress(address.key, { addressLine2: e.target.value })}
-                        placeholder="e.g. Unit 5-1, Level 5"
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field required label="City" htmlFor={`${address.key}-city`}>
-                      <input
-                        id={`${address.key}-city`}
-                        type="text"
-                        value={address.city}
-                        onChange={(e) => updateAddress(address.key, { city: e.target.value })}
-                        placeholder="e.g. Petaling Jaya"
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field required label="State" htmlFor={`${address.key}-state`}>
-                      <Dropdown
-                        id={`${address.key}-state`}
-                        label="State"
-                        value={address.state}
-                        options={[
-                          { value: "" as const, label: "Select state" },
-                          ...MALAYSIA_STATES.map((s) => ({ value: s, label: s })),
-                        ]}
-                        onChange={(value) =>
-                          updateAddress(address.key, { state: value as (typeof MALAYSIA_STATES)[number] | "" })
-                        }
-                      />
-                    </Field>
-                    <Field required label="Postcode" htmlFor={`${address.key}-postcode`}>
-                      <input
-                        id={`${address.key}-postcode`}
-                        type="text"
-                        inputMode="numeric"
-                        value={address.postcode}
-                        onChange={(e) =>
-                          updateAddress(address.key, { postcode: e.target.value.replace(/\D/g, "").slice(0, 5) })
-                        }
-                        placeholder="e.g. 47300"
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field label="Country" htmlFor={`${address.key}-country`}>
-                      <input
-                        id={`${address.key}-country`}
-                        type="text"
-                        value="Malaysia"
-                        disabled
-                        readOnly
-                        className={`${inputClass} cursor-not-allowed bg-[#F8FAFB] text-[#9AA3B2]`}
-                      />
-                    </Field>
-                  </div>
-                  {isCompleteAddress(address) && (
-                    <iframe
-                      title={`Map for ${address.label || "this address"}`}
-                      src={`https://www.google.com/maps?q=${encodeURIComponent(
-                        `${address.addressLine1}, ${address.addressLine2 ? `${address.addressLine2}, ` : ""}${address.city}, ${address.state} ${address.postcode}, Malaysia`,
-                      )}&output=embed`}
-                      loading="lazy"
-                      className="h-[180px] w-full rounded-[12px] border border-black/[0.08]"
-                    />
-                  )}
-                  {i === 0 && (
-                    <p className="text-xs text-[#9AA3B2]">
-                      This is the address &ldquo;Fill with AI&rdquo; fills in for you, when it can find one.
-                    </p>
-                  )}
-                </div>
-              ))}
+                ))}
+                {Array.from({ length: galleryUploading }, (_, i) => (
+                  <div key={`uploading-${i}`} className="ai-fill-shimmer aspect-square rounded-[14px]" aria-label="Uploading photo" />
+                ))}
+                {galleryPhotos.length + galleryUploading < MAX_GALLERY_PHOTOS && (
+                  <button
+                    id="galleryAddButton"
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    className="flex aspect-square flex-col items-center justify-center gap-[6px] rounded-[14px] border border-dashed border-black/[0.15] text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+                  >
+                    <PlusIcon className="h-[14px] w-[14px]" />
+                    <span className="px-[6px] text-center text-xs">Add photos</span>
+                  </button>
+                )}
+              </div>
+              <p className={`mt-[6px] text-xs ${galleryError ? "text-red-500" : "text-[#9AA3B2]"}`}>
+                {galleryError ??
+                  `Your office, your team, events — up to ${MAX_GALLERY_PHOTOS}. Pick several at once or drag them in. JPG, PNG or WebP, up to 10 MB each.`}
+              </p>
             </div>
 
-            <Field label="Company size" htmlFor="companySize" className="col-span-full">
-              <div
-                id="companySize"
-                role="radiogroup"
-                aria-label="Company size"
-                className="grid h-[38px] grid-cols-5 gap-[4px] rounded-full border border-black/[0.1] p-[3px]"
-              >
-                {COMPANY_SIZES.map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    role="radio"
-                    onClick={() => setCompanySize(size)}
-                    aria-checked={companySize === size}
-                    className="flex h-[30px] items-center justify-center whitespace-nowrap rounded-full text-xs sm:text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
-            <Field label="Default benefits" htmlFor="benefitInput" className="col-span-full">
-              <input
-                id="benefitInput"
-                type="text"
-                value={benefitInput}
-                onChange={(e) => setBenefitInput(e.target.value)}
-                onKeyDown={handleBenefitKeyDown}
-                onBlur={addBenefit}
-                placeholder="Add a benefit and press Enter"
-                className={inputClass}
-              />
-              {benefits.length > 0 && (
-                <div className="mt-[10px] flex flex-wrap gap-[6px]">
-                  {benefits.map((benefit) => (
+            {/* Facilities */}
+            <div id="facilities" tabIndex={-1} className="outline-none">
+              <p className="text-xs text-[#4B5468]">Facilities (optional)</p>
+              {/* Same as Post a job's Benefits: the chosen ones as removable teal chips, a text box with an Add button, then dashed "+" suggestions. */}
+              {facilities.length > 0 && (
+                <div className="mt-[8px] flex flex-wrap gap-[6px]" role="group" aria-label="Facilities">
+                  {facilities.map((facility) => (
                     <span
-                      key={benefit}
+                      key={facility}
                       className="flex items-center gap-[6px] rounded-full bg-brand-teal-dark py-[6px] pl-[12px] pr-[8px] text-xs text-white"
                     >
-                      {benefit}
+                      {facility}
                       <button
                         type="button"
-                        onClick={() => removeBenefit(benefit)}
-                        aria-label={`Remove ${benefit}`}
+                        onClick={() => toggleFacility(facility)}
+                        aria-label={`Remove ${facility}`}
                         className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-white/70 hover:bg-white/20 hover:text-white"
                       >
                         <XIcon className="h-[9px] w-[9px]" />
@@ -1962,36 +2983,289 @@ export default function EmployerOnboardingForm({
                   ))}
                 </div>
               )}
-              {SUGGESTED_BENEFITS.some((b) => !benefits.includes(b)) && (
-                <div className="mt-[10px] flex flex-wrap gap-[6px]">
-                  {SUGGESTED_BENEFITS.filter((b) => !benefits.includes(b)).map((benefit) => (
+              <div className="mt-[10px] flex gap-[8px]">
+                <input
+                  id="customFacility"
+                  type="text"
+                  value={customFacility}
+                  maxLength={FACILITY_MAX}
+                  disabled={customFacilityCount >= MAX_CUSTOM_FACILITIES}
+                  onChange={(e) => {
+                    setCustomFacility(e.target.value);
+                    setCustomFacilityError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomFacility();
+                    }
+                  }}
+                  placeholder="Add another facility"
+                  aria-label="Add your own facility"
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={addCustomFacility}
+                  disabled={!customFacility.trim() || customFacilityCount >= MAX_CUSTOM_FACILITIES}
+                  className="h-[38px] shrink-0 whitespace-nowrap rounded-[12px] bg-brand-teal-soft px-[14px] text-sm text-brand-teal-dark hover:bg-[#CFF4F6] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+              {customFacilityError ? (
+                <p className="mt-[6px] text-xs text-red-500">{customFacilityError}</p>
+              ) : customFacilityCount > 0 ? (
+                <p className="mt-[6px] text-xs text-[#9AA3B2]">
+                  Your own: {customFacilityCount}/{MAX_CUSTOM_FACILITIES}
+                  {customFacilityCount >= MAX_CUSTOM_FACILITIES ? " — remove one to add another." : ""}
+                </p>
+              ) : null}
+              {FACILITIES.some((f) => !facilities.includes(f)) && (
+                <div className="mt-[10px] flex flex-wrap gap-[6px]" role="group" aria-label="Add a facility">
+                  {FACILITIES.filter((f) => !facilities.includes(f)).map((facility) => (
                     <button
-                      key={benefit}
+                      key={facility}
                       type="button"
-                      onClick={() => addBenefitValue(benefit)}
-                      className="flex items-center gap-[4px] rounded-full bg-[#F1F4F8] py-[6px] pl-[10px] pr-[12px] text-sm text-[#4B5468] hover:bg-black/[0.08] hover:text-[#141B2E]"
+                      onClick={() => toggleFacility(facility)}
+                      className="flex items-center gap-[4px] rounded-full border border-dashed border-black/[0.15] py-[6px] pl-[12px] pr-[10px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
                     >
-                      <PlusIcon className="h-[9px] w-[9px]" />
-                      {benefit}
+                      <PlusIcon className="h-[8px] w-[8px]" />
+                      {facility}
                     </button>
                   ))}
                 </div>
               )}
-            </Field>
-            </fieldset>
+            </div>
 
-            {error && <p className="col-span-full text-xs text-red-500">{error}</p>}
-
-            <button
-              type="button"
-              disabled={!formValid || submitting}
-              onClick={() => handleSubmit()}
-              className="col-span-full mt-[8px] flex h-[38px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {submitting ? "Saving…" : saveLabel}
-            </button>
-            {savedAt && !error && <p className="col-span-full text-xs text-[#008990]">Saved.</p>}
+            {/* Dress code — one choice: the chosen one as a removable chip, the others as dashed suggestions. */}
+            <div>
+              <p className="text-xs text-[#4B5468]">Dress code (optional)</p>
+              {dressCode && (
+                <div className="mt-[8px] flex flex-wrap gap-[6px]">
+                  <span className="flex items-center gap-[6px] rounded-full bg-brand-teal-dark py-[6px] pl-[12px] pr-[8px] text-xs text-white">
+                    {dressCode}
+                    <button
+                      type="button"
+                      onClick={() => setDressCode("")}
+                      aria-label={`Remove ${dressCode}`}
+                      className="flex h-[16px] w-[16px] items-center justify-center rounded-full text-white/70 hover:bg-white/20 hover:text-white"
+                    >
+                      <XIcon className="h-[9px] w-[9px]" />
+                    </button>
+                  </span>
+                </div>
+              )}
+              <div className="mt-[10px] flex flex-wrap gap-[6px]" role="group" aria-label="Dress code">
+                {DRESS_CODES.filter((code) => code !== dressCode).map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setDressCode(code)}
+                    className="flex items-center gap-[4px] rounded-full border border-dashed border-black/[0.15] py-[6px] pl-[12px] pr-[10px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark"
+                  >
+                    <PlusIcon className="h-[8px] w-[8px]" />
+                    {code}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Awards & leadership — trust signals. */}
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`} style={mode === "edit" ? { animationDelay: "165ms" } : undefined}>
+        <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
+          <h1 className="text-xl font-semibold text-[#141B2E]">Awards &amp; leadership</h1>
+          <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
+            Recognition and the people behind the company build trust. &ldquo;Fill with AI&rdquo; adds the ones that are
+            public — check them before you finish.
+          </p>
+
+          <div className="mt-[16px] flex flex-col gap-[18px]">
+            {/* Awards & certifications */}
+            <div>
+              <div className="flex items-center justify-between gap-[8px]">
+                <p className="text-xs text-[#4B5468]">Awards &amp; certifications (optional)</p>
+                {awards.length < MAX_AWARDS && (
+                  <button
+                    type="button"
+                    onClick={() => setAwards((prev) => [...prev, { title: "", year: "" }])}
+                    className="flex shrink-0 items-center gap-[4px] rounded-full bg-brand-teal-soft py-[6px] pl-[10px] pr-[12px] text-sm text-brand-teal-dark hover:bg-[#CFF4F6]"
+                  >
+                    <PlusIcon className="h-[10px] w-[10px]" />
+                    Add award
+                  </button>
+                )}
+              </div>
+              {awards.length === 0 ? (
+                <p className="mt-[6px] text-xs text-[#9AA3B2]">
+                  e.g. Great Place to Work Certified, ISO 9001:2015, SME100 Award.
+                </p>
+              ) : (
+                <div className="mt-[8px] flex flex-col gap-[8px]">
+                  {awards.map((award, index) => (
+                    <div key={index} className="flex items-center gap-[8px]">
+                      {/* Sized by their wrappers — the shared input style is full width. */}
+                      <div className="min-w-0 flex-1">
+                        <input
+                          type="text"
+                          value={award.title}
+                          maxLength={AWARD_TITLE_MAX}
+                          onChange={(e) => updateAward(index, { title: e.target.value })}
+                          placeholder="Award or certification"
+                          aria-label={`Award ${index + 1}`}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="w-[84px] shrink-0">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={award.year}
+                          onChange={(e) => updateAward(index, { year: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+                          placeholder="Year"
+                          aria-label={`Year for award ${index + 1}`}
+                          className={`${inputClass} ${isValidAwardYear(award.year) ? "" : "border-red-400"}`}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAwards((prev) => prev.filter((_, i) => i !== index))}
+                        aria-label={`Remove award ${index + 1}`}
+                        className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.06] hover:text-red-500"
+                      >
+                        <XIcon className="h-[11px] w-[11px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Leadership */}
+            <div id="leadership" tabIndex={-1} className="outline-none">
+              <div className="flex items-center justify-between gap-[8px]">
+                <p className="text-xs text-[#4B5468]">Leadership (optional)</p>
+                {leaders.length < MAX_LEADERS && (
+                  <button
+                    type="button"
+                    onClick={() => setLeaders((prev) => [...prev, { name: "", title: "", photoUrl: null }])}
+                    className="flex shrink-0 items-center gap-[4px] rounded-full bg-brand-teal-soft py-[6px] pl-[10px] pr-[12px] text-sm text-brand-teal-dark hover:bg-[#CFF4F6]"
+                  >
+                    <PlusIcon className="h-[10px] w-[10px]" />
+                    Add person
+                  </button>
+                )}
+              </div>
+              <input
+                ref={leaderPhotoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => void uploadLeaderPhoto(e.target.files?.[0])}
+              />
+              {leaders.length === 0 ? (
+                <p className="mt-[6px] text-xs text-[#9AA3B2]">Your founder, CEO or managing director — up to {MAX_LEADERS}.</p>
+              ) : (
+                <div className="mt-[8px] flex flex-col gap-[8px]">
+                  {leaders.map((leader, index) => (
+                    <div key={index} className="flex items-center gap-[10px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          leaderPhotoTarget.current = index;
+                          leaderPhotoInputRef.current?.click();
+                        }}
+                        aria-label={leader.photoUrl ? `Change photo for ${leader.name || "this person"}` : `Add photo for ${leader.name || "this person"}`}
+                        className="relative flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/[0.1] bg-white text-[#9AA3B2] hover:border-brand-teal-dark"
+                      >
+                        {leader.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={leader.photoUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <UserIcon className="h-[20px] w-[20px]" />
+                        )}
+                        {leaderUploading === index && <span className="ai-fill-shimmer absolute inset-0" />}
+                      </button>
+                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-[6px] sm:grid-cols-2">
+                        <input
+                          type="text"
+                          value={leader.name}
+                          maxLength={LEADER_FIELD_MAX}
+                          onChange={(e) => updateLeader(index, { name: e.target.value })}
+                          placeholder="Name"
+                          aria-label={`Name of person ${index + 1}`}
+                          className={inputClass}
+                        />
+                        <input
+                          type="text"
+                          value={leader.title}
+                          maxLength={LEADER_FIELD_MAX}
+                          onChange={(e) => updateLeader(index, { title: e.target.value })}
+                          placeholder="Role, e.g. Founder & CEO"
+                          aria-label={`Role of person ${index + 1}`}
+                          className={inputClass}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLeaders((prev) => prev.filter((_, i) => i !== index))}
+                        aria-label={`Remove ${leader.name || "this person"}`}
+                        className="flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.06] hover:text-red-500"
+                      >
+                        <XIcon className="h-[11px] w-[11px]" />
+                      </button>
+                    </div>
+                  ))}
+                  <p className={`text-xs ${leaderError ? "text-red-500" : "text-[#9AA3B2]"}`}>
+                    {leaderError ?? "Tap the circle to add a photo (optional)."}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      </>
+      )}
+      {/* Finish, with what's still missing right next to it — on a phone the
+          checklist card is far below, so a greyed-out button alone would
+          give no reason. */}
+      <div className={`${mode === "edit" ? "animate-fade-in-up" : ""} ${cardClass}`}>
+        <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-left">
+          {!requiredChecklistComplete ? (
+            <div className="mb-[12px]">
+              <p className="text-sm text-[#141B2E]">Still needed to {mode === "edit" ? "save" : "finish"}:</p>
+              <div className="mt-[8px] flex flex-wrap gap-[6px]">
+                {requiredFieldChecklist
+                  .filter((item) => !item.done)
+                  .map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => goToField(item.fieldId)}
+                      className="rounded-full border border-[#E8C9C4] bg-[#FBF3F2] px-[10px] py-[4px] text-xs text-[#A66A61] hover:underline"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ) : (
+            !formValid && <p className="mb-[12px] text-xs text-[#A66A61]">Check the fields marked in red above.</p>
+          )}
+          {error && <p className="mb-[8px] text-xs text-red-500">{error}</p>}
+          <button
+            type="button"
+            disabled={!formValid || submitting}
+            onClick={() => handleSubmit()}
+            className="flex h-[38px] w-full items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? "Saving…" : saveLabel}
+          </button>
+          {savedAt && !error && <p className="mt-[8px] text-xs text-brand-teal-dark">Saved.</p>}
         </div>
       </div>
       </div>
@@ -2011,7 +3285,7 @@ export default function EmployerOnboardingForm({
           >
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
-              {requiredChecklistComplete ? "All required fields are complete." : "Complete these required fields to continue:"}
+              {requiredChecklistComplete ? "Required ✓" : "Required"}
             </p>
             <ul className="mt-[16px] flex flex-col gap-[4px]">
               {requiredFieldChecklist.map(({ label, done, fieldId }) => (
@@ -2044,8 +3318,8 @@ export default function EmployerOnboardingForm({
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-left text-lg font-semibold text-[#141B2E]">
               {boostChecklistRemaining > 0
-                ? "Not compulsory, but these help your posting stand out to candidates:"
-                : "Nice — your company profile is fully boosted and ready to stand out."}
+                ? "Optional"
+                : "Optional ✓"}
             </p>
             <ul className="mt-[16px] flex flex-col gap-[4px]">
               {boostChecklist.map(({ label, done, fieldId }) => (
@@ -2076,6 +3350,35 @@ export default function EmployerOnboardingForm({
           </div>
           )}
         </div>
+
+      {showResetConfirm && (
+        <Modal ariaLabel="Reset company details?" onClose={() => setShowResetConfirm(false)}>
+          <h2 className="text-lg font-semibold text-[#141B2E]">Reset company details?</h2>
+          <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
+            This clears the company name and every company detail — including anything you typed yourself — so you
+            can start over. It can&rsquo;t be undone.
+          </p>
+          <div className="mt-[18px] flex flex-col gap-[8px]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowResetConfirm(false);
+                resetAiFields();
+              }}
+              className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] text-sm text-red-500 hover:bg-red-50"
+            >
+              Reset everything
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowResetConfirm(false)}
+              className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
+            >
+              Keep my details
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {showLeaveConfirm && (
         <Modal
@@ -2115,6 +3418,35 @@ export default function EmployerOnboardingForm({
               className="flex h-[38px] items-center justify-center text-sm text-[#9AA3B2] hover:text-[#141B2E]"
             >
               Keep editing
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showFinishSuccess && (
+        <Modal
+          ariaLabel="Company profile complete!"
+          onClose={() => {
+            setShowFinishSuccess(false);
+            router.push("/employer/dashboard");
+          }}
+        >
+          <h2 className="text-lg font-semibold text-[#141B2E]">You&rsquo;re all set! 🎉</h2>
+          <p className="mt-[10px] text-sm leading-[20px] text-[#4B5468]">
+            {createNew
+              ? "Thank you for setting up your new company — it's ready to go. Let's get you to your dashboard so you can start posting jobs."
+              : "Thank you so much for taking the time to fill in your company profile — it's looking great! Let's get you to your dashboard so you can start hiring."}
+          </p>
+          <div className="mt-[20px] flex flex-col gap-[8px]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowFinishSuccess(false);
+                router.push("/employer/dashboard");
+              }}
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark text-sm text-white transition-opacity hover:opacity-90"
+            >
+              Take me to my dashboard
             </button>
           </div>
         </Modal>

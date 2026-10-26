@@ -4,6 +4,7 @@ import CompanyDirectoryView from "@/components/CompanyDirectoryView";
 import CompanyHighlights from "@/components/CompanyHighlights";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SiteThemeLayer from "@/components/SiteThemeLayer";
 import { getAuthUser } from "@/lib/auth-user";
 import { getCompanyDirectory } from "@/lib/company-directory";
 import { getEmployersWithPostings } from "@/lib/employer-profile";
@@ -23,19 +24,22 @@ export default async function CompaniesPage() {
   const accent = authUser?.role === "jobseeker" ? "jobseeker" : "employer";
 
   return (
-    <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${accent === "jobseeker" ? "bg-[#FDFAF0]" : "bg-[#F2FAF5]"}`}>
+    <>
+    {/* Shared page: wears the theme of the side it's shown as. */}
+    <SiteThemeLayer audience={accent} />
+    <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${accent === "jobseeker" ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>
       <Navbar initialUser={authUser} pageRole={accent} />
       <div className="shell pt-[24px]">
         {/* The employer landing page's "Who's hiring" row, as a showcase above the full directory. */}
         <CompanyHighlights variant="page" realCompanies={JSON.parse(JSON.stringify(highlightCompanies))} />
         {/* Above the showcase row, on the page's own background, so its cards
             tuck in behind this whole section as the page scrolls. */}
-        <div className={`relative z-[2] pt-[32px] ${accent === "jobseeker" ? "bg-[#FDFAF0]" : "bg-[#F2FAF5]"}`}>
+        <div className={`relative z-[2] pt-[32px] ${accent === "jobseeker" ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>
           {/* Soft top edge, so the cards fade out as they slide under rather than being cut off by a hard line. */}
           <div
             aria-hidden
             className={`pointer-events-none absolute inset-x-0 -top-[48px] h-[48px] bg-gradient-to-b from-transparent ${
-              accent === "jobseeker" ? "to-[#FDFAF0]" : "to-[#F2FAF5]"
+              accent === "jobseeker" ? "to-brand-gold-page" : "to-brand-teal-page"
             }`}
           />
           <h1 className="text-xl font-sans font-semibold text-[#141B2E]" style={{ lineHeight: 1.15, letterSpacing: "-0.02em" }}>
@@ -57,5 +61,6 @@ export default async function CompaniesPage() {
         <AnimatedRibbon accent={accent === "jobseeker" ? "gold" : "teal"} />
       </div>
     </main>
+    </>
   );
 }

@@ -18,7 +18,10 @@ export default function Dropdown<T extends string>({
   id?: string;
   label: string;
   value: T;
-  options: { value: T; label: string }[];
+  // `keywords` are extra search terms (e.g. a language's other names) that
+  // find the option without being shown. `group` puts a small heading above
+  // each run of options that share it (e.g. "Chinese languages & dialects").
+  options: { value: T; label: string; keywords?: string[]; group?: string }[];
   onChange: (value: T) => void;
   accent?: "teal" | "gold";
   // Adds a filter input at the top of the popover — for option lists long
@@ -43,7 +46,9 @@ export default function Dropdown<T extends string>({
   const filteredOptions = useMemo(() => {
     if (!searchable || !query.trim()) return options;
     const q = query.trim().toLowerCase();
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    return options.filter(
+      (o) => o.label.toLowerCase().includes(q) || (o.keywords ?? []).some((k) => k.toLowerCase().includes(q)),
+    );
   }, [options, query, searchable]);
 
   useEffect(() => {
@@ -132,7 +137,16 @@ export default function Dropdown<T extends string>({
             {filteredOptions.length === 0 ? (
               <li className="px-[10px] py-[10px] text-sm text-[#9AA3B2]">No matches found</li>
             ) : (
-              filteredOptions.map((option) => (
+              filteredOptions.map((option, i) => [
+                option.group && option.group !== filteredOptions[i - 1]?.group ? (
+                  <li
+                    key={`group-${option.group}`}
+                    role="presentation"
+                    className={`px-[10px] pb-[2px] text-[11px] font-medium uppercase tracking-[0.04em] text-[#9AA3B2] ${i === 0 ? "pt-[4px]" : "pt-[10px]"}`}
+                  >
+                    {option.group}
+                  </li>
+                ) : null,
                 <li
                   key={option.value}
                   ref={option.value === value ? selectedRef : undefined}
@@ -151,8 +165,8 @@ export default function Dropdown<T extends string>({
                   >
                     <span className="truncate">{option.label}</span>
                   </button>
-                </li>
-              ))
+                </li>,
+              ])
             )}
           </ul>
         </div>

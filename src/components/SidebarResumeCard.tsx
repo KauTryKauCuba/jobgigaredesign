@@ -126,7 +126,7 @@ export default function SidebarResumeCard({
             disabled={parsing}
             className={`mt-[12px] flex w-full flex-col items-center justify-center gap-[4px] rounded-[12px] border border-dashed px-[12px] py-[16px] text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
               dragActive
-                ? "border-brand-gold-dark bg-[#FFF3D6]"
+                ? "border-brand-gold-dark bg-brand-gold-soft"
                 : "border-[#D7DCE4] hover:border-brand-gold-dark hover:bg-[#F8FAFB]"
             }`}
           >
@@ -152,7 +152,7 @@ export default function SidebarResumeCard({
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={parsing}
-            className={`mt-[8px] flex min-h-[34px] w-full items-center justify-center gap-[6px] rounded-[10px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] px-[10px] py-[7px] text-center text-sm leading-[14px] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`mt-[8px] flex min-h-[34px] w-full items-center justify-center gap-[6px] rounded-[10px] bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] px-[10px] py-[7px] text-center text-sm leading-[14px] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
               parsing ? "ai-fill-pulse" : ""
             }`}
           >

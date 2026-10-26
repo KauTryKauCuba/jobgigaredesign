@@ -49,7 +49,7 @@ function FillVisual() {
 function ApplyVisual() {
   return (
     <div className="flex h-[96px] w-full flex-col items-center justify-center gap-[8px] rounded-[14px] border border-[#EAEDF2] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-      <span className="ai-fill-pulse flex h-[34px] items-center justify-center gap-[6px] rounded-full bg-[#FFE9A6] px-[16px] text-xs text-[#141B2E]">
+      <span className="ai-fill-pulse flex h-[34px] items-center justify-center gap-[6px] rounded-full bg-brand-gold px-[16px] text-xs text-[#141B2E]">
         <CheckCircleIcon className="h-[13px] w-[13px]" />
         Applied
       </span>
@@ -74,12 +74,31 @@ export default function JobseekerHowItWorks() {
   return (
     <div className="shell relative z-[1] pt-[clamp(32px,5vh,56px)] pb-[64px]">
       <div className="mx-auto max-w-[560px] text-center">
-        <span className="inline-flex items-center rounded-full bg-[#FFF3D6] px-[14px] py-[7px] text-xs text-brand-gold-dark">
-          How it works
-        </span>
+        {/* A block wrapper, not just the inline-flex span itself — the h2
+            below is display:inline-block (needed for the gradient-clip
+            trick), so without this the pill and heading can share a text
+            line and get centered together as one group instead of each
+            getting its own row. */}
+        <div>
+          <span className="inline-flex items-center rounded-full bg-brand-gold-soft px-[14px] py-[7px] text-xs text-brand-gold-dark">
+            How it works
+          </span>
+        </div>
         <h2
           className="mt-[16px] font-sans font-semibold text-[#141B2E]"
-          style={{ fontSize: "clamp(24px,2.6vw,32px)", lineHeight: 1.15, letterSpacing: "-0.02em" }}
+          style={{
+            fontSize: "clamp(34px, 4vw, 56px)",
+            lineHeight: 1.08,
+            letterSpacing: "-0.02em",
+            // Same size and gold-into-teal gradient as the jobseeker landing
+            // page's own hero heading ("Start With What You Already Have.").
+            backgroundImage: "var(--brand-gradient-jobseeker)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+            display: "inline-block",
+            paddingBottom: "0.08em",
+          }}
         >
           Applying is this easy
         </h2>
@@ -95,7 +114,7 @@ export default function JobseekerHowItWorks() {
             <div key={step.id} className="flex flex-1 items-start gap-[20px]">
               <div className="flex flex-1 flex-col items-center text-center">
                 <Visual />
-                <span className="mt-[16px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#FFE9A6] text-xs text-[#141B2E]">
+                <span className="mt-[16px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-gold text-xs text-[#141B2E]">
                   {i + 1}
                 </span>
                 <h3 className="mt-[8px] text-sm font-semibold text-[#141B2E]">{step.title}</h3>

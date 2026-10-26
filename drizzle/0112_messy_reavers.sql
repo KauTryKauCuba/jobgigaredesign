@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "phone_verify_banner_dismissed_at" timestamp with time zone;

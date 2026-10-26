@@ -18,7 +18,7 @@ export default function VideoPitchBadge({ pitch }: { pitch: ApplicantVideoPitch 
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-[4px] rounded-full px-[8px] py-[1px] align-middle text-xs ${
-        pitch.watchedByMyCompany ? "bg-[#F1F4F8] text-[#4B5468]" : "bg-[#FFF3D6] text-brand-gold-dark"
+        pitch.watchedByMyCompany ? "bg-[#F1F4F8] text-[#4B5468]" : "bg-brand-gold-soft text-brand-gold-dark"
       }`}
       title={pitch.watchedByMyCompany ? "Your team has watched this video pitch" : "This applicant recorded a video pitch"}
     >

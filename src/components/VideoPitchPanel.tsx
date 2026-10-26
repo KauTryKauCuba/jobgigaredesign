@@ -44,7 +44,7 @@ export default function VideoPitchPanel({
       {pitch.strengths.length > 0 && (
         <div className="mt-[8px] flex flex-wrap gap-[6px]">
           {pitch.strengths.map((s) => (
-            <span key={s} className="rounded-full bg-[#FFE9A6] px-[10px] py-[3px] text-xs text-[#141B2E]">
+            <span key={s} className="rounded-full bg-brand-gold px-[10px] py-[3px] text-xs text-[#141B2E]">
               {s}
             </span>
           ))}

@@ -2,18 +2,30 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import AnimatedRibbon from "./AnimatedRibbon";
 import CompanySwitcher from "./CompanySwitcher";
 import FloatingAssistant from "./FloatingAssistant";
 import Navbar from "./Navbar";
-import PosterGeneratorTeaser from "./PosterGeneratorTeaser";
+import PhoneVerifyBanner, { phoneBannerClosedThisVisit } from "./PhoneVerifyBanner";
+import RewardPopup from "./RewardPopup";
 import SampleDataBanner from "./SampleDataBanner";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
-import { BriefcaseIcon, BuildingIcon, CalendarIcon, HomeIcon, UserIcon, UsersIcon } from "./icons";
+import { BriefcaseIcon, BuildingIcon, CalendarIcon, GiftIcon, HomeIcon, MegaphoneIcon, UserIcon, UsersIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
+import type { TeamRole } from "@/lib/team-roles";
 
-export type EmployerNavKey = "overview" | "jobs" | "applicants" | "interviews" | "company" | "team" | "profile";
+export type EmployerNavKey =
+  | "overview"
+  | "jobs"
+  | "applicants"
+  | "interviews"
+  | "company"
+  | "advertisement"
+  | "team"
+  | "profile"
+  | "rewards";
 
 const NAV_ITEMS = [
   { key: "overview", href: "/employer/dashboard", label: "Dashboard", icon: HomeIcon },
@@ -21,22 +33,52 @@ const NAV_ITEMS = [
   { key: "applicants", href: "/employer/applicants", label: "Applicants", icon: UsersIcon },
   { key: "interviews", href: "/employer/interviews", label: "Interviews", icon: CalendarIcon },
   { key: "company", href: "/employer/company", label: "Company Profile", icon: BuildingIcon },
+  { key: "advertisement", href: "/employer/advertisement", label: "Advertisement", icon: MegaphoneIcon },
   { key: "team", href: "/employer/team", label: "Team", icon: UsersIcon },
   { key: "profile", href: "/employer/profile", label: "My Profile", icon: UserIcon },
 ] as const;
+
+// Only once they've earned something from a reward campaign.
+const REWARDS_ITEM = { key: "rewards", href: "/employer/rewards", label: "My Rewards", icon: GiftIcon } as const;
+
+// Hiring managers work on their assigned jobs only; Panel members only on
+// the interviews they're on (the pages themselves enforce the same).
+const LIMITED_NAV: Partial<Record<TeamRole, EmployerNavKey[]>> = {
+  hiring_manager: ["overview", "jobs", "applicants", "interviews", "profile"],
+  panel: ["interviews", "profile"],
+};
+
+function navItemsFor(teamRole: TeamRole | null | undefined, hasRewards: boolean) {
+  const allowed = teamRole ? LIMITED_NAV[teamRole] : undefined;
+  const items = !allowed
+    ? NAV_ITEMS.map((item) => ({ ...item, label: item.label as string }))
+    : NAV_ITEMS.filter((item) => allowed.includes(item.key)).map((item) => ({
+        ...item,
+        label: item.key === "jobs" ? "My jobs" : (item.label as string),
+      }));
+  return hasRewards ? [...items, { ...REWARDS_ITEM, label: REWARDS_ITEM.label as string }] : items;
+}
 
 // Split out so useUnsavedChangesGuard() is called by a genuine descendant of
 // the UnsavedChangesGuardBoundary rendered below — calling it directly in
 // EmployerDashboardShell's own body would read the tree position ABOVE that
 // Boundary (a component can't be inside a Provider it renders as part of its
 // own output), always getting the default no-op guard.
-function Sidebar({ active }: { active: EmployerNavKey }) {
+function Sidebar({
+  active,
+  teamRole,
+  hasRewards,
+}: {
+  active: EmployerNavKey;
+  teamRole: TeamRole | null | undefined;
+  hasRewards: boolean;
+}) {
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
   const barRef = useCenterActiveTab<HTMLElement>();
   return (
     <aside ref={barRef} className="scrollbar-hide flex shrink-0 flex-row gap-[4px] overflow-x-auto rounded-full bg-[#F1F4F8] p-[4px] xl:flex-col xl:gap-[2px] xl:rounded-[14px] xl:border xl:border-[#EAEDF2] xl:bg-white xl:p-[10px]">
-      {NAV_ITEMS.map((item) => (
+      {navItemsFor(teamRole, hasRewards).map((item) => (
         <Link
           key={item.key}
           href={item.href}
@@ -46,7 +88,7 @@ function Sidebar({ active }: { active: EmployerNavKey }) {
             e.preventDefault();
             guardNavigation(() => router.push(item.href));
           }}
-          className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-[#E6F9FA] xl:aria-[current=page]:text-brand-teal-dark xl:aria-[current=page]:shadow-none ${
+          className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-brand-teal-soft xl:aria-[current=page]:text-brand-teal-dark xl:aria-[current=page]:shadow-none ${
             item.key === active ? "animate-fade-in-up" : ""
           }`}
         >
@@ -79,28 +121,59 @@ export default function EmployerDashboardShell({
   subheading: React.ReactNode;
   children: React.ReactNode;
 }) {
+  // The rail sticks 85px below the top — unless it's taller than the screen
+  // (nav plus the sidebar cards), in which case it scrolls with the page until
+  // its bottom is in view and sticks there, so nothing in it is unreachable.
+  const railRef = useRef<HTMLDivElement>(null);
+  const [railTop, setRailTop] = useState(85);
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const update = () => setRailTop(Math.min(85, window.innerHeight - rail.offsetHeight - 16));
+    // ResizeObserver also fires once right away, which sets the first value.
+    const observer = new ResizeObserver(update);
+    observer.observe(rail);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  const [phoneBarClosed, setPhoneBarClosed] = useState(phoneBannerClosedThisVisit);
+  const showPhoneBar = !!authUser.showPhoneVerifyBar && !phoneBarClosed;
+
   return (
     <UnsavedChangesGuardBoundary>
-    <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-[#F2FAF5] pb-[92px]">
-      <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-[#F2FAF5]">
+    <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-brand-teal-page pb-[92px]">
+      <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-brand-teal-page">
         <Navbar initialUser={authUser} hideProfileLinks appShell />
       </div>
-      <SampleDataBanner />
+      {/* Both can show at once, stacked — sample data on top. */}
+      <SampleDataBanner initialShow={authUser.showSampleDataBar} />
+      {showPhoneBar && (
+        <PhoneVerifyBanner
+          role="employer"
+          show
+          rewardText={authUser.rewards?.verifyBarText}
+          onClose={() => setPhoneBarClosed(true)}
+        />
+      )}
+      <RewardPopup reward={authUser.rewards?.popup} />
 
       <div className="app-shell pt-[20px]">
         <div className="flex flex-col gap-[24px] xl:flex-row xl:items-start">
           {/* `contents` below xl flattens this column so its pieces stack
               with the page content on smaller screens; xl restores the sticky rail. */}
-          <div className="contents xl:sticky xl:top-[85px] xl:flex xl:w-[220px] xl:shrink-0 xl:flex-col xl:gap-[10px]">
+          <div
+            ref={railRef}
+            className="contents xl:sticky xl:flex xl:w-[220px] xl:shrink-0 xl:flex-col xl:gap-[10px]"
+            style={{ top: railTop }}
+          >
             {/* Only renders once someone actually belongs to more than one
                 company — invisible for the common single-company case. */}
             <CompanySwitcher />
-            <Sidebar active={active} />
-            {/* Wide-screen only: below xl it'd repeat the Manage Job page's own
-                poster card and push real content down. */}
-            <div className="hidden xl:block">
-              <PosterGeneratorTeaser />
-            </div>
+            <Sidebar active={active} teamRole={authUser.teamRole} hasRewards={!!authUser.rewards?.hasRewards || active === "rewards"} />
           </div>
 
           <div className="min-w-0 flex-1">

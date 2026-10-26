@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#141414"/>
+  <g transform="translate(700 -160)" fill="#F1F0EC">
+    <rect x="0" y="0" width="64" height="760" opacity="0.9" transform="rotate(24 32 380)"/>
+    <rect x="130" y="0" width="64" height="760" opacity="0.18" transform="rotate(24 162 380)"/>
+    <rect x="260" y="0" width="64" height="760" opacity="0.9" transform="rotate(24 292 380)"/>
+    <rect x="390" y="0" width="64" height="760" opacity="0.18" transform="rotate(24 422 380)"/>
+  </g>
+  <g font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="96" y="300" width="262" height="56" rx="28" fill="#F1F0EC" fill-opacity="0.14"/>
+    <text x="227" y="337" text-anchor="middle" font-size="26" font-weight="600" letter-spacing="3" fill="#F1F0EC">WE&#8217;RE HIRING</text>
+    <text x="96" y="476" font-size="96" font-weight="700" fill="#FFFFFF">Backend</text>
+    <text x="96" y="582" font-size="96" font-weight="700" fill="#FFFFFF">Engineer</text>
+    <text x="96" y="660" font-size="36" fill="#F1F0EC" fill-opacity="0.85">Remote · RM 8,000 – RM 13,000</text>
+    <rect x="96" y="830" width="372" height="88" rx="44" fill="#F1F0EC"/>
+    <text x="282" y="886" text-anchor="middle" font-size="34" font-weight="600" fill="#141414">Apply on JobGiga</text>
+  </g>
+</svg>

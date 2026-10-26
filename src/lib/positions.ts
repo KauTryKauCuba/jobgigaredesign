@@ -204,3 +204,18 @@ export const POSITIONS = [
 ] as const;
 
 export type Position = (typeof POSITIONS)[number];
+
+// "Your role" on About you — the hiring-function category (vs. the job
+// title above). Shared by the registrant's form and a teammate's.
+export const CONTACT_ROLES = [
+  "Founder / Owner",
+  "Director / C-level",
+  "HR Manager",
+  "HR Executive",
+  "Talent Acquisition / Recruiter",
+  "Hiring Manager",
+  "Admin / Office Manager",
+  "Other",
+] as const;
+
+export type ContactRole = (typeof CONTACT_ROLES)[number];

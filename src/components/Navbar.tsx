@@ -9,6 +9,9 @@ import { useDraftName } from "./DraftNameContext";
 import { ChevronDownIcon, SignOutIcon, UserIcon } from "./icons";
 import Modal from "./Modal";
 import NotificationBell from "./NotificationBell";
+import ToolsMenu from "./ToolsMenu";
+import VerifiedBadge from "./VerifiedBadge";
+import { hasFullAccess, TEAM_ROLE_LABEL } from "@/lib/team-roles";
 
 export default function Navbar({
   showUserName = true,
@@ -37,6 +40,8 @@ export default function Navbar({
   const router = useRouter();
   const pathname = usePathname();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  // Sign in opened from a team-invite link — the invited email and company.
+  const [inviteSignIn, setInviteSignIn] = useState<{ email: string; company: string } | null>(null);
   const [user, setUser] = useState<AuthUser | null | undefined>(initialUser);
   // Re-syncs `user` whenever a new initialUser comes in on a later render
   // (e.g. router.refresh() after saving a profile edit re-runs the server
@@ -72,6 +77,14 @@ export default function Navbar({
   const draftName = draftContext?.draftName.trim();
   const displayName = draftName || user?.name || user?.email;
   const displayAvatarUrl = draftContext?.draftAvatarUrl || user?.avatarUrl;
+  // During onboarding nothing is saved yet, so the form's live answer decides;
+  // everywhere else it's the saved profile's phone.
+  const showPhoneSeal = draftContext?.draftPhoneVerified || !!user?.phoneVerified;
+  // The company the employer is currently acting for takes the main avatar
+  // circle, with their own photo as a small badge on its corner — mid-
+  // onboarding there's no company yet, so it's the draft's own avatar as usual.
+  const companyLogoUrl = !draftContext && user?.role === "employer" ? user.companyLogoUrl : null;
+  const aboutHref = pageRole === "jobseeker" ? "/jobseeker/about" : "/employer/about";
 
   // Fetched lazily on first open (not on mount) — this is an inline summary
   // inside the dropdown itself, not a page, so there's no reason to pay for
@@ -132,6 +145,30 @@ export default function Navbar({
     if (!message) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setGoogleAuthError(message);
+    setAuthMode("sign-in");
+  }, []);
+
+  useEffect(() => {
+    // Set by a team-invite link (/invite/[id]) after signing out any other
+    // account: open Sign in, pre-filled with the invited email — or, for a
+    // cancelled invite, showing why it can't be used.
+    const match = document.cookie.split("; ").find((row) => row.startsWith("invite_signin="));
+    if (!match) return;
+    document.cookie = "invite_signin=; Max-Age=0; path=/";
+    let data: { email?: string; company?: string; error?: string } = {};
+    try {
+      data = JSON.parse(decodeURIComponent(match.split("=").slice(1).join("=")));
+    } catch {
+      return;
+    }
+    // document.cookie only exists client-side after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUser(null);
+    if (data.error) {
+      setGoogleAuthError(data.error);
+    } else if (data.email) {
+      setInviteSignIn({ email: data.email, company: data.company ?? "the team" });
+    }
     setAuthMode("sign-in");
   }, []);
 
@@ -220,14 +257,14 @@ export default function Navbar({
   return (
     <header className="relative z-20 h-[65px] shrink-0">
       <nav className={`${appShell ? "app-shell" : "shell"} flex h-full items-center justify-between`}>
+        {/* Left: logo, then Find job / Find companies and About. */}
+        <div className="flex items-center gap-[18px] text-sm text-[#141B2E] sm:gap-[28px]">
         <Link
           href={user ? (user.role === "employer" ? "/employer" : "/jobseeker") : "/"}
           className="flex items-center"
         >
           <Image src="/jg-logo.svg" alt="JobGiga" width={111} height={28} loading="eager" />
         </Link>
-
-        <div className="flex items-center gap-[18px] text-sm text-[#141B2E]">
           {pageRole === "jobseeker" && (
             <Link
               href="/jobseeker#job-search"
@@ -258,6 +295,42 @@ export default function Navbar({
               Find companies
             </Link>
           )}
+          {/* Each side has its own About page — the link follows the side
+              this page belongs to (teal employer / gold jobseeker). */}
+          {!appShell && !onboarding && (
+            <Link
+              href={aboutHref}
+              aria-current={pathname === aboutHref ? "page" : undefined}
+              className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
+            >
+              About
+            </Link>
+          )}
+        </div>
+
+        {/* Right: Employer · Jobseeker, then Sign in / Get started (or the
+            account controls) at the far right. Employer / Jobseeker are on
+            the public pages only, not inside the dashboards (appShell) or
+            mid-onboarding. */}
+        <div className="flex items-center gap-[18px] text-sm text-[#141B2E]">
+          {!appShell && !onboarding && (
+            <>
+              <Link
+                href="/employer"
+                aria-current={pathname === "/employer" ? "page" : undefined}
+                className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
+              >
+                Employer
+              </Link>
+              <Link
+                href="/jobseeker"
+                aria-current={pathname === "/jobseeker" ? "page" : undefined}
+                className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
+              >
+                Jobseeker
+              </Link>
+            </>
+          )}
           {user === undefined ? null : user ? (
             <>
               {showUserName && (
@@ -270,19 +343,45 @@ export default function Navbar({
                     aria-label="Account menu"
                     className="flex h-[38px] items-center gap-[8px] rounded-full px-[6px] text-sm text-[#4B5468] hover:bg-black/[0.03]"
                   >
-                    <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
-                      {displayAvatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={displayAvatarUrl} alt="" className="h-full w-full object-cover" />
+                    {/* Wrapped so the "phone verified" seal and the overlapping
+                        company logo/avatar can sit on the circle's edges. With
+                        a company logo, both circles are the same size, the
+                        avatar overlapping the logo's corner by about a third. */}
+                    <span className={`relative shrink-0 ${companyLogoUrl && displayAvatarUrl ? "h-[28px] w-[47px]" : ""}`}>
+                      <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F1F4F8] text-[#9AA3B2]">
+                        {companyLogoUrl || displayAvatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={companyLogoUrl || displayAvatarUrl || undefined}
+                            referrerPolicy="no-referrer"
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <UserIcon className="h-[13px] w-[13px]" />
+                        )}
+                      </span>
+                      {/* Their own photo, same size as the logo, overlapping it by about a third
+                          — its own relative wrapper so the phone seal below anchors to it, not the logo. */}
+                      {companyLogoUrl && displayAvatarUrl ? (
+                        <span className="absolute top-0 left-[19px] h-[28px] w-[28px] shrink-0">
+                          <span className="relative block h-[28px] w-[28px]">
+                            <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center overflow-hidden rounded-full border-[1.5px] border-white bg-[#F1F4F8]">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={displayAvatarUrl} referrerPolicy="no-referrer" alt="" className="h-full w-full object-cover" />
+                            </span>
+                            {showPhoneSeal && <VerifiedBadge variant="phone" placement="avatar" size={13} tooltip={false} />}
+                          </span>
+                        </span>
                       ) : (
-                        <UserIcon className="h-[13px] w-[13px]" />
+                        showPhoneSeal && <VerifiedBadge variant="phone" placement="avatar" size={13} tooltip={false} />
                       )}
                     </span>
                     <span className="hidden min-w-0 max-w-[200px] flex-col items-start leading-tight md:flex">
                       <span className="max-w-full truncate whitespace-nowrap">{displayName}</span>
                       {user.role === "employer" && (user.position || user.teamRole) && (
                         <span className="max-w-full truncate whitespace-nowrap text-xs text-[#9AA3B2]">
-                          {[user.position, user.teamRole ? (user.teamRole === "owner" ? "Owner" : "Admin") : null]
+                          {[user.position, user.teamRole ? TEAM_ROLE_LABEL[user.teamRole] : null]
                             .filter(Boolean)
                             .join(" · ")}
                         </span>
@@ -334,6 +433,15 @@ export default function Navbar({
                             Find companies
                           </Link>
                         )}
+                        {!appShell && !onboarding && (
+                          <Link
+                            href={aboutHref}
+                            onClick={() => setMenuOpen(false)}
+                            className="block px-[16px] py-[9px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                          >
+                            About
+                          </Link>
+                        )}
                         {onboarding && (
                           <button
                             type="button"
@@ -354,7 +462,8 @@ export default function Navbar({
                           >
                             My Profile
                           </Link>
-                          {user.role === "employer" && (
+                          {/* Company Profile is Owner/Admin only. */}
+                          {user.role === "employer" && hasFullAccess(user.teamRole ?? "owner") && (
                             <Link
                               href="/employer/company"
                               onClick={() => setMenuOpen(false)}
@@ -411,12 +520,19 @@ export default function Navbar({
                   href={user.role === "employer" ? "/employer/dashboard" : "/jobseeker/dashboard"}
                   className={`hidden h-[38px] items-center rounded-full px-[18px] text-sm sm:flex ${
                     user.role === "jobseeker"
-                      ? "bg-[#FFE9A6] text-[#141B2E] hover:opacity-90"
+                      ? "bg-brand-gold text-[#141B2E] hover:opacity-90"
                       : "bg-brand-teal-dark text-white hover:opacity-90"
                   }`}
                 >
                   Dashboard
                 </Link>
+              )}
+              {/* Poster generator / Refer a company — moved here from the
+                  dashboard sidebar cards. Dashboard-only; owners/admins only,
+                  same as the cards were (posters and referrals are company-
+                  account things, not something a hiring manager/panelist does). */}
+              {!onboarding && appShell && user.role === "employer" && hasFullAccess(user.teamRole ?? "owner") && (
+                <ToolsMenu />
               )}
               {/* Paired with Sign out — same circle style, side by side. */}
               {!onboarding && <NotificationBell accent={user.role === "jobseeker" ? "gold" : "teal"} />}
@@ -444,32 +560,11 @@ export default function Navbar({
                 type="button"
                 onClick={() => setAuthMode("get-started")}
                 className={`flex h-[38px] items-center rounded-full px-[18px] text-sm hover:opacity-90 ${
-                  pageRole === "jobseeker" ? "bg-[#FFE9A6] text-[#141B2E]" : "bg-brand-teal-dark text-white"
+                  pageRole === "jobseeker" ? "bg-brand-gold text-[#141B2E]" : "bg-brand-teal-dark text-white"
                 }`}
               >
                 Get started
               </button>
-            </>
-          )}
-          {/* Employer / Jobseeker landing-page links, at the far right — on
-              the public pages only, not inside the dashboards (appShell) or
-              mid-onboarding. */}
-          {!appShell && !onboarding && (
-            <>
-              <Link
-                href="/employer"
-                aria-current={pathname === "/employer" ? "page" : undefined}
-                className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
-              >
-                Employer
-              </Link>
-              <Link
-                href="/jobseeker"
-                aria-current={pathname === "/jobseeker" ? "page" : undefined}
-                className="hidden whitespace-nowrap px-[6px] py-[6px] hover:opacity-60 aria-[current=page]:font-semibold sm:block"
-              >
-                Jobseeker
-              </Link>
             </>
           )}
         </div>
@@ -478,17 +573,21 @@ export default function Navbar({
       {authMode && (
         <AuthModal
           mode={authMode}
-          initialRole={pageRole}
+          initialRole={inviteSignIn ? "employer" : pageRole}
           initialError={googleAuthError}
+          initialEmail={inviteSignIn?.email}
+          notice={inviteSignIn ? `Sign in with ${inviteSignIn.email} to join ${inviteSignIn.company}.` : null}
           onSwitchToGetStarted={() => setAuthMode("get-started")}
           onClose={() => {
             setAuthMode(null);
             setGoogleAuthError(null);
+            setInviteSignIn(null);
           }}
           onAuthenticated={(authedUser) => {
             setUser(authedUser);
             setAuthMode(null);
             setGoogleAuthError(null);
+            setInviteSignIn(null);
           }}
         />
       )}
@@ -515,7 +614,7 @@ export default function Navbar({
                       onClick={() => setSwitchConfirmStep(2)}
                       className={`flex h-[38px] items-center justify-center rounded-full text-sm transition-opacity hover:opacity-90 ${
                         nextRole === "jobseeker"
-                          ? "bg-[#FFE9A6] text-[#141B2E]"
+                          ? "bg-brand-gold text-[#141B2E]"
                           : "bg-brand-teal-dark text-white"
                       }`}
                     >
@@ -543,7 +642,7 @@ export default function Navbar({
                       onClick={confirmSwitchRole}
                       className={`flex h-[38px] items-center justify-center rounded-full text-sm transition-opacity hover:opacity-90 ${
                         nextRole === "jobseeker"
-                          ? "bg-[#FFE9A6] text-[#141B2E]"
+                          ? "bg-brand-gold text-[#141B2E]"
                           : "bg-brand-teal-dark text-white"
                       }`}
                     >

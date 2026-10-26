@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { COMPANIES_CHANGED_EVENT, COMPANY_SWITCHED_EVENT } from "./CompanySwitcher";
 import { useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { XIcon } from "./icons";
 
 // Last answer from the server, kept for the browser session (module scope
-// survives client-side navigation). Never set during the server render, so
-// a full page load always starts hidden on both sides — no hydration mismatch.
+// survives client-side navigation) — a fallback for when `initialShow` isn't
+// passed (e.g. an older cached page).
 let cachedShow: boolean | null = null;
 
 /**
@@ -19,13 +19,17 @@ let cachedShow: boolean | null = null;
  * company already has sample data. Re-checks when sample data is added or
  * removed, or the company is switched.
  */
-export default function SampleDataBanner() {
+export default function SampleDataBanner({ initialShow }: { initialShow?: boolean } = {}) {
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
-  // Every employer page renders its own shell, so this remounts on each
-  // sidebar click — starting from the last known answer (instead of hidden)
-  // keeps the bar from popping in and shoving the page down every time.
-  const [show, setShow] = useState(() => cachedShow ?? false);
+  // Worked out by the server with the page (getAuthUser), so the bar is
+  // already right on the very first frame — no popping in after a fetch,
+  // which used to shove the page down on every refresh.
+  const [show, setShow] = useState(() => initialShow ?? cachedShow ?? false);
+  // Whether the server already answered for this mount — read-only (never
+  // flipped), so React StrictMode's double-invoke of this effect in dev
+  // still skips the fetch both times instead of fetching on the second one.
+  const hadServerAnswer = useRef(initialShow !== undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,10 +40,12 @@ export default function SampleDataBanner() {
         cachedShow = data.show === true;
         if (!cancelled) setShow(cachedShow);
       } catch {
-        // Offline or a blip — just leave the bar hidden.
+        // Offline or a blip — just leave the bar as it was.
       }
     }
-    check();
+    // The server already answered for the first frame — only the later
+    // events (sample data added/removed, company switched) need a fetch.
+    if (!hadServerAnswer.current) void check();
     window.addEventListener(COMPANIES_CHANGED_EVENT, check);
     window.addEventListener(COMPANY_SWITCHED_EVENT, check);
     return () => {

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import ScrollWidthBackground from "./ScrollWidthBackground";
 import SiriOrb from "./SiriOrb";
 
 type Bullet = { title: string; detail?: string };
@@ -16,7 +17,19 @@ export default function AssistantCard({
   reverse = false,
   accent = "teal",
   background,
+  fadeEdges = false,
+  bandStartWidth,
+  bandDurationMs,
+  bandGradient,
 }: {
+  /** A CSS gradient to paint the background band with instead of the flat `background` colour. */
+  bandGradient?: string;
+  /** How long the background band takes to ease out to full width. */
+  bandDurationMs?: number;
+  /** The background band's width (% of the page) before it eases out to full width. */
+  bandStartWidth?: number;
+  /** Fades the background band out at its left and right edges. */
+  fadeEdges?: boolean;
   /** Optional full-width background colour band behind the whole section. */
   background?: string;
   /** Numbers the section (shown in a small circle before the eyebrow) when
@@ -118,7 +131,7 @@ export default function AssistantCard({
               <a
                 href="#"
                 className={`flex h-[34px] flex-1 items-center justify-center rounded-full px-[16px] text-sm hover:opacity-90 ${
-                  accent === "gold" ? "bg-[#FFE9A6] text-[#141B2E]" : "bg-brand-teal-dark text-white"
+                  accent === "gold" ? "bg-brand-gold text-[#141B2E]" : "bg-brand-teal-dark text-white"
                 }`}
               >
                 {ctaLabel}
@@ -161,9 +174,12 @@ export default function AssistantCard({
   // A full-width colour band behind the section, to set it apart from its
   // neighbours on the page.
   return background ? (
-    <section className="relative z-10 w-full" style={{ backgroundColor: background }}>
+    <ScrollWidthBackground color={background} fadeEdges={fadeEdges} startWidth={bandStartWidth}
+      durationMs={bandDurationMs}
+      gradient={bandGradient}
+    >
       {section}
-    </section>
+    </ScrollWidthBackground>
   ) : (
     section
   );

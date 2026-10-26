@@ -9,6 +9,11 @@ const SUPERADMIN_EMAILS = (process.env.SUPERADMIN_EMAILS ?? "")
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
 
+/** Everyone on the superadmin allowlist — who to alert when something needs attention. */
+export function getSuperadminEmails(): string[] {
+  return [...SUPERADMIN_EMAILS];
+}
+
 export function isSuperadminEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   return SUPERADMIN_EMAILS.includes(email.toLowerCase());

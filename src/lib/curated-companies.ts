@@ -12,6 +12,14 @@ export type CuratedCompany = {
   location: string;
   companySize: string;
   src: string;
+  // An abstract cover banner in the company's brand colours (our own
+  // artwork, public/banners/showcase — not the company's imagery).
+  banner: string;
+  // The employer landing page's "Company spotlight" sample ad: 16:9 artwork
+  // built from the banner above (public/ads/showcase), plus an illustrative
+  // headline — not the company's own ad copy.
+  ad: string;
+  adHeadline: string;
   width: number;
   height: number;
 };
@@ -24,6 +32,9 @@ export const CURATED_COMPANIES: CuratedCompany[] = [
     location: "Kuala Lumpur",
     companySize: "51-200",
     src: "/logos/aikido.svg",
+    banner: "/banners/showcase/aikido.svg",
+    ad: "/ads/showcase/aikido.svg",
+    adHeadline: "Help us make security effortless for developers",
     width: 88,
     height: 20,
   },
@@ -34,6 +45,9 @@ export const CURATED_COMPANIES: CuratedCompany[] = [
     location: "Petaling Jaya, Selangor",
     companySize: "201-500",
     src: "/logos/bolt.jpg",
+    banner: "/banners/showcase/bolt.svg",
+    ad: "/ads/showcase/bolt.svg",
+    adHeadline: "Build the payments people rely on every day",
     width: 132,
     height: 64,
   },
@@ -44,6 +58,9 @@ export const CURATED_COMPANIES: CuratedCompany[] = [
     location: "Cyberjaya, Selangor",
     companySize: "51-200",
     src: "/logos/parim.svg",
+    banner: "/banners/showcase/parim.svg",
+    ad: "/ads/showcase/parim.svg",
+    adHeadline: "Shape how thousands of shift teams work",
     width: 104,
     height: 32,
   },
@@ -54,6 +71,9 @@ export const CURATED_COMPANIES: CuratedCompany[] = [
     location: "Shah Alam, Selangor",
     companySize: "11-50",
     src: "/logos/parcelly.svg",
+    banner: "/banners/showcase/parcelly.svg",
+    ad: "/ads/showcase/parcelly.svg",
+    adHeadline: "Deliver across Malaysia with us, faster",
     width: 90,
     height: 31,
   },
@@ -64,6 +84,9 @@ export const CURATED_COMPANIES: CuratedCompany[] = [
     location: "Puchong, Selangor",
     companySize: "11-50",
     src: "/logos/parceltracker.svg",
+    banner: "/banners/showcase/parceltracker.svg",
+    ad: "/ads/showcase/parceltracker.svg",
+    adHeadline: "Build the tools that keep parcels moving",
     width: 168,
     height: 30,
   },
@@ -74,6 +97,9 @@ export const CURATED_COMPANIES: CuratedCompany[] = [
     location: "Bangsar South, Kuala Lumpur",
     companySize: "11-50",
     src: "/logos/whale.svg",
+    banner: "/banners/showcase/whale.svg",
+    ad: "/ads/showcase/whale.svg",
+    adHeadline: "Make great processes easy to share",
     width: 104,
     height: 22,
   },

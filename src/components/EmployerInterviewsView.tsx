@@ -21,6 +21,7 @@ import {
 import { CalendarIcon, CheckCircleIcon, ChevronDownIcon, ClockIcon, FlagIcon, SearchIcon, UserIcon, XCircleIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 import type { ComponentType } from "react";
+import { hasFullAccess } from "@/lib/team-roles";
 import type {
   EvaluationCriterion,
   InterviewEvaluation,
@@ -80,6 +81,10 @@ type ApplicationRow = {
   applicantSkills: string[];
   applicantExpectedSalaryMin: number;
   applicantExpectedSalaryMax: number;
+  // The posting's own range, to flag whether the expectation fits it.
+  postingSalaryMin?: number | null;
+  postingSalaryMax?: number | null;
+  postingSalaryPeriod?: string;
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
@@ -87,6 +92,9 @@ type ApplicationRow = {
   evaluation?: InterviewEvaluation | null;
   evaluations?: PanelEvaluation[];
   videoPitch?: ApplicantVideoPitch | null;
+  // See ApplicantDetail — false when the viewer is only on the panel.
+  canManage?: boolean;
+  hiringManagerUserIds?: string[];
 };
 
 function ApplicantAvatar({ url }: { url: string | null }) {
@@ -195,6 +203,7 @@ export default function EmployerInterviewsView({
   addresses,
   currentUserRole,
   teamMembers = [],
+  canSchedule = true,
 }: {
   authUser: AuthUser;
   applications: ApplicationRow[];
@@ -202,6 +211,9 @@ export default function EmployerInterviewsView({
   addresses: EmployerAddress[];
   currentUserRole?: string | null;
   teamMembers?: EmployerTeamMember[];
+  // false for a Panel member: they see the interviews they're on and
+  // evaluate, but don't schedule or move candidates.
+  canSchedule?: boolean;
 }) {
   // Shortlisted applicants aren't scheduled yet, so they're excluded from
   // the Scheduled/Interviewed/Evaluated sections below (those filter on
@@ -463,21 +475,30 @@ export default function EmployerInterviewsView({
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setPickerDate(null);
-              setPickerJobPostingId(null);
-              setPickerOpen(true);
-            }}
-            className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[16px] text-sm text-white hover:opacity-90"
-          >
-            Schedule interview
-          </button>
+          {canSchedule && (
+            <button
+              type="button"
+              onClick={() => {
+                setPickerDate(null);
+                setPickerJobPostingId(null);
+                setPickerOpen(true);
+              }}
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[16px] text-sm text-white hover:opacity-90"
+            >
+              Schedule interview
+            </button>
+          )}
         </div>
       }
-      subheading="Everyone currently scheduled for an interview, across every job posting."
+      subheading={
+        !canSchedule
+          ? "The interviews you're on the panel for — open one to see the candidate and submit your evaluation."
+          : hasFullAccess(authUser.teamRole ?? "owner")
+            ? "Everyone currently scheduled for an interview, across every job posting."
+            : "Interviews for the jobs you're the hiring manager for, and any panel you're on."
+      }
     >
+      {canSchedule && (
       <div className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto w-full max-w-[1440px]`}>
         <div className="relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
           {!howItWorksOpen && (
@@ -531,9 +552,10 @@ export default function EmployerInterviewsView({
           </div>
         </div>
       </div>
+      )}
 
       <div
-        className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto mt-[20px] w-full max-w-[1440px]`}
+        className={`animate-fade-in-up ${gradientFrameClass("teal")} mx-auto w-full max-w-[1440px] ${canSchedule ? "mt-[20px]" : ""}`}
         style={{ animationDelay: "60ms" }}
       >
         <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
@@ -626,7 +648,7 @@ export default function EmployerInterviewsView({
             <InterviewBigCalendar
               interviews={calendarInterviews}
               onSelectInterview={setViewingId}
-              onScheduleDate={openPickerForDate}
+              onScheduleDate={canSchedule ? openPickerForDate : undefined}
             />
           </div>
         </div>
@@ -726,7 +748,8 @@ export default function EmployerInterviewsView({
                         key={applicant.application.id}
                         applicant={applicant}
                         onView={setViewingId}
-                        draggable
+                        // Dragging opens the candidate to move them — only for those who can.
+                        draggable={applicant.canManage !== false}
                         dragging={draggingId === applicant.application.id}
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", applicant.application.id);
@@ -775,7 +798,10 @@ export default function EmployerInterviewsView({
               </div>
             </div>
             <div className="mt-[16px] border-t border-black/[0.06] pt-[16px]">
-              <InterviewCalendarCard interviews={calendarInterviews} onScheduleDate={openPickerForDate} />
+              <InterviewCalendarCard
+                interviews={calendarInterviews}
+                onScheduleDate={canSchedule ? openPickerForDate : undefined}
+              />
             </div>
           </div>
         </div>

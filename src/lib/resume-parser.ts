@@ -2,6 +2,7 @@ import "server-only";
 import { extractImages as extractPdfImages, extractText as extractPdfText, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
 import sharp from "sharp";
+import { normalizeSpokenLanguages } from "@/lib/languages";
 
 export const RESUME_MAX_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_CHARS = 15000;
@@ -9,7 +10,7 @@ const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
 const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
 const RETRY_ATTEMPTS = 3;
 
-export const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"] as const;
+export const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship", "freelance", "temporary"] as const;
 export const QUALIFICATION_TIERS = ["SPM", "STPM", "Diploma", "Degree", "Master", "PhD", "Other"] as const;
 export const LANGUAGE_LEVELS = ["basic", "conversational", "fluent", "native"] as const;
 export const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
@@ -30,7 +31,7 @@ const SYSTEM_PROMPT = `You extract structured profile data from a resume's text 
   "yearsExperience": number | null,
   "professionalSkills": string[],
   "softSkills": string[],
-  "employmentType": "full_time" | "part_time" | "contract" | "internship" | null,
+  "employmentType": "full_time" | "part_time" | "contract" | "internship" | "freelance" | "temporary" | null,
   "expectedSalaryMin": number | null,
   "expectedSalaryMax": number | null,
   "bio": string | null,
@@ -90,6 +91,8 @@ export type ParsedReference = {
 
 export type ParsedLanguage = {
   language: string;
+  // Dialects named on the résumé ("Hokkien" → Chinese with Hokkien).
+  dialects: string[];
   spokenLevel: (typeof LANGUAGE_LEVELS)[number];
   writtenLevel: (typeof LANGUAGE_LEVELS)[number];
 };
@@ -240,9 +243,10 @@ function parseLanguages(value: unknown): ParsedLanguage[] {
         ? (obj.writtenLevel as (typeof LANGUAGE_LEVELS)[number])
         : null;
     if (!language || !spokenLevel || !writtenLevel) continue;
-    entries.push({ language, spokenLevel, writtenLevel });
+    entries.push({ language, dialects: [], spokenLevel, writtenLevel });
   }
-  return entries;
+  // Merges e.g. separate "Mandarin" and "Hokkien" lines into Chinese with both.
+  return normalizeSpokenLanguages(entries);
 }
 
 export function validateParsedProfile(raw: unknown): ParsedProfile {

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#E4F5FF"/>
+  <circle cx="930" cy="150" r="330" fill="#33BAFF" opacity="0.3"/>
+  <circle cx="930" cy="150" r="180" fill="#0B6FB8" opacity="0.14"/>
+  <circle cx="90" cy="1020" r="260" fill="#33BAFF" opacity="0.18"/>
+  <g font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="96" y="300" width="262" height="56" rx="28" fill="#0B6FB8" fill-opacity="0.12"/>
+    <text x="227" y="337" text-anchor="middle" font-size="26" font-weight="600" letter-spacing="3" fill="#0B6FB8">WE&#8217;RE HIRING</text>
+    <text x="96" y="476" font-size="96" font-weight="700" fill="#0A3F66">Sales</text>
+    <text x="96" y="582" font-size="96" font-weight="700" fill="#0A3F66">Executive</text>
+    <text x="96" y="660" font-size="36" fill="#0A3F66" fill-opacity="0.75">Cyberjaya · RM 4,000 – RM 6,000</text>
+    <rect x="96" y="830" width="372" height="88" rx="44" fill="#0B6FB8"/>
+    <text x="282" y="886" text-anchor="middle" font-size="34" font-weight="600" fill="#FFFFFF">Apply on JobGiga</text>
+  </g>
+</svg>

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobApplications, jobseekerProfiles } from "@/lib/db/schema";
-import { getApplicationNotificationContext, getEmployerTeamUserIds, notify } from "@/lib/notifications";
+import { getApplicationNotificationContext, getJobNotificationRecipients, notify } from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 
 const RESPONSES = ["accepted", "declined", "reschedule_requested"] as const;
@@ -53,11 +53,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .returning();
 
   // Tell whoever's running the interview — the panel if there is one,
-  // otherwise the whole hiring team.
+  // otherwise the posting's hiring team (Owners/Admins and its Hiring managers).
   const ctx = await getApplicationNotificationContext(id);
   if (ctx) {
     const panel = updated.interviewDetails?.interviewerUserIds ?? [];
-    const recipients = panel.length > 0 ? panel : await getEmployerTeamUserIds(ctx.employerProfileId, ctx.ownerUserId);
+    const recipients =
+      panel.length > 0 ? panel : await getJobNotificationRecipients(ctx.employerProfileId, ctx.ownerUserId, ctx.postingId);
     const verb =
       response === "accepted"
         ? "accepted"

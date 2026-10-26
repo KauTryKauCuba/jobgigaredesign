@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { resolveExistingRoles } from "@/lib/auth-user";
 import { users } from "@/lib/db/schema";
-import { activatePendingTeamInvites } from "@/lib/employer-profile";
+import { activatePendingTeamInvites, hasPendingTeamInvite } from "@/lib/employer-profile";
+import { consumeInviteCompany } from "@/lib/team-invite";
 import { getPostAuthRedirect } from "@/lib/onboarding";
 import { createSession } from "@/lib/session";
 import { ACCOUNT_NOT_FOUND_MESSAGE } from "@/lib/auth-messages";
@@ -139,9 +140,13 @@ export async function GET(request: Request) {
   // with Google" on the sign-in modal doubled as sign-up for any Google
   // account, bypassing the "we couldn't find an account" error the email
   // path already enforces.
-  if (!existing && parsedState.intent === "sign-in") {
+  // …except an invited teammate's first sign-in: the invite email tells
+  // them to "sign in", so it creates their account (as an employer) here.
+  const invitedFirstSignIn = !existing && parsedState.intent === "sign-in" && (await hasPendingTeamInvite(normalizedEmail));
+  if (!existing && parsedState.intent === "sign-in" && !invitedFirstSignIn) {
     return fail(ACCOUNT_NOT_FOUND_MESSAGE, parsedState.role);
   }
+  if (invitedFirstSignIn) parsedState.role = "employer";
 
   let user = existing;
   if (!user) {
@@ -177,13 +182,22 @@ export async function GET(request: Request) {
   // account using "Get started" specifically to add a second role.
   let sessionRole = parsedState.role;
   let needsRoleChoice = false;
-  if (existing && parsedState.intent === "sign-in") {
+  // Came from a team-invite link (/invite/[id]) — that already says which
+  // side and company they want: the employer side, in that company.
+  const inviteCompanyId = await consumeInviteCompany(user.id);
+  if (inviteCompanyId) {
+    sessionRole = "employer";
+  } else if (existing && parsedState.intent === "sign-in") {
     const existingRoles = await resolveExistingRoles(user.id);
     if (existingRoles.length === 1) sessionRole = existingRoles[0];
     else if (existingRoles.length > 1) needsRoleChoice = true;
   }
 
-  await createSession({ userId: user.id, role: sessionRole });
+  await createSession({
+    userId: user.id,
+    role: sessionRole,
+    ...(inviteCompanyId ? { employerProfileId: inviteCompanyId } : {}),
+  });
 
   if (needsRoleChoice) {
     // Wherever this provisional sign-in ends up landing — "/" redirects to

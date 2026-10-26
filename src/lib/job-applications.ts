@@ -11,7 +11,15 @@ import {
 } from "./db/schema";
 import { summarizeEvaluations, type InterviewEvaluation, type PanelEvaluation } from "./interviewEvaluation";
 import { getPitchSummariesForEmployer } from "./video-pitch";
+import {
+  applicationScopeCondition,
+  canManageApplication,
+  getJobHiringManagers,
+  jobPostingScopeCondition,
+  type HiringScope,
+} from "./hiring-scope";
 import { stripCustomQuestionAnswers } from "./job-postings";
+import { getProfileIdsWithVerifiedPhone } from "./phone-verification";
 
 /**
  * Every panelist's scorecard for each application's *current* interview
@@ -72,13 +80,19 @@ export async function getPanelEvaluations(
 }
 
 // Adds `evaluations` (each panelist's own scorecard), `evaluation` (the
-// combined summary every list/badge already renders), and `videoPitch` (the
-// applicant's visible pitch, as this company sees it — null if none) to
-// loader rows.
+// combined summary every list/badge already renders), `videoPitch` (the
+// applicant's visible pitch, as this company sees it — null if none),
+// `canManage` (whether the viewer may move this applicant through the
+// pipeline — false for someone who only sits on its interview panel) and
+// `hiringManagerUserIds` (the posting's joined Hiring managers, pre-filled
+// onto a new interview's panel) to loader rows.
 async function withEvaluations<
-  T extends { application: { id: string; jobseekerProfileId: string; interviewDetails: { round: number } | null } },
->(employerProfileId: string, rows: T[]) {
-  const [byApplication, pitches] = await Promise.all([
+  T extends {
+    jobPostingId: string;
+    application: { id: string; jobseekerProfileId: string; interviewDetails: { round: number } | null };
+  },
+>(employerProfileId: string, rows: T[], scope: HiringScope = { kind: "all" }) {
+  const [byApplication, pitches, managers, phoneVerified] = await Promise.all([
     getPanelEvaluations(
       employerProfileId,
       rows.map((r) => r.application),
@@ -87,19 +101,30 @@ async function withEvaluations<
       employerProfileId,
       rows.map((r) => r.application.jobseekerProfileId),
     ),
+    getJobHiringManagers([...new Set(rows.map((r) => r.jobPostingId))]),
+    getProfileIdsWithVerifiedPhone(rows.map((r) => r.application.jobseekerProfileId)),
   ]);
   return rows.map((row) => {
     const evaluations = byApplication.get(row.application.id) ?? [];
     return {
       ...row,
+      // Whether the applicant verified their phone (a text-message code).
+      applicantPhoneVerified: phoneVerified.has(row.application.jobseekerProfileId),
       evaluations,
       evaluation: summarizeEvaluations(evaluations),
       videoPitch: pitches.get(row.application.jobseekerProfileId) ?? null,
+      canManage: canManageApplication(scope, row),
+      hiringManagerUserIds: (managers.get(row.jobPostingId) ?? [])
+        .filter((m) => m.status === "active" && m.userId)
+        .map((m) => m.userId as string),
     };
   });
 }
 
-export async function getApplicationsForEmployer(employerProfileId: string) {
+// `scope` (optional on every loader below) narrows the list to what the
+// viewer may see — a Hiring manager's postings, or a Panel member's
+// interviews. Omitted = the whole company.
+export async function getApplicationsForEmployer(employerProfileId: string, scope?: HiringScope) {
   const rows = await db
     .select({
       application: jobApplications,
@@ -113,6 +138,9 @@ export async function getApplicationsForEmployer(employerProfileId: string) {
       applicantSkills: jobseekerProfiles.professionalSkills,
       applicantExpectedSalaryMin: jobseekerProfiles.expectedSalaryMin,
       applicantExpectedSalaryMax: jobseekerProfiles.expectedSalaryMax,
+      postingSalaryMin: jobPostings.salaryMin,
+      postingSalaryMax: jobPostings.salaryMax,
+      postingSalaryPeriod: jobPostings.salaryPeriod,
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
@@ -121,16 +149,16 @@ export async function getApplicationsForEmployer(employerProfileId: string) {
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .where(eq(jobPostings.employerProfileId, employerProfileId))
+    .where(and(eq(jobPostings.employerProfileId, employerProfileId), applicationScopeCondition(scope)))
     .orderBy(desc(jobApplications.appliedAt));
 
-  return withEvaluations(employerProfileId, rows);
+  return withEvaluations(employerProfileId, rows, scope);
 }
 
 // Same shape as getApplicationsForEmployer, scoped to one posting — for the
 // Manage Job "view posting" page, which shows a job's own applicants/
 // interviews instead of every posting's.
-export async function getApplicationsForJobPosting(employerProfileId: string, jobPostingId: string) {
+export async function getApplicationsForJobPosting(employerProfileId: string, jobPostingId: string, scope?: HiringScope) {
   const rows = await db
     .select({
       application: jobApplications,
@@ -139,12 +167,15 @@ export async function getApplicationsForJobPosting(employerProfileId: string, jo
       applicantName: jobseekerProfiles.fullName,
       applicantAvatarUrl: jobseekerProfiles.avatarUrl,
       applicantLocation: jobseekerProfiles.location,
-      applicantDateOfBirth: jobseekerProfiles.dateOfBirth,
+      applicantBirthYear: jobseekerProfiles.birthYear,
       applicantTargetRole: jobseekerProfiles.targetRole,
       applicantYearsExperience: jobseekerProfiles.yearsExperience,
       applicantSkills: jobseekerProfiles.professionalSkills,
       applicantExpectedSalaryMin: jobseekerProfiles.expectedSalaryMin,
       applicantExpectedSalaryMax: jobseekerProfiles.expectedSalaryMax,
+      postingSalaryMin: jobPostings.salaryMin,
+      postingSalaryMax: jobPostings.salaryMax,
+      postingSalaryPeriod: jobPostings.salaryPeriod,
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
@@ -153,10 +184,16 @@ export async function getApplicationsForJobPosting(employerProfileId: string, jo
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .where(and(eq(jobPostings.employerProfileId, employerProfileId), eq(jobPostings.id, jobPostingId)))
+    .where(
+      and(
+        eq(jobPostings.employerProfileId, employerProfileId),
+        eq(jobPostings.id, jobPostingId),
+        applicationScopeCondition(scope),
+      ),
+    )
     .orderBy(desc(jobApplications.appliedAt));
 
-  return withEvaluations(employerProfileId, rows);
+  return withEvaluations(employerProfileId, rows, scope);
 }
 
 // For the "Top Matches" AI matching endpoint — every non-terminal
@@ -165,13 +202,15 @@ export async function getApplicationsForJobPosting(employerProfileId: string, jo
 // the match score is computed from: the posting's requirements and the
 // jobseeker's profile. Scoring itself happens server-side in
 // src/lib/matching.ts.
-export async function getMatchCandidatesRaw(employerProfileId: string) {
+export async function getMatchCandidatesRaw(employerProfileId: string, scope?: HiringScope) {
   return db
     .select({
       applicationId: jobApplications.id,
       status: jobApplications.status,
       appliedAt: jobApplications.appliedAt,
       screeningEligible: jobApplications.screeningEligible,
+      screeningPreferredMet: jobApplications.screeningPreferredMet,
+      screeningPreferredTotal: jobApplications.screeningPreferredTotal,
       jobPostingId: jobPostings.id,
       jobPostingTitle: jobPostings.title,
       jobPostingLocation: jobPostings.location,
@@ -203,6 +242,7 @@ export async function getMatchCandidatesRaw(employerProfileId: string) {
       and(
         eq(jobPostings.employerProfileId, employerProfileId),
         notInArray(jobApplications.status, ["hired", "rejected", "withdrawn"]),
+        applicationScopeCondition(scope),
       ),
     )
     .orderBy(desc(jobApplications.appliedAt));
@@ -211,7 +251,7 @@ export async function getMatchCandidatesRaw(employerProfileId: string) {
 // For the Interviews page — every application currently at the "interview"
 // stage, same shape as getApplicationsForEmployer so the two views can share
 // row/card markup.
-export async function getInterviewApplicationsForEmployer(employerProfileId: string) {
+export async function getInterviewApplicationsForEmployer(employerProfileId: string, scope?: HiringScope) {
   const rows = await db
     .select({
       application: jobApplications,
@@ -225,6 +265,9 @@ export async function getInterviewApplicationsForEmployer(employerProfileId: str
       applicantSkills: jobseekerProfiles.professionalSkills,
       applicantExpectedSalaryMin: jobseekerProfiles.expectedSalaryMin,
       applicantExpectedSalaryMax: jobseekerProfiles.expectedSalaryMax,
+      postingSalaryMin: jobPostings.salaryMin,
+      postingSalaryMax: jobPostings.salaryMax,
+      postingSalaryPeriod: jobPostings.salaryPeriod,
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
@@ -237,11 +280,12 @@ export async function getInterviewApplicationsForEmployer(employerProfileId: str
       and(
         eq(jobPostings.employerProfileId, employerProfileId),
         inArray(jobApplications.status, ["interview", "interviewed", "evaluation", "evaluated"]),
+        applicationScopeCondition(scope),
       ),
     )
     .orderBy(desc(jobApplications.appliedAt));
 
-  return withEvaluations(employerProfileId, rows);
+  return withEvaluations(employerProfileId, rows, scope);
 }
 
 // For the Interviews page's "Schedule interview" picker — shortlisted
@@ -249,7 +293,7 @@ export async function getInterviewApplicationsForEmployer(employerProfileId: str
 // up in getInterviewApplicationsForEmployer above, but they're exactly who
 // an employer would want to schedule next. Same shape so the two lists can
 // share row/card markup and merge into one client-side rows array.
-export async function getShortlistedApplicationsForEmployer(employerProfileId: string) {
+export async function getShortlistedApplicationsForEmployer(employerProfileId: string, scope?: HiringScope) {
   const rows = await db
     .select({
       application: jobApplications,
@@ -263,6 +307,9 @@ export async function getShortlistedApplicationsForEmployer(employerProfileId: s
       applicantSkills: jobseekerProfiles.professionalSkills,
       applicantExpectedSalaryMin: jobseekerProfiles.expectedSalaryMin,
       applicantExpectedSalaryMax: jobseekerProfiles.expectedSalaryMax,
+      postingSalaryMin: jobPostings.salaryMin,
+      postingSalaryMax: jobPostings.salaryMax,
+      postingSalaryPeriod: jobPostings.salaryPeriod,
       applicantEmploymentType: jobseekerProfiles.employmentType,
       applicantWorkArrangement: jobseekerProfiles.workArrangement,
       applicantNoticePeriod: jobseekerProfiles.noticePeriod,
@@ -271,10 +318,18 @@ export async function getShortlistedApplicationsForEmployer(employerProfileId: s
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .innerJoin(jobseekerProfiles, eq(jobApplications.jobseekerProfileId, jobseekerProfiles.id))
-    .where(and(eq(jobPostings.employerProfileId, employerProfileId), eq(jobApplications.status, "shortlisted")))
+    .where(
+      and(
+        eq(jobPostings.employerProfileId, employerProfileId),
+        eq(jobApplications.status, "shortlisted"),
+        // Only the ones this viewer can schedule — a shortlisted candidate
+        // has no panel yet, so this is just their own postings.
+        jobPostingScopeCondition(scope),
+      ),
+    )
     .orderBy(desc(jobApplications.appliedAt));
 
-  return withEvaluations(employerProfileId, rows);
+  return withEvaluations(employerProfileId, rows, scope);
 }
 
 export async function getJobseekerProfileId(userId: string): Promise<string | null> {

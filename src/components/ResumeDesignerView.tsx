@@ -12,6 +12,8 @@ import { CheckIcon, FileIcon, PlusIcon, XIcon } from "./icons";
 import { useRegisterUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import type { AuthUser } from "./AuthModal";
 import type { JobseekerProfile } from "@/lib/jobseeker-profile";
+import { ageFromBirthYear } from "@/lib/age";
+import { formatSpokenLanguage } from "@/lib/languages";
 import {
   RESUME_CSS,
   RESUME_PAGE_HEIGHT,
@@ -66,7 +68,8 @@ type Draft = {
   certifications: { id: string; name: string; issuer: string; year: string }[];
   professionalSkills: string[];
   softSkills: string[];
-  languages: { id: string; language: string; spokenLevel: LanguageLevel; writtenLevel: LanguageLevel }[];
+  // Dialects come from the profile and are kept as they are — this editor only changes the language and level.
+  languages: { id: string; language: string; dialects: string[]; spokenLevel: LanguageLevel; writtenLevel: LanguageLevel }[];
 };
 
 let idCounter = 0;
@@ -112,6 +115,7 @@ export function draftFromProfile(p: JobseekerProfile): Draft {
     languages: p.languages.map((l) => ({
       id: newId(),
       language: l.language,
+      dialects: l.dialects ?? [],
       spokenLevel: l.spokenLevel as LanguageLevel,
       writtenLevel: l.writtenLevel as LanguageLevel,
     })),
@@ -164,7 +168,8 @@ function toResumeData(d: Draft, profile: JobseekerProfile, email: string): Resum
     certifications: d.certifications,
     skills: d.professionalSkills,
     softSkills: d.softSkills,
-    languages: d.languages,
+    // "Chinese (Mandarin, Hokkien)" on the résumé itself.
+    languages: d.languages.map((l) => ({ ...l, language: formatSpokenLanguage(l.language, l.dialects) })),
   };
 }
 
@@ -185,7 +190,7 @@ export function buildProfilePayload(p: JobseekerProfile, d: Draft) {
     resumeUrl: null,
     resumeFileName: p.resumeFileName,
     resumeFileSize: p.resumeFileSize,
-    dateOfBirth: p.dateOfBirth,
+    age: ageFromBirthYear(p.birthYear),
     gender: p.gender,
     maritalStatus: p.maritalStatus,
     nationality: p.nationality,
@@ -193,6 +198,7 @@ export function buildProfilePayload(p: JobseekerProfile, d: Draft) {
     drivingLicense: p.drivingLicense,
     city: p.city,
     state: p.state,
+    country: p.country,
     targetRole: d.targetRole.trim(),
     preferredIndustry: p.preferredIndustry,
     yearsExperience: p.yearsExperience,
@@ -237,7 +243,7 @@ export function buildProfilePayload(p: JobseekerProfile, d: Draft) {
       })),
     languages: d.languages
       .filter((l) => l.language.trim())
-      .map((l) => ({ language: l.language.trim(), spokenLevel: l.spokenLevel, writtenLevel: l.writtenLevel })),
+      .map((l) => ({ language: l.language.trim(), dialects: l.dialects, spokenLevel: l.spokenLevel, writtenLevel: l.writtenLevel })),
     references: p.references.map((r) => ({
       fullName: r.fullName,
       jobTitle: r.jobTitle,
@@ -786,7 +792,10 @@ export default function ResumeDesignerView({
           <AddButton
             onClick={() =>
               patch({
-                languages: [...draft.languages, { id: newId(), language: "", spokenLevel: "conversational", writtenLevel: "conversational" }],
+                languages: [
+                  ...draft.languages,
+                  { id: newId(), language: "", dialects: [], spokenLevel: "conversational", writtenLevel: "conversational" },
+                ],
               })
             }
           >
@@ -810,7 +819,7 @@ export default function ResumeDesignerView({
                 title={t.description}
                 className={`flex h-[34px] items-center gap-[6px] rounded-full border px-[14px] text-xs transition-colors ${
                   template === t.value
-                    ? "border-brand-gold-dark bg-[#FFF3D6] text-[#141B2E]"
+                    ? "border-brand-gold-dark bg-brand-gold-soft text-[#141B2E]"
                     : "border-black/[0.1] text-[#4B5468] hover:bg-black/[0.03]"
                 }`}
               >
@@ -874,7 +883,7 @@ export default function ResumeDesignerView({
             type="button"
             onClick={handleSave}
             disabled={saving || !isDirty}
-            className="flex h-[38px] items-center rounded-full bg-[#FFE9A6] px-[18px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-[38px] items-center rounded-full bg-brand-gold px-[18px] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? "Saving…" : isDirty ? "Save changes" : "Saved"}
           </button>
@@ -933,7 +942,7 @@ export default function ResumeDesignerView({
                   proceed();
                 }
               }}
-              className="flex h-[38px] items-center justify-center rounded-full bg-[#FFE9A6] text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-[38px] items-center justify-center rounded-full bg-brand-gold text-sm text-[#141B2E] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>

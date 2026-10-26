@@ -14,6 +14,6 @@ const GRADIENT_FRAME_SHADOW =
 
 export function gradientFrameClass(accent: "teal" | "gold" = "gold") {
   return accent === "gold"
-    ? `rounded-[20px] bg-gradient-to-br from-[#FFE9A6] via-white to-[#FFE9A6] p-px ${GRADIENT_FRAME_SHADOW}`
+    ? `rounded-[20px] bg-gradient-to-br from-brand-gold via-white to-brand-gold p-px ${GRADIENT_FRAME_SHADOW}`
     : `rounded-[20px] bg-gradient-to-br from-brand-teal via-white to-brand-teal p-px ${GRADIENT_FRAME_SHADOW}`;
 }

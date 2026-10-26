@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { companyHasSampleData } from "@/lib/sample-data";
 import { getSession } from "@/lib/session";
 
@@ -19,7 +19,7 @@ export async function GET() {
       .from(users)
       .where(eq(users.id, session.userId))
       .limit(1),
-    getEmployerAccess(session.userId),
+    getFullEmployerAccess(session.userId),
   ]);
   if (!user || user.dismissedAt || !access) return NextResponse.json({ show: false });
 

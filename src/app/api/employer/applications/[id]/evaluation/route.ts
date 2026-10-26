@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { recordStatusChange } from "@/lib/application-events";
 import { db } from "@/lib/db";
 import { interviewEvaluations, jobApplications, jobPostings } from "@/lib/db/schema";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { canViewApplication, getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getSession } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
 import { getPanelEvaluations } from "@/lib/job-applications";
@@ -31,12 +31,13 @@ async function loadContext(id: string) {
   if (!session || session.role !== "employer") {
     return { error: NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 }) } as const;
   }
-  const access = await getEmployerAccess(session.userId);
+  const access = await getScopedEmployerAccess(session.userId);
   if (!access || !isUuid(id)) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) } as const;
 
   const [application] = await db
     .select({
       id: jobApplications.id,
+      jobPostingId: jobApplications.jobPostingId,
       status: jobApplications.status,
       interviewDetails: jobApplications.interviewDetails,
     })
@@ -44,7 +45,10 @@ async function loadContext(id: string) {
     .innerJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
     .where(and(eq(jobApplications.id, id), eq(jobPostings.employerProfileId, access.profile.id)))
     .limit(1);
-  if (!application) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) } as const;
+  // Hiring managers see their postings' candidates; Panel members only the ones they interview.
+  if (!application || !canViewApplication(access.scope, application)) {
+    return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) } as const;
+  }
 
   return { userId: session.userId, access, application } as const;
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCompanyLimitInfo } from "@/lib/company-limit";
 import { getEmployerMemberships } from "@/lib/employer-profile";
 import { getSession } from "@/lib/session";
 
@@ -12,7 +13,10 @@ export async function GET() {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
 
-  const memberships = await getEmployerMemberships(session.userId);
+  const [memberships, limitInfo] = await Promise.all([
+    getEmployerMemberships(session.userId),
+    getCompanyLimitInfo(session.userId),
+  ]);
   const current = session.employerProfileId
     ? (memberships.find((m) => m.profile.id === session.employerProfileId) ?? memberships[0])
     : memberships[0];
@@ -29,5 +33,7 @@ export async function GET() {
       joinedAt: m.joinedAt,
     })),
     currentId: current?.profile.id ?? null,
+    // For the switcher's "+ Add a company" item.
+    companyLimit: { used: limitInfo.used, limit: limitInfo.limit, canAdd: limitInfo.canAdd },
   });
 }

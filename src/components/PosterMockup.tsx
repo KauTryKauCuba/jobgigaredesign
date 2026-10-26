@@ -29,7 +29,7 @@ const POSTING = {
  */
 export default function PosterMockup() {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[#F2FAF5] p-[20px]">
+    <div className="flex h-full w-full items-center justify-center bg-brand-teal-page p-[20px]">
       <div className="grid w-full max-w-[840px] grid-cols-1 gap-[12px] md:grid-cols-[1fr_2fr]">
         {/* Hidden below md — same rationale as the other mockups' narrow
             side card: doesn't fit a phone-width card without overflowing. */}
@@ -39,7 +39,7 @@ export default function PosterMockup() {
             <p className="mt-[2px] text-xs leading-[13px] text-[#4B5468]">Pick a posting and a look.</p>
           </div>
 
-          <div className="rounded-[8px] border border-brand-teal-dark bg-[#E6F9FA] px-[8px] py-[6px]">
+          <div className="rounded-[8px] border border-brand-teal-dark bg-brand-teal-soft px-[8px] py-[6px]">
             <p className="truncate text-xs text-[#141B2E]">{POSTING.title}</p>
             <p className="truncate text-[10px] text-[#4B5468]">{POSTING.location}</p>
           </div>
@@ -76,7 +76,7 @@ export default function PosterMockup() {
             {/* Playful — sticky note pinned to a soft blue board */}
             <div className="poster-mock-card-a relative flex aspect-[9/16] w-[38%] max-w-[150px] flex-col overflow-hidden rounded-[10px] bg-[#BEE3F8] p-[8px] shadow-[0_4px_12px_rgba(20,27,46,0.12)]">
               <span aria-hidden className="poster-mock-shine-a pointer-events-none absolute inset-y-0 left-0 z-10 w-[40%] bg-gradient-to-r from-transparent via-white/60 to-transparent" />
-              <p className="text-center text-[10px] font-semibold text-[#008990]">We&rsquo;re hiring!</p>
+              <p className="text-center text-[10px] font-semibold text-brand-teal-dark">We&rsquo;re hiring!</p>
               <div className="relative mt-[8px] flex flex-1 -rotate-2 flex-col gap-[4px] rounded-[4px] bg-[#FFF3B0] p-[8px] pt-[12px] shadow-[0_2px_4px_rgba(20,27,46,0.12)]">
                 <span
                   aria-hidden
@@ -85,7 +85,7 @@ export default function PosterMockup() {
                 <p className="text-[11px] font-semibold leading-[13px] text-[#141B2E]">{POSTING.title}</p>
                 <p className="text-[9px] leading-[11px] text-[#4B5468]">{POSTING.location}</p>
                 <p className="text-[9px] leading-[11px] text-[#4B5468]">{POSTING.type}</p>
-                <p className="mt-auto text-[10px] font-semibold text-[#008990]">{POSTING.salary}</p>
+                <p className="mt-auto text-[10px] font-semibold text-brand-teal-dark">{POSTING.salary}</p>
               </div>
               <div className="mt-[8px] rounded-full bg-white py-[3px] text-center text-[9px] text-[#141B2E]">
                 Apply on JobGiga
@@ -110,11 +110,11 @@ export default function PosterMockup() {
                 </span>
               </div>
               <div className="flex flex-1 flex-col gap-[3px] p-[8px]">
-                <p className="text-[8px] uppercase tracking-[0.08em] text-[#FFE9A6]">Now hiring</p>
+                <p className="text-[8px] uppercase tracking-[0.08em] text-brand-gold">Now hiring</p>
                 <p className="text-[11px] font-semibold leading-[13px] text-white">{POSTING.title}</p>
                 <p className="text-[9px] leading-[11px] text-white/70">{POSTING.location}</p>
                 <p className="text-[9px] leading-[11px] text-white/70">{POSTING.salary}</p>
-                <div className="mt-auto rounded-full bg-[#FFE9A6] py-[3px] text-center text-[9px] text-[#141B2E]">
+                <div className="mt-auto rounded-full bg-brand-gold py-[3px] text-center text-[9px] text-[#141B2E]">
                   Apply now
                 </div>
               </div>

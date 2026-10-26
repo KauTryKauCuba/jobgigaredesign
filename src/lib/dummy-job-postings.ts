@@ -2,6 +2,8 @@
 // seed-my-jobs.ts script. postingName marks these as dummy (that field is
 // internal-only, never shown to jobseekers) so "Remove dummy data" can find
 // and delete exactly these rows without touching real postings.
+import type { CustomQuestion } from "./screening-questions";
+
 export const DUMMY_POSTING_MARKER = "__dummy__";
 
 type WorkAuthorization = "citizen" | "permanent_resident" | "work_pass_holder" | "needs_sponsorship";
@@ -9,9 +11,37 @@ function wa(...values: WorkAuthorization[]): WorkAuthorization[] {
   return values;
 }
 
-type Language = { language: string; level: "basic" | "conversational" | "fluent" | "native" };
-function lang(language: string, level: Language["level"]): Language {
-  return { language, level };
+type Language = { language: string; dialect: string | null; level: "basic" | "conversational" | "fluent" | "native" };
+// No dialect = any dialect of the language (see src/lib/languages.ts).
+function lang(language: string, level: Language["level"], dialect: string | null = null): Language {
+  return { language, dialect, level };
+}
+
+// The office address, saved the way the Post a job form saves it: the full
+// structured address, plus `location` as the short "City, State" string
+// shown on cards. State is one of MALAYSIA_STATES (src/lib/malaysia.ts).
+function office(addressLine1: string, city: string, state: string, postcode: string, addressLine2: string | null = null) {
+  return { location: `${city}, ${state}`, addressLine1, addressLine2, city, state, postcode };
+}
+
+// Benefits (Malaysia's statutory EPF/SOCSO/EIS first, like the form's
+// list), how soon the hire should start, and working hours — all values
+// from src/lib/job-posting-options.ts.
+type StartAvailability = "immediate" | "one_week" | "two_weeks" | "one_month" | "two_months" | "flexible";
+function terms(benefits: string[], startAvailability: StartAvailability, workingHours: string) {
+  return { benefits, startAvailability, workingHours };
+}
+const STATUTORY = ["EPF", "SOCSO", "EIS"];
+
+// The picker's ready-made "When can you start?" question (SUGGESTED_QUESTION_GROUPS).
+function START_QUESTION(id: string): CustomQuestion {
+  return {
+    id,
+    question: "When can you start?",
+    type: "choice",
+    requiredAnswer: true,
+    options: ["Immediately", "Within 1 month", "Within 2 months", "More than 2 months"],
+  };
 }
 
 export const DUMMY_JOB_POSTINGS = [
@@ -24,7 +54,9 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Information Technology & Software",
     employmentType: "full_time" as const,
     workArrangement: "hybrid" as const,
-    location: "Kuala Lumpur",
+    officeDaysPerWeek: 3,
+    ...office("Level 15, Menara Ilham", "Kuala Lumpur", "Kuala Lumpur", "50450", "8 Jalan Binjai"),
+    ...terms([...STATUTORY, "Medical insurance", "Remote/hybrid work", "Training & development", "Performance bonus"], "one_month", "Mon–Fri, 9am–6pm"),
     salaryMin: 5000,
     salaryMax: 8000,
     openings: 2,
@@ -36,14 +68,19 @@ export const DUMMY_JOB_POSTINGS = [
     languages: [lang("English", "fluent"), lang("Malay", "conversational")],
     workAuthorizations: wa("citizen", "permanent_resident"),
     status: "active" as const,
-    // Only this dummy posting has screening on, so the "Get dummy data"
-    // button also demos screeningEligible-based matching (see
+    // Screening on (as on the nurse and event crew postings), so "Get dummy
+    // data" also demos screeningEligible-based matching (see
     // src/app/api/employer/applicants/matches/route.ts) instead of every
     // dummy application falling through to the profile-derived hard filter.
+    // A degree and Malay are nice to have here, not must-haves.
     screeningEnabled: true,
+    screeningPreferred: ["qualificationTier", "languages"],
     customScreeningQuestions: [
       { id: "hybrid-ok", question: "Comfortable with a hybrid schedule (3 days in office)?", requiredAnswer: true },
-    ],
+      { id: "fe-react-years", question: "Years of hands-on React experience?", type: "number", requiredAnswer: true, minNumber: 3, preferred: true },
+      { ...START_QUESTION("fe-start"), acceptedOptions: ["Immediately", "Within 1 month"], preferred: true },
+      { id: "fe-portfolio", question: "Link to your portfolio or GitHub?", type: "text", requiredAnswer: true },
+    ] satisfies CustomQuestion[],
   },
   {
     title: "Backend Engineer",
@@ -54,7 +91,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Information Technology & Software",
     employmentType: "full_time" as const,
     workArrangement: "onsite" as const,
-    location: "Petaling Jaya",
+    ...office("Unit 8-1, Menara Uptown 1", "Petaling Jaya", "Selangor", "47400", "Jalan SS 21/58, Damansara Uptown"),
+    ...terms([...STATUTORY, "Medical insurance", "Dental coverage", "Performance bonus", "Parking"], "two_months", "Mon–Fri, 9am–6pm"),
     salaryMin: 6000,
     salaryMax: 9500,
     openings: 1,
@@ -76,7 +114,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Retail & Consumer Goods",
     employmentType: "full_time" as const,
     workArrangement: "onsite" as const,
-    location: "Subang Jaya",
+    ...office("Lot G-23, Sunway Pyramid", "Subang Jaya", "Selangor", "47500", "3 Jalan PJS 11/15, Bandar Sunway"),
+    ...terms([...STATUTORY, "Staff discount", "Meal allowance", "Festive bonus"], "two_weeks", "Rotating shifts, incl. weekends"),
     salaryMin: 2800,
     salaryMax: 3800,
     openings: 3,
@@ -99,7 +138,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Healthcare & Medical",
     employmentType: "full_time" as const,
     workArrangement: "onsite" as const,
-    location: "Ipoh",
+    ...office("Jalan Raja Dihilir", "Ipoh", "Perak", "30350"),
+    ...terms([...STATUTORY, "Medical insurance", "Life insurance", "Extra annual leave", "Housing allowance"], "one_month", "Rotating shifts, incl. weekends"),
     salaryMin: 3500,
     salaryMax: 5000,
     openings: 4,
@@ -111,6 +151,22 @@ export const DUMMY_JOB_POSTINGS = [
     languages: [lang("English", "conversational"), lang("Malay", "fluent")],
     workAuthorizations: wa("citizen", "permanent_resident"),
     status: "active" as const,
+    screeningEnabled: true,
+    customScreeningQuestions: [
+      { id: "rn-apc", question: "Do you hold a valid Annual Practising Certificate (APC)?", requiredAnswer: true },
+      { id: "rn-shifts", question: "Able to work rotating shifts, including nights?", requiredAnswer: true },
+      {
+        id: "rn-ward",
+        question: "Which ward have you worked in most?",
+        type: "choice",
+        requiredAnswer: true,
+        options: ["Medical", "Surgical", "ICU / Critical care", "Emergency", "Paediatrics", "Other"],
+        acceptedOptions: ["Medical", "Surgical", "ICU / Critical care", "Emergency"],
+        preferred: true,
+      },
+      { id: "rn-ipoh", question: "Willing to work in Ipoh, Perak?", requiredAnswer: true, preferred: true },
+      { id: "rn-why", question: "Why this role?", type: "text", requiredAnswer: true },
+    ] satisfies CustomQuestion[],
   },
   {
     title: "Marketing Intern",
@@ -121,7 +177,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Marketing & Advertising",
     employmentType: "internship" as const,
     workArrangement: "hybrid" as const,
-    location: "George Town, Penang",
+    ...office("Level 5, Wisma Penang Garden", "George Town", "Penang", "10050", "42 Jalan Sultan Ahmad Shah"),
+    ...terms(["Transport allowance", "Training & development", "Flexible working hours"], "flexible", "Mon–Fri, 9am–6pm"),
     salaryMin: 1200,
     salaryMax: 1800,
     openings: 1,
@@ -143,7 +200,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Logistics & Supply Chain",
     employmentType: "full_time" as const,
     workArrangement: "onsite" as const,
-    location: "Shah Alam",
+    ...office("Lot 12, Jalan Utas 15/7", "Shah Alam", "Selangor", "40200", "Seksyen 15"),
+    ...terms([...STATUTORY, "Medical insurance", "Personal accident insurance", "Meal allowance", "Parking"], "two_weeks", "Mon–Sat, alternate Saturdays"),
     salaryMin: 3200,
     salaryMax: 4200,
     openings: 2,
@@ -166,7 +224,9 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Marketing & Advertising",
     employmentType: "contract" as const,
     workArrangement: "hybrid" as const,
-    location: "Kuala Lumpur",
+    officeDaysPerWeek: 2,
+    ...office("Level 9, The Gardens North Tower", "Kuala Lumpur", "Kuala Lumpur", "59200", "Mid Valley City, Lingkaran Syed Putra"),
+    ...terms([...STATUTORY, "Remote/hybrid work", "Phone/internet allowance"], "one_week", "Mon–Fri, 9am–6pm"),
     salaryMin: 2500,
     salaryMax: 3200,
     openings: 1,
@@ -188,7 +248,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Sales & Business Development",
     employmentType: "full_time" as const,
     workArrangement: "onsite" as const,
-    location: "Johor Bahru",
+    ...office("Level 3, Menara MSC Cyberport", "Johor Bahru", "Johor", "80000", "5 Jalan Bukit Meldrum"),
+    ...terms([...STATUTORY, "Performance bonus", "Transport allowance"], "immediate", "Mon–Fri, 8:30am–5:30pm"),
     salaryMin: 2200,
     salaryMax: 3000,
     openings: 3,
@@ -197,11 +258,68 @@ export const DUMMY_JOB_POSTINGS = [
     niceToHaveSkills: ["Bahasa Malaysia negotiation", "Upselling"],
     minYearsExperience: 0,
     minQualificationTier: "SPM",
-    languages: [lang("English", "conversational"), lang("Malay", "fluent")],
+    // Calling customers in Kelantan — the dialect is the requirement.
+    languages: [lang("English", "conversational"), lang("Malay", "fluent", "Kelantanese")],
     workAuthorizations: wa("citizen"),
     status: "rejected" as const,
     rejectionReason:
       "Salary range falls below the minimum wage guideline for full-time roles in this location — please revise before resubmitting.",
+  },
+  {
+    title: "Freelance UI/UX Designer",
+    description:
+      "We're looking for a freelance UI/UX Designer to help us redesign a handful of key product flows over the next quarter. This is a project-based engagement — you'll work remotely, set your own hours, and be paid per project milestone rather than a monthly salary.",
+    responsibilities:
+      "Design wireframes and high-fidelity mockups for assigned flows · Run quick async feedback loops with the product team · Deliver a finished Figma file with components and specs per milestone · Join a weekly check-in call to review progress",
+    industry: "Information Technology & Software",
+    employmentType: "freelance" as const,
+    workArrangement: "remote" as const,
+    // Remote with no office address — saved as the form does (REMOTE_LOCATION).
+    location: "Remote",
+    ...terms(["Flexible working hours", "Remote/hybrid work"], "flexible", "Flexible hours"),
+    salaryMin: 1500,
+    salaryMax: 4000,
+    salaryPeriod: "project" as const,
+    openings: 1,
+    skills: ["Figma", "UI design", "UX research"],
+    softSkills: ["Self-direction", "Communication", "Time management"],
+    niceToHaveSkills: ["Design systems", "Prototyping", "Usability testing"],
+    minYearsExperience: 3,
+    minQualificationTier: "Diploma",
+    languages: [lang("English", "fluent")],
+    workAuthorizations: wa("citizen", "permanent_resident", "work_pass_holder", "needs_sponsorship"),
+    status: "active" as const,
+  },
+  {
+    title: "Temporary Event Crew",
+    description:
+      "We need Temporary Event Crew to support a 2-week product launch roadshow across Klang Valley malls. This is a short, fixed-term engagement covering setup, guest assistance, and teardown each event day.",
+    responsibilities:
+      "Set up and tear down booth fixtures and signage before/after each event day · Greet and assist visitors at the booth · Hand out promotional materials and collect leads · Report daily attendance and stock usage to the event lead",
+    industry: "Hospitality & Tourism",
+    employmentType: "temporary" as const,
+    workArrangement: "onsite" as const,
+    ...office("Lingkaran Syed Putra, Mid Valley City", "Kuala Lumpur", "Kuala Lumpur", "59200"),
+    ...terms(["Meal allowance", "Transport allowance"], "immediate", "Weekends only"),
+    salaryMin: 100,
+    salaryMax: 150,
+    salaryPeriod: "day" as const,
+    openings: 6,
+    skills: ["Customer service", "Event setup"],
+    softSkills: ["Reliability", "Energy", "Teamwork"],
+    niceToHaveSkills: ["Promotional experience", "Own transport"],
+    minYearsExperience: 0,
+    minQualificationTier: "SPM",
+    languages: [lang("Malay", "fluent"), lang("English", "conversational")],
+    workAuthorizations: wa("citizen"),
+    status: "active" as const,
+    screeningEnabled: true,
+    customScreeningQuestions: [
+      { id: "ec-weekends", question: "Willing to work weekends?", requiredAnswer: true },
+      { id: "ec-stand", question: "Able to stand for long periods?", requiredAnswer: true },
+      { id: "ec-transport", question: "Have your own transport?", requiredAnswer: true, preferred: true },
+      { ...START_QUESTION("ec-start"), acceptedOptions: ["Immediately"], preferred: true },
+    ] satisfies CustomQuestion[],
   },
   {
     title: "Delivery Rider",
@@ -212,7 +330,8 @@ export const DUMMY_JOB_POSTINGS = [
     industry: "Logistics & Supply Chain",
     employmentType: "part_time" as const,
     workArrangement: "onsite" as const,
-    location: "Klang Valley",
+    ...office("Jalan Puchong Utama 1, Bandar Puchong Utama", "Puchong", "Selangor", "47100"),
+    ...terms([...STATUTORY, "Phone/internet allowance", "Personal accident insurance"], "one_week", "Flexible hours"),
     salaryMin: 1800,
     salaryMax: 3000,
     openings: 5,

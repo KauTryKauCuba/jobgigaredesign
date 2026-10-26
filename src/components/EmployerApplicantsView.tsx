@@ -1,5 +1,6 @@
 "use client";
 
+import SalaryFitBadge from "./SalaryFitBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -23,6 +24,7 @@ import EmployerResponsivenessCard from "./EmployerResponsivenessCard";
 import type { EmployerResponsiveness } from "@/lib/responsiveness";
 import type { CriteriaFlags } from "./MatchSettingsModal";
 import type { AuthUser } from "./AuthModal";
+import { hasFullAccess } from "@/lib/team-roles";
 import type {
   EvaluationCriterion,
   InterviewEvaluation,
@@ -51,6 +53,8 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
   onsite: "Onsite",
@@ -85,6 +89,10 @@ type ApplicationRow = {
   applicantSkills: string[];
   applicantExpectedSalaryMin: number;
   applicantExpectedSalaryMax: number;
+  // The posting's own range, to flag whether the expectation fits it.
+  postingSalaryMin?: number | null;
+  postingSalaryMax?: number | null;
+  postingSalaryPeriod?: string;
   applicantEmploymentType: string;
   applicantWorkArrangement: string;
   applicantNoticePeriod: string;
@@ -97,7 +105,7 @@ type ApplicationRow = {
 function ApplicantAvatar({ url }: { url: string | null }) {
   if (!url) {
     return (
-      <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-[#E6F9FA] text-brand-teal-dark">
+      <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-brand-teal-soft text-brand-teal-dark">
         <UserIcon className="h-[16px] w-[16px]" />
       </div>
     );
@@ -133,10 +141,16 @@ export default function EmployerApplicantsView({
 }) {
   const searchParams = useSearchParams();
   const initialJobId = searchParams.get("jobId") ?? undefined;
+  // Owners/Admins; a Hiring manager sees only their own jobs' applicants.
+  const fullAccess = hasFullAccess(authUser.teamRole ?? "owner");
   const [rows, setRows] = useState(applications);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [viewingId, setViewingId] = useState<string | null>(null);
+  // A notification can open straight onto one applicant (?applicantId=…).
+  const [viewingId, setViewingId] = useState<string | null>(() => {
+    const linked = searchParams.get("applicantId");
+    return linked && applications.some((r) => r.application.id === linked) ? linked : null;
+  });
   const [collapsedPostings, setCollapsedPostings] = useState<Set<string>>(() => new Set());
   const [howStagesWorkOpen, setHowStagesWorkOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -352,14 +366,20 @@ export default function EmployerApplicantsView({
       active="applicants"
       heading="Applicants"
       headerAction={
-        <Link
-          href="/employer/jobs/postajob"
-          className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[22px] text-sm text-white transition-opacity hover:opacity-90"
-        >
-          Post a job
-        </Link>
+        fullAccess ? (
+          <Link
+            href="/employer/jobs/postajob"
+            className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[22px] text-sm text-white transition-opacity hover:opacity-90"
+          >
+            Post a job
+          </Link>
+        ) : undefined
       }
-      subheading="See who's applied, and where they stand, across every job posting."
+      subheading={
+        fullAccess
+          ? "See who's applied, and where they stand, across every job posting."
+          : "See who's applied to the jobs you're the hiring manager for, and where they stand."
+      }
     >
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[20px] lg:flex-row lg:items-start">
       <div className="flex min-w-0 flex-col gap-[20px] lg:flex-1">
@@ -632,6 +652,13 @@ export default function EmployerApplicantsView({
                                     RM{applicant.applicantExpectedSalaryMin.toLocaleString()}–
                                     {applicant.applicantExpectedSalaryMax.toLocaleString()}
                                   </span>
+                                  <SalaryFitBadge
+                                    expectedMin={applicant.applicantExpectedSalaryMin}
+                                    expectedMax={applicant.applicantExpectedSalaryMax}
+                                    postingMin={applicant.postingSalaryMin}
+                                    postingMax={applicant.postingSalaryMax}
+                                    postingPeriod={applicant.postingSalaryPeriod}
+                                  />
                                   <span className="text-[#C7CDD7]">·</span>
                                   <span>
                                     {NOTICE_PERIOD_LABEL[applicant.applicantNoticePeriod] ??
@@ -643,7 +670,7 @@ export default function EmployerApplicantsView({
                                     {applicant.applicantSkills.slice(0, 6).map((skill) => (
                                       <span
                                         key={skill}
-                                        className="rounded-full bg-[#E6F9FA] px-[9px] py-[3px] text-xs text-brand-teal-dark"
+                                        className="rounded-full bg-brand-teal-soft px-[9px] py-[3px] text-xs text-brand-teal-dark"
                                       >
                                         {skill}
                                       </span>
@@ -706,17 +733,24 @@ export default function EmployerApplicantsView({
       </div>
 
       <div className="flex flex-col gap-[16px] lg:sticky lg:top-[85px] lg:max-h-[calc(100svh-105px)] lg:w-[300px] lg:shrink-0 lg:overflow-y-auto">
-        <EmployerResponsivenessCard
-          responsiveness={responsiveness}
-          waitingLong={waitingLong}
-          onShowWaiting={() => {
-            setStatusFilter("applied");
-            document.getElementById("applicants-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-        />
+        {/* Company-wide reply-time stats — not shown to a Hiring manager, who only sees their own jobs. */}
+        {fullAccess && (
+          <EmployerResponsivenessCard
+            responsiveness={responsiveness}
+            waitingLong={waitingLong}
+            onShowWaiting={() => {
+              setStatusFilter("applied");
+              document.getElementById("applicants-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        )}
         <div className={gradientFrameClass("teal")}>
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
-            <TopMatchesCard initialEnabled={initialSmartMatchEnabled} initialCriteria={initialCriteria} />
+            <TopMatchesCard
+              initialEnabled={initialSmartMatchEnabled}
+              initialCriteria={initialCriteria}
+              canEditSettings={fullAccess}
+            />
           </div>
         </div>
       </div>

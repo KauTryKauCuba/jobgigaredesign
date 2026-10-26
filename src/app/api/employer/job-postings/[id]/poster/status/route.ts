@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { logAiUsage } from "@/lib/ai-usage";
 import { db } from "@/lib/db";
 import { jobPostingPosters, jobPostings } from "@/lib/db/schema";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { POSTER_GENERATION_STALE_MS, getPosterImageTaskResult } from "@/lib/icreat";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { getSession } from "@/lib/session";
@@ -19,7 +19,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!session || session.role !== "employer") {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
-  const access = await getEmployerAccess(session.userId);
+  const access = await getFullEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const profileId = access.profile.id;
 

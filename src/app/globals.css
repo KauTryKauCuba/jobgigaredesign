@@ -1,14 +1,38 @@
 @import "tailwindcss";
 
+/* Brand colours sit in a plain (not `inline`) @theme block so the utilities
+   reference the variables instead of baking in the hex — a superadmin site
+   theme (src/components/SiteThemeLayer.tsx) overrides them per side. These
+   values are the default design. */
+@theme {
+  /* Employer — pulled from jg-logo.svg so the page always matches the mark. */
+  --color-brand-teal: #07bcca;
+  --color-brand-teal-dark: #008990;
+  --color-brand-teal-soft: #e6f9fa;
+  --color-brand-teal-page: #f2faf5;
+  /* The phone-verify bar — a touch lighter than teal-dark so it doesn't
+     blend into the sample-data bar above it. */
+  --color-brand-teal-bar: #009ba3;
+  /* Jobseeker. */
+  --color-brand-gold: #ffe9a6;
+  --color-brand-gold-dark: #a67c00;
+  --color-brand-gold-soft: #fff3d6;
+  --color-brand-gold-page: #fdfaf0;
+  --color-brand-ink: #141b2e;
+}
+
+:root {
+  --brand-gradient-employer: linear-gradient(90deg, #00757b 0%, #008990 35%, #07a4af 60%, #c99a1e 100%);
+  --brand-gradient-jobseeker: linear-gradient(90deg, #8a6600 0%, #a67c00 35%, #c99a1e 60%, #0a8f98 100%);
+  /* AnimatedRibbon's in-between shades. */
+  --ribbon-teal-light: #5cd8e0;
+  --ribbon-teal-pale: #cff4f6;
+  --ribbon-gold-vivid: #c99a2e;
+}
+
 @theme inline {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Helvetica, Arial, sans-serif;
-
-  /* Pulled from jg-logo.svg so the page always matches the mark exactly. */
-  --color-brand-teal: #07bcca;
-  --color-brand-teal-dark: #008990;
-  --color-brand-gold-dark: #a67c00;
-  --color-brand-ink: #141b2e;
 
   /* The entire app's type scale — every text-* utility used anywhere in the
      codebase resolves to one of these five sizes. No arbitrary text-[Npx]
@@ -174,6 +198,197 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .badge-shine {
+    animation: none;
+  }
+}
+
+/* Sidebar "Refer a company" card (ReferralTeaser) — one 4.2s story, all on
+   the same clock, in the same soft style as the Poster generator card: a
+   referral code travels You → Them (3–35%), Them lights up (34–50%), then
+   +10% arcs back Them → You (47–81%) and You glows gold (78–94%). Tile
+   centres sit 55px either side of the middle. Smooth easing, no overshoot. */
+.referral-line {
+  background-image: repeating-linear-gradient(90deg, rgba(7, 188, 202, 0.5) 0 5px, transparent 5px 9px);
+  background-size: 18px 2px;
+  animation: referral-line-flow 0.9s linear infinite;
+}
+@keyframes referral-line-flow {
+  to {
+    background-position: 18px 0;
+  }
+}
+
+/* Movement and fading run as separate animations, so the glide is one
+   continuous ease rather than stopping and starting at each keyframe. */
+.referral-code {
+  opacity: 0;
+  animation:
+    referral-code-move 4.2s cubic-bezier(0.45, 0, 0.55, 1) infinite,
+    referral-code-fade 4.2s linear infinite;
+}
+@keyframes referral-code-move {
+  0%,
+  3% {
+    translate: -50px 0;
+  }
+  35%,
+  100% {
+    translate: 50px 0;
+  }
+}
+@keyframes referral-code-fade {
+  0%,
+  3% {
+    opacity: 0;
+  }
+  9%,
+  29% {
+    opacity: 1;
+  }
+  36%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.referral-tile-them {
+  animation: referral-tile-them 4.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes referral-tile-them {
+  0%,
+  33% {
+    transform: scale(1);
+    box-shadow: 0 6px 18px -6px rgba(20, 27, 46, 0.08), 0 0 0 0 rgba(7, 188, 202, 0);
+  }
+  40% {
+    transform: scale(1.04);
+    box-shadow: 0 6px 18px -6px rgba(20, 27, 46, 0.08), 0 0 0 5px rgba(7, 188, 202, 0.18);
+  }
+  52%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 6px 18px -6px rgba(20, 27, 46, 0.08), 0 0 0 10px rgba(7, 188, 202, 0);
+  }
+}
+
+/* A smooth throw from Them to You: sideways is one continuous ease, the
+   height rises (easing out) then falls (easing in) — like a real arc, with
+   no pause at the top — and fading runs on its own clock. */
+.referral-reward {
+  opacity: 0;
+  animation:
+    referral-reward-x 4.2s cubic-bezier(0.45, 0, 0.55, 1) infinite,
+    referral-reward-y 4.2s linear infinite,
+    referral-reward-fade 4.2s linear infinite;
+}
+@keyframes referral-reward-x {
+  0%,
+  47% {
+    translate: 55px 0;
+  }
+  81%,
+  100% {
+    translate: -55px 0;
+  }
+}
+@keyframes referral-reward-y {
+  0%,
+  44% {
+    transform: translateY(-30px);
+  }
+  47% {
+    transform: translateY(-38px);
+    animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1);
+  }
+  64% {
+    transform: translateY(-56px);
+    animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0);
+  }
+  81% {
+    transform: translateY(-38px);
+  }
+  86%,
+  100% {
+    transform: translateY(-30px);
+  }
+}
+@keyframes referral-reward-fade {
+  0%,
+  44% {
+    opacity: 0;
+  }
+  49%,
+  79% {
+    opacity: 1;
+  }
+  86%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.referral-tile-you {
+  animation: referral-tile-you 4.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes referral-tile-you {
+  0%,
+  78% {
+    transform: scale(1);
+    box-shadow: 0 6px 18px -6px rgba(20, 27, 46, 0.08), 0 0 0 0 rgba(255, 210, 90, 0);
+  }
+  85% {
+    transform: scale(1.04);
+    box-shadow: 0 6px 18px -6px rgba(20, 27, 46, 0.08), 0 0 0 5px rgba(255, 210, 90, 0.3);
+  }
+  96%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 6px 18px -6px rgba(20, 27, 46, 0.08), 0 0 0 10px rgba(255, 210, 90, 0);
+  }
+}
+
+/* Reduced motion: no loop — the code resting on the line, +10% above. */
+@media (prefers-reduced-motion: reduce) {
+  .referral-line,
+  .referral-code,
+  .referral-tile-them,
+  .referral-tile-you,
+  .referral-reward {
+    animation: none;
+  }
+  .referral-code {
+    opacity: 1;
+    translate: none;
+  }
+  .referral-reward {
+    opacity: 1;
+    translate: none;
+    transform: translateY(-48px);
+  }
+}
+
+/* Verified-business checkmark on company logos (VerifiedBadge) — shares the
+   medals' badge-shine sweep. */
+@keyframes verified-badge-tooltip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.verified-badge {
+  cursor: help;
+  filter: drop-shadow(0 1px 2px rgba(0, 137, 144, 0.35));
+}
+
+.verified-badge-tooltip {
+  animation: verified-badge-tooltip-in 0.15s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .verified-badge-tooltip {
     animation: none;
   }
 }
@@ -451,13 +666,13 @@ body {
    shine sweeps across the poster as it becomes active ("just generated").
    No JS, same reasoning as the other mockup animations. */
 @keyframes poster-mock-style-a {
-  0%, 45% { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  0%, 45% { border-color: var(--color-brand-teal-dark); background-color: var(--color-brand-teal-soft); }
   50%, 95% { border-color: rgba(0, 0, 0, 0.06); background-color: #ffffff; }
-  100% { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  100% { border-color: var(--color-brand-teal-dark); background-color: var(--color-brand-teal-soft); }
 }
 @keyframes poster-mock-style-b {
   0%, 45% { border-color: rgba(0, 0, 0, 0.06); background-color: #ffffff; }
-  50%, 95% { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  50%, 95% { border-color: var(--color-brand-teal-dark); background-color: var(--color-brand-teal-soft); }
   100% { border-color: rgba(0, 0, 0, 0.06); background-color: #ffffff; }
 }
 @keyframes poster-mock-check-a {
@@ -508,7 +723,7 @@ body {
     animation: none;
   }
   /* Freeze on the first phase: Playful selected and in front. */
-  .poster-mock-style-a { border-color: var(--color-brand-teal-dark); background-color: #e6f9fa; }
+  .poster-mock-style-a { border-color: var(--color-brand-teal-dark); background-color: var(--color-brand-teal-soft); }
   .poster-mock-check-b { opacity: 0; }
   .poster-mock-card-a { transform: translateY(-6px) scale(1.06) rotate(-2deg); }
   .poster-mock-card-b { transform: scale(0.94) rotate(2deg); opacity: 0.55; }
@@ -516,56 +731,168 @@ body {
   .poster-mock-shine-b { display: none; }
 }
 
-/* PosterGeneratorTeaser.tsx — two absolutely-stacked mini cards (a job
-   posting summary, a 9:16 poster) crossfading on one shared timeline —
-   pure CSS keyframes rather than a JS interval, so there's nothing to
-   hydrate or get out of sync between server and client render. */
+/* PosterGeneratorTeaser.tsx — one 5.5s story on a shared clock: a scan
+   light reads the job posting (4–28%), the posting slides away as the
+   poster rises (30–48%), the poster's lines draw in one by one (44–64%),
+   a shine crosses it and a "Ready" tag pops (64–88%), then it all fades
+   back to the posting (90–100%). Pure CSS, so nothing to hydrate. */
+.poster-teaser-posting {
+  animation: poster-teaser-posting 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
 @keyframes poster-teaser-posting {
   0%,
-  38% {
+  30% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateX(0) scale(1);
   }
-  48%,
+  40%,
+  90% {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.poster-teaser-scan {
+  opacity: 0;
+  animation: poster-teaser-scan 5.5s ease-in-out infinite;
+}
+@keyframes poster-teaser-scan {
+  0%,
+  4% {
+    opacity: 0;
+    transform: translateX(-120%);
+  }
+  8% {
+    opacity: 1;
+  }
+  24% {
+    opacity: 1;
+  }
+  28%,
   100% {
     opacity: 0;
-    transform: scale(0.94) translateY(-8px);
+    transform: translateX(380%);
   }
+}
+
+.poster-teaser-poster {
+  opacity: 0;
+  animation: poster-teaser-poster 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 @keyframes poster-teaser-poster {
   0%,
-  38% {
+  33% {
     opacity: 0;
-    transform: scale(0.94) translateY(8px);
+    transform: translateY(10px) scale(0.94);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
   48%,
   88% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0) scale(1);
   }
-  98%,
+  95%,
   100% {
     opacity: 0;
-    transform: scale(0.94) translateY(8px);
+    transform: translateY(-4px) scale(0.98);
   }
 }
-.poster-teaser-posting {
-  animation: poster-teaser-posting 5s ease-in-out infinite;
+
+/* Each line grows from the left in turn; reset while the poster is hidden. */
+.poster-teaser-line {
+  transform-origin: left center;
+  transform: scaleX(0);
 }
-.poster-teaser-poster {
-  animation: poster-teaser-poster 5s ease-in-out infinite;
+.poster-teaser-line-1 { animation: poster-teaser-line-1 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.poster-teaser-line-2 { animation: poster-teaser-line-2 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.poster-teaser-line-3 { animation: poster-teaser-line-3 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.poster-teaser-line-4 { animation: poster-teaser-line-4 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.poster-teaser-line-5 { animation: poster-teaser-line-5 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes poster-teaser-line-1 { 0%, 42% { transform: scaleX(0); } 49%, 100% { transform: scaleX(1); } }
+@keyframes poster-teaser-line-2 { 0%, 46% { transform: scaleX(0); } 53%, 100% { transform: scaleX(1); } }
+@keyframes poster-teaser-line-3 { 0%, 50% { transform: scaleX(0); } 57%, 100% { transform: scaleX(1); } }
+@keyframes poster-teaser-line-4 { 0%, 53% { transform: scaleX(0); } 60%, 100% { transform: scaleX(1); } }
+@keyframes poster-teaser-line-5 { 0%, 57% { transform: scaleX(0); } 64%, 100% { transform: scaleX(1); } }
+
+.poster-teaser-shine {
+  opacity: 0;
+  animation: poster-teaser-shine 5.5s ease-in-out infinite;
 }
-@media (prefers-reduced-motion: reduce) {
-  .poster-teaser-posting,
-  .poster-teaser-poster {
-    animation: none;
-    transform: none;
+@keyframes poster-teaser-shine {
+  0%,
+  64% {
+    opacity: 0;
+    transform: translateX(-140%) rotate(20deg);
   }
-  .poster-teaser-posting {
+  66% {
     opacity: 1;
   }
-  .poster-teaser-poster {
+  76%,
+  100% {
     opacity: 0;
+    transform: translateX(160%) rotate(20deg);
+  }
+}
+
+.poster-teaser-ready {
+  opacity: 0;
+  animation: poster-teaser-ready 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes poster-teaser-ready {
+  0%,
+  68% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.9);
+  }
+  74% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  75%,
+  88% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  93%,
+  100% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.96);
+  }
+}
+
+/* Reduced motion: no loop — just the finished poster. */
+@media (prefers-reduced-motion: reduce) {
+  .poster-teaser-posting,
+  .poster-teaser-scan,
+  .poster-teaser-poster,
+  .poster-teaser-line-1,
+  .poster-teaser-line-2,
+  .poster-teaser-line-3,
+  .poster-teaser-line-4,
+  .poster-teaser-line-5,
+  .poster-teaser-shine,
+  .poster-teaser-ready {
+    animation: none;
+  }
+  .poster-teaser-posting,
+  .poster-teaser-scan,
+  .poster-teaser-shine {
+    opacity: 0;
+  }
+  .poster-teaser-poster,
+  .poster-teaser-ready {
+    opacity: 1;
+    transform: none;
+  }
+  .poster-teaser-line {
+    transform: none;
   }
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEmployerProfile } from "@/lib/employer-profile";
+import { getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { computeMatchResults } from "@/lib/match-results";
 import { getSession } from "@/lib/session";
 
@@ -9,10 +9,11 @@ export async function GET() {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
 
-  const profile = await getEmployerProfile(session.userId);
-  if (!profile) {
+  const access = await getScopedEmployerAccess(session.userId);
+  if (!access) {
     return NextResponse.json({ results: [] });
   }
 
-  return NextResponse.json({ results: await computeMatchResults(profile) });
+  // A Hiring manager's ranking covers only their own postings.
+  return NextResponse.json({ results: await computeMatchResults(access.profile, access.scope) });
 }

@@ -4,6 +4,7 @@ import { getAiUsageForUser } from "./ai-usage";
 import { db } from "./db";
 import { employerProfiles, employerTeamMembers } from "./db/schema";
 import type { EmployerProfile } from "./employer-profile";
+import type { HiringScope } from "./hiring-scope";
 import { getApplicationsForEmployer, getApplicationsForJobseeker, getJobseekerProfileId } from "./job-applications";
 import { getJobPostingsForEmployer } from "./job-postings";
 import { getJobseekerProfile } from "./jobseeker-profile";
@@ -56,11 +57,18 @@ export function currentPostingSlug(pathname: string | null): string | null {
   return match[1];
 }
 
-export async function buildEmployerContext(userId: string, profile: EmployerProfile, pathname: string | null) {
+// `scope` keeps a Hiring manager's (or Panel member's) assistant to what
+// they can see themselves — their postings/interviews, not the whole company.
+export async function buildEmployerContext(
+  userId: string,
+  profile: EmployerProfile,
+  pathname: string | null,
+  scope?: HiringScope,
+) {
   const [postings, applications, matches, team, usage] = await Promise.all([
-    getJobPostingsForEmployer(profile.id),
-    getApplicationsForEmployer(profile.id),
-    computeMatchResults(profile),
+    getJobPostingsForEmployer(profile.id, scope),
+    getApplicationsForEmployer(profile.id, scope),
+    computeMatchResults(profile, scope),
     db
       .select({ status: employerTeamMembers.status })
       .from(employerTeamMembers)

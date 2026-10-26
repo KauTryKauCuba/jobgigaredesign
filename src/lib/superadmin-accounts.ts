@@ -1,6 +1,7 @@
 import "server-only";
 import { count, desc, eq, sql } from "drizzle-orm";
 import { getEmployerResponsiveness } from "./application-events";
+import { getCompanyLimitInfoFor } from "./company-limit";
 import { db } from "./db";
 import {
   coverLetters,
@@ -87,6 +88,11 @@ export async function getEmployersForSuperadmin() {
         contactEmail: employerProfiles.contactEmail,
         email: users.email,
         industry: employerProfiles.industry,
+        ssmNumber: employerProfiles.ssmNumber,
+        ssmDocumentUrl: employerProfiles.ssmDocumentUrl,
+        ssmVerificationStatus: employerProfiles.ssmVerificationStatus,
+        ssmVerifiedAt: employerProfiles.ssmVerifiedAt,
+        ssmRejectionReason: employerProfiles.ssmRejectionReason,
         location: sql<string>`(
           select ${employerAddresses.city} || ', ' || ${employerAddresses.state}
           from ${employerAddresses}
@@ -119,10 +125,15 @@ export async function getEmployersForSuperadmin() {
 
   const postingCountById = new Map(postingCounts.map((r) => [r.employerProfileId, r.value]));
   const statsById = new Map(applicationStats.map((r) => [r.employerProfileId, r]));
-  const responsiveness = await getEmployerResponsiveness(rows.map((r) => r.id));
+  const [responsiveness, limits] = await Promise.all([
+    getEmployerResponsiveness(rows.map((r) => r.id)),
+    getCompanyLimitInfoFor(rows.map((r) => r.userId)),
+  ]);
 
   return rows.map((row) => ({
     ...row,
+    // The registrant's company count vs. their limit (one account can register several).
+    ownerCompanyLimit: limits.get(row.userId) ?? null,
     jobPostingCount: postingCountById.get(row.id) ?? 0,
     applicationCount: statsById.get(row.id)?.applications ?? 0,
     waitingLong: statsById.get(row.id)?.waitingLong ?? 0,

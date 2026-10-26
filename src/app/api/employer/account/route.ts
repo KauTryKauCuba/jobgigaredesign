@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { employerProfiles, employerTeamMembers, users } from "@/lib/db/schema";
-import { getEmployerProfile } from "@/lib/employer-profile";
+import { companyAds, employerProfiles, employerTeamMembers, jobAds, users } from "@/lib/db/schema";
+import { deleteCompanyAdFile } from "@/lib/company-ads";
+import { getOwnedEmployerProfiles } from "@/lib/employer-profile";
+import { deleteJobAdFile } from "@/lib/job-ads";
 import { clearSession, getSession } from "@/lib/session";
 
 // Deletes the signed-in employer's own account. Two shapes, depending on
-// whether this user directly owns a company (employerProfiles.userId — the
+// whether this user registered any companies (employerProfiles.userId — the
 // account that originally created it, distinct from employerTeamMembers
-// role):
+// role; one account can register several, and every one is checked):
 //
 // - Direct owner with other active team members still on the company:
 //   blocked, same rule as removing the last owner from the Team page
@@ -42,15 +44,15 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Email confirmation didn't match." }, { status: 400 });
   }
 
-  const ownedProfile = await getEmployerProfile(session.userId);
+  const ownedIds = (await getOwnedEmployerProfiles(session.userId)).map((p) => p.id);
 
-  if (ownedProfile) {
+  if (ownedIds.length > 0) {
     const [row] = await db
       .select({ n: count() })
       .from(employerTeamMembers)
       .where(
         and(
-          eq(employerTeamMembers.employerProfileId, ownedProfile.id),
+          inArray(employerTeamMembers.employerProfileId, ownedIds),
           eq(employerTeamMembers.status, "active"),
           ne(employerTeamMembers.userId, session.userId),
         ),
@@ -63,12 +65,27 @@ export async function DELETE(request: Request) {
     }
   }
 
+  // Ad rows cascade with their companies; their media files in private
+  // storage don't, so note them now and remove them once the delete commits.
+  const [companyAdFiles, jobAdFiles] =
+    ownedIds.length > 0
+      ? await Promise.all([
+          db.select({ fileName: companyAds.fileName }).from(companyAds).where(inArray(companyAds.employerProfileId, ownedIds)),
+          db.select({ fileName: jobAds.fileName }).from(jobAds).where(inArray(jobAds.employerProfileId, ownedIds)),
+        ])
+      : [[], []];
+
   await db.transaction(async (tx) => {
-    if (ownedProfile) {
-      await tx.delete(employerProfiles).where(eq(employerProfiles.id, ownedProfile.id));
+    if (ownedIds.length > 0) {
+      await tx.delete(employerProfiles).where(inArray(employerProfiles.id, ownedIds));
     }
     await tx.delete(users).where(eq(users.id, session.userId));
   });
+
+  await Promise.all([
+    ...companyAdFiles.map((r) => deleteCompanyAdFile(r.fileName)),
+    ...jobAdFiles.map((r) => deleteJobAdFile(r.fileName)),
+  ]);
 
   await clearSession();
   return NextResponse.json({ ok: true });

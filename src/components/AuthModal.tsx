@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ACCOUNT_NOT_FOUND_MESSAGE } from "@/lib/auth-messages";
+import type { RewardHints } from "@/lib/campaigns-shared";
+import type { TeamRole } from "@/lib/team-roles";
 import Field from "./Field";
 import Modal from "./Modal";
 
@@ -19,7 +21,20 @@ export type AuthUser = {
   // Employer-only: job title and team role at the company they're currently
   // acting for — shown under the name in the navbar account menu.
   position?: string | null;
-  teamRole?: "owner" | "admin" | null;
+  // Also decides what the employer dashboard shows them (see team-roles.ts).
+  teamRole?: TeamRole | null;
+  // The company they're currently acting for — shown as the navbar's main
+  // avatar circle, with their own photo overlapping its corner.
+  companyLogoUrl?: string | null;
+  // Their own phone is verified — a green seal on their avatar in the navbar.
+  phoneVerified?: boolean;
+  // Show the dashboard's "Verify your phone number" bar (see PhoneVerifyBanner).
+  showPhoneVerifyBar?: boolean;
+  // Employer-only: show the dashboard's "Get sample data" bar (see SampleDataBanner).
+  showSampleDataBar?: boolean;
+  // Reward campaigns (see src/lib/campaigns.ts): the verify bar's reward
+  // line, whether "My Rewards" shows, and a newly earned reward to pop up.
+  rewards?: RewardHints | null;
 };
 
 const OTP_LENGTH = 6;
@@ -55,7 +70,13 @@ export default function AuthModal({
   initialRole = "employer",
   lockRole = false,
   initialError = null,
+  initialEmail = "",
+  notice = null,
 }: {
+  // Pre-filled email and a short line above the form — used when a
+  // team-invite link opens Sign in ("Sign in with … to join …").
+  initialEmail?: string;
+  notice?: string | null;
   mode: AuthMode;
   onClose: () => void;
   onAuthenticated: (user: AuthUser) => void;
@@ -79,7 +100,7 @@ export default function AuthModal({
 }) {
   const [role, setRole] = useState<Role>(initialRole);
   const [step, setStep] = useState<"email" | "otp">("email");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [otpEmail, setOtpEmail] = useState("");
   // Sign-in never shows the Employer/Jobseeker toggle up front — the
   // account itself determines the role. This only fills in for the rare
@@ -269,6 +290,11 @@ export default function AuthModal({
                     ? "Enter your email to continue."
                     : "Get started as an employer or jobseeker."}
             </p>
+            {notice && (
+              <p className="mt-[12px] rounded-[12px] bg-brand-teal-soft px-[12px] py-[10px] text-sm leading-[20px] text-[#141B2E]">
+                {notice}
+              </p>
+            )}
 
             {roleChoicePending ? (
               <div className="mt-[24px] flex flex-col gap-[12px]">
@@ -307,7 +333,7 @@ export default function AuthModal({
                     role="radiogroup"
                     aria-label="Account type"
                     className={`grid grid-cols-2 gap-[4px] rounded-full p-[4px] ${
-                      role === "jobseeker" ? "bg-brand-teal-dark" : "bg-[#FFE9A6]"
+                      role === "jobseeker" ? "bg-brand-teal-dark" : "bg-brand-gold"
                     }`}
                   >
                     <button
@@ -326,7 +352,7 @@ export default function AuthModal({
                       role="radio"
                       onClick={() => setRole("jobseeker")}
                       aria-checked={role === "jobseeker"}
-                      className={`h-[38px] rounded-full text-sm transition-colors aria-checked:bg-[#FFE9A6] aria-checked:text-[#141B2E] aria-checked:shadow-[0_1px_2px_rgba(0,0,0,0.06)] ${
+                      className={`h-[38px] rounded-full text-sm transition-colors aria-checked:bg-brand-gold aria-checked:text-[#141B2E] aria-checked:shadow-[0_1px_2px_rgba(0,0,0,0.06)] ${
                         role === "jobseeker" ? "" : "text-[#4B5468]"
                       }`}
                     >
@@ -376,7 +402,7 @@ export default function AuthModal({
                     type="button"
                     onClick={onSwitchToGetStarted}
                     className={`mt-[4px] flex h-[38px] items-center justify-center rounded-full text-sm transition-opacity hover:opacity-90 ${
-                      role === "jobseeker" ? "bg-[#FFE9A6] text-[#141B2E]" : "bg-brand-teal-dark text-white"
+                      role === "jobseeker" ? "bg-brand-gold text-[#141B2E]" : "bg-brand-teal-dark text-white"
                     }`}
                   >
                     Get started
@@ -388,9 +414,9 @@ export default function AuthModal({
                     disabled={sending}
                     className={`mt-[4px] flex h-[38px] items-center justify-center rounded-full text-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${
                       isSignIn && !lockRole
-                        ? "bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)] text-white"
+                        ? "bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))] text-white"
                         : role === "jobseeker"
-                          ? "bg-[#FFE9A6] text-[#141B2E]"
+                          ? "bg-brand-gold text-[#141B2E]"
                           : "bg-brand-teal-dark text-white"
                     }`}
                   >

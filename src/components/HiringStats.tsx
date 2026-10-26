@@ -78,7 +78,7 @@ const PAGE_COPY: Record<Page, { title: string; subtitle: string }> = {
 function CompanyLogo({ url }: { url: string | null }) {
   if (!url) {
     return (
-      <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-[#E6F9FA]">
+      <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-brand-teal-soft">
         <BuildingIcon className="h-[16px] w-[16px] text-brand-teal-dark" />
       </div>
     );
@@ -148,7 +148,7 @@ export default function HiringStats({
                     {company.industry} · {company.location}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[#E6F9FA] px-[9px] py-[3px] text-xs text-brand-teal-dark">
+                <span className="shrink-0 rounded-full bg-brand-teal-soft px-[9px] py-[3px] text-xs text-brand-teal-dark">
                   {company.activeCount > 0
                     ? `${company.activeCount} live role${company.activeCount === 1 ? "" : "s"}`
                     : "Getting started"}
@@ -170,7 +170,7 @@ export default function HiringStats({
                   <p className="truncate text-xs text-[#141B2E]">{posting.title}</p>
                   <p className="truncate text-xs text-[#9AA3B2]">{posting.companyName}</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[#E6F9FA] px-[9px] py-[3px] text-xs text-brand-teal-dark">
+                <span className="shrink-0 rounded-full bg-brand-teal-soft px-[9px] py-[3px] text-xs text-brand-teal-dark">
                   {relativeTimeAgo(posting.createdAt)}
                 </span>
               </div>
@@ -192,7 +192,7 @@ export default function HiringStats({
                     {activity.status === "interview" ? "Interviewing for" : "Shortlisted for"} {activity.jobTitle}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[#E6F9FA] px-[9px] py-[3px] text-xs text-brand-teal-dark">
+                <span className="shrink-0 rounded-full bg-brand-teal-soft px-[9px] py-[3px] text-xs text-brand-teal-dark">
                   {relativeTimeAgo(activity.updatedAt)}
                 </span>
               </div>

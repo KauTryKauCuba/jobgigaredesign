@@ -31,10 +31,13 @@ export default function DummyDataCard({ initialHasDummyData }: { initialHasDummy
             ["/api/employer/team/dummy", "DELETE"],
             ["/api/employer/dummy-companies", "DELETE"],
           ]
-        : [
+        : // Postings first (the team's Hiring managers are assigned to them),
+          // then the team, then applicants — whose interview panels include
+          // those teammates.
+          [
             ["/api/employer/job-postings/dummy", "POST"],
-            ["/api/employer/applications/dummy", "POST"],
             ["/api/employer/team/dummy", "POST"],
+            ["/api/employer/applications/dummy", "POST"],
             ["/api/employer/dummy-companies", "POST"],
           ];
       for (const [url, method] of calls) {
@@ -65,7 +68,7 @@ export default function DummyDataCard({ initialHasDummyData }: { initialHasDummy
         <div className="flex items-center justify-between gap-[8px]">
           <p className="text-sm text-[#141B2E]">Sample data</p>
           {hasDummyData && (
-            <span className="rounded-full bg-[#FFF3D6] px-[8px] py-[2px] text-xs text-[#A67C00]">On</span>
+            <span className="rounded-full bg-brand-gold-soft px-[8px] py-[2px] text-xs text-brand-gold-dark">On</span>
           )}
         </div>
         <p className="text-xs text-[#4B5468]">

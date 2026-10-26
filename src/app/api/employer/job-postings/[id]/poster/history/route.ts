@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobPostingPosters } from "@/lib/db/schema";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { getSession } from "@/lib/session";
 
@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!session || session.role !== "employer") {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
-  const access = await getEmployerAccess(session.userId);
+  const access = await getFullEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const profileId = access.profile.id;
 

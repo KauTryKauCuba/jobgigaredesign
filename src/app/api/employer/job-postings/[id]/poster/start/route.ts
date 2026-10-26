@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, isNotNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobPostings } from "@/lib/db/schema";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { POSTER_GENERATION_STALE_MS, isPosterGenerationConfigured, submitPosterImageTask } from "@/lib/icreat";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { type CompanyInfo, type PosterStyle, derivePostingContent, isPosterStyle, type PostingContent } from "@/lib/poster-content";
@@ -119,7 +119,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!isPosterGenerationConfigured()) {
     return NextResponse.json({ error: "Poster generation is not configured." }, { status: 500 });
   }
-  const access = await getEmployerAccess(session.userId);
+  const access = await getFullEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const profileId = access.profile.id;
 

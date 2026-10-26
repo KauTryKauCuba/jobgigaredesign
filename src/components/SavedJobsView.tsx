@@ -7,6 +7,7 @@ import SaveJobButton from "./SaveJobButton";
 import { gradientFrameClass } from "./formStyles";
 import { BellIcon } from "./icons";
 import { relativeTimeAgo } from "@/lib/applicationStatus";
+import { formatSalary } from "@/lib/job-posting-options";
 import type { AuthUser } from "./AuthModal";
 
 type SavedJobRow = {
@@ -21,6 +22,7 @@ type SavedJobRow = {
     location: string;
     salaryMin: number | null;
     salaryMax: number | null;
+    salaryPeriod: string;
   };
   companyName: string;
 };
@@ -30,6 +32,8 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 const WORK_ARRANGEMENT_LABEL: Record<string, string> = {
   onsite: "Onsite",
@@ -90,7 +94,7 @@ export default function SavedJobsView({
       <div className="flex flex-col gap-[20px]">
         <div className={`animate-fade-in-up ${gradientFrameClass("gold")}`}>
           <div className="flex items-start gap-[12px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
-            <span className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full bg-[#FFF3D6] text-brand-gold-dark">
+            <span className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full bg-brand-gold-soft text-brand-gold-dark">
               <BellIcon className="h-[16px] w-[16px]" />
             </span>
             <div className="min-w-0 flex-1">
@@ -125,7 +129,7 @@ export default function SavedJobsView({
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <div className="flex items-center gap-[8px]">
               <p className="text-sm text-[#141B2E]">Saved jobs</p>
-              <span className="rounded-full bg-[#FFF3D6] px-[10px] py-[3px] text-xs text-brand-gold-dark">
+              <span className="rounded-full bg-brand-gold-soft px-[10px] py-[3px] text-xs text-brand-gold-dark">
                 {visible.length}
               </span>
             </div>
@@ -143,9 +147,7 @@ export default function SavedJobsView({
                   const isOpen = posting.status === "active";
                   const hasApplied = applied.has(posting.id);
                   const salary =
-                    posting.salaryMin && posting.salaryMax
-                      ? `RM${posting.salaryMin.toLocaleString()}–${posting.salaryMax.toLocaleString()}`
-                      : "Salary not disclosed";
+                    formatSalary(posting.salaryMin, posting.salaryMax, posting.salaryPeriod) ?? "Salary not disclosed";
                   const details = (
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-[6px]">

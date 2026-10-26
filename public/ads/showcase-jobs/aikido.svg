@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#24104F"/>
+  <circle cx="910" cy="160" r="320" fill="#6551F3" opacity="0.55"/>
+  <circle cx="910" cy="160" r="190" fill="#6551F3" opacity="0.6"/>
+  <circle cx="110" cy="1010" r="250" fill="#EEEBFE" opacity="0.07"/>
+  <g font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+    <rect x="96" y="300" width="262" height="56" rx="28" fill="#EEEBFE" fill-opacity="0.14"/>
+    <text x="227" y="337" text-anchor="middle" font-size="26" font-weight="600" letter-spacing="3" fill="#EEEBFE">WE&#8217;RE HIRING</text>
+    <text x="96" y="476" font-size="96" font-weight="700" fill="#FFFFFF">Security</text>
+    <text x="96" y="582" font-size="96" font-weight="700" fill="#FFFFFF">Engineer</text>
+    <text x="96" y="660" font-size="36" fill="#EEEBFE" fill-opacity="0.85">Remote · RM 7,000 – RM 11,000</text>
+    <rect x="96" y="830" width="372" height="88" rx="44" fill="#EEEBFE"/>
+    <text x="282" y="886" text-anchor="middle" font-size="34" font-weight="600" fill="#24104F">Apply on JobGiga</text>
+  </g>
+</svg>

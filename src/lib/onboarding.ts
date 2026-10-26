@@ -1,7 +1,7 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "./db";
-import { jobseekerProfiles } from "./db/schema";
+import { employerTeamMembers, jobseekerProfiles } from "./db/schema";
 import { getEmployerAccess } from "./employer-profile";
 import { getSession } from "./session";
 
@@ -22,7 +22,23 @@ export async function getOnboardingRedirect(): Promise<string | null> {
     // into /employer/onboarding on every single page load, forever, since
     // they'd never have a profile of their own to be found.
     const access = await getEmployerAccess(session.userId);
-    return access ? null : "/employer/onboarding";
+    if (!access) return "/employer/onboarding";
+    // A newly joined teammate fills in a short "About you" first (the
+    // registrant already did, as part of company onboarding).
+    if (access.profile.userId !== session.userId) {
+      const [membership] = await db
+        .select({ profileCompletedAt: employerTeamMembers.profileCompletedAt })
+        .from(employerTeamMembers)
+        .where(
+          and(
+            eq(employerTeamMembers.employerProfileId, access.profile.id),
+            eq(employerTeamMembers.userId, session.userId),
+          ),
+        )
+        .limit(1);
+      if (membership && !membership.profileCompletedAt) return "/employer/welcome";
+    }
+    return null;
   }
 
   const [profile] = await db

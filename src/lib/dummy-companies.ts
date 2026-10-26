@@ -67,7 +67,7 @@ const DUMMY_COMPANIES: DummyCompanyDef[] = [
       addressLine1: "Level 12, Menara Prestige",
       addressLine2: "1 Jalan Pinang",
       city: "Kuala Lumpur",
-      state: "Wilayah Persekutuan Kuala Lumpur",
+      state: "Kuala Lumpur",
       postcode: "50450",
     },
     teammateEmailPrefix: "parceltracker",
@@ -148,11 +148,22 @@ export async function removeDummyCompanies(db: AnyDb, targetUserId: string): Pro
 // companies first, so this is safe to call repeatedly ("Get dummy data"
 // after a previous "Remove", or clicked twice) without piling up
 // duplicates.
+// The accounts' login emails carry the target user's id, so several
+// employers can each have their own copy of the demo companies at once
+// (users.email is unique); the team rows keep the clean display email.
+function seedLoginEmail(displayEmail: string, targetUserId: string) {
+  const [local, domain] = displayEmail.split("@");
+  return `${local}.${targetUserId}@${domain}`;
+}
+
 export async function seedDummyCompanies(db: AnyDb, targetUser: { id: string; name: string | null }, targetEmail: string): Promise<void> {
   await removeDummyCompanies(db, targetUser.id);
 
   for (const def of DUMMY_COMPANIES) {
-    const [owner] = await db.insert(users).values({ email: def.ownerEmail, name: def.ownerName, role: "employer" }).returning();
+    const [owner] = await db
+      .insert(users)
+      .values({ email: seedLoginEmail(def.ownerEmail, targetUser.id), name: def.ownerName, role: "employer" })
+      .returning();
 
     const [company] = await db
       .insert(employerProfiles)
@@ -175,22 +186,25 @@ export async function seedDummyCompanies(db: AnyDb, targetUser: { id: string; na
       if (teammate.status === "active") {
         const [account] = await db
           .insert(users)
-          .values({ email, name: teammate.name, avatarUrl: teammate.avatarUrl, role: "employer" })
+          .values({ email: seedLoginEmail(email, targetUser.id), name: teammate.name, avatarUrl: teammate.avatarUrl, role: "employer" })
           .returning();
         teammateRows.push({
           employerProfileId: company.id,
           userId: account.id,
           email,
-          role: "admin" as const,
+          role: teammate.role ?? ("admin" as const),
           position: teammate.position,
+          hiringRole: teammate.hiringRole,
+          phone: teammate.phone,
           status: "active" as const,
           joinedAt: new Date(),
+          profileCompletedAt: new Date(),
         });
       } else {
         teammateRows.push({
           employerProfileId: company.id,
           email,
-          role: "admin" as const,
+          role: teammate.role ?? ("admin" as const),
           position: teammate.position,
           status: "pending" as const,
         });
@@ -198,7 +212,7 @@ export async function seedDummyCompanies(db: AnyDb, targetUser: { id: string; na
     }
 
     await db.insert(employerTeamMembers).values([
-      { employerProfileId: company.id, userId: owner.id, email: owner.email, role: "owner", status: "active", joinedAt: new Date() },
+      { employerProfileId: company.id, userId: owner.id, email: def.ownerEmail, role: "owner", status: "active", joinedAt: new Date() },
       {
         employerProfileId: company.id,
         userId: targetUser.id,

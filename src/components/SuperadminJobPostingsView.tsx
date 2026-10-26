@@ -5,20 +5,13 @@ import SuperadminDashboardShell from "./SuperadminDashboardShell";
 import { gradientFrameClass } from "./formStyles";
 import RichTextContent from "./RichTextContent";
 import type { AuthUser } from "./AuthModal";
+import { formatSalary } from "@/lib/job-posting-options";
+import { toJobPosting, type ActivePostingRow } from "./JobPostingDetails";
+import JobseekerViewModal from "./JobseekerViewModal";
 
 type PendingRow = {
-  posting: {
-    id: string;
-    title: string;
-    description: string;
-    responsibilities: string;
-    industry: string | null;
-    location: string;
-    salaryMin: number | null;
-    salaryMax: number | null;
-    openings: number;
-    skills: string[];
-    createdAt: string;
+  posting: ActivePostingRow["posting"] & {
+    showSalary: boolean;
     flagReason?: string | null;
   };
   companyName: string;
@@ -69,6 +62,7 @@ export default function SuperadminJobPostingsView({
   const [activeRows, setActiveRows] = useState(initialActive);
   const [flaggedRows] = useState(initialFlagged);
   const [reportRows, setReportRows] = useState(initialReports);
+  const [viewingRow, setViewingRow] = useState<PendingRow | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
@@ -200,11 +194,7 @@ export default function SuperadminJobPostingsView({
       heading="Job Postings"
       subheading="Review pending postings, or see what's currently live."
     >
-      <div
-        role="radiogroup"
-        aria-label="Job posting status"
-        className="scrollbar-hide flex h-[38px] max-w-full gap-[4px] overflow-x-auto rounded-full border border-black/[0.1] p-[3px]"
-      >
+      <div role="tablist" aria-label="Job posting status" className="scrollbar-hide inline-flex max-w-full gap-[4px] overflow-x-auto rounded-full bg-[#F1F4F8] p-[4px]">
         {TABS.map((t) => {
           const count =
             t.key === "pending"
@@ -214,16 +204,20 @@ export default function SuperadminJobPostingsView({
                 : t.key === "flagged"
                   ? flaggedRows.length
                   : groupedReports.length;
+          const selected = tab === t.key;
           return (
             <button
               key={t.key}
               type="button"
-              role="radio"
+              role="tab"
+              aria-selected={selected}
               onClick={() => setTab(t.key)}
-              aria-checked={tab === t.key}
-              className="flex h-[30px] flex-1 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-[14px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-checked:bg-brand-teal-dark aria-checked:text-white aria-checked:hover:bg-brand-teal-dark"
+              className={`flex shrink-0 items-center gap-[6px] whitespace-nowrap rounded-full px-[16px] py-[8px] text-sm transition-colors ${
+                selected ? "bg-white text-[#141B2E] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[#4B5468] hover:text-[#141B2E]"
+              }`}
             >
-              {t.label} ({count})
+              {t.label}
+              <span className={selected ? "text-brand-teal-dark" : "text-[#9AA3B2]"}>{count}</span>
             </button>
           );
         })}
@@ -357,25 +351,35 @@ export default function SuperadminJobPostingsView({
             </p>
           ) : (
             <div className="mt-[14px] flex flex-col gap-[12px]">
-              {visibleRows.map(({ posting, companyName }) => (
+              {visibleRows.map((row) => {
+                const { posting, companyName } = row;
+                return (
                 <div key={posting.id} className="rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[16px]">
                   <div className="flex flex-wrap items-start justify-between gap-[8px]">
                     <div>
                       <p className="text-sm text-[#141B2E]">{posting.title}</p>
                       <p className="mt-[2px] text-xs text-[#4B5468]">{companyName}</p>
                     </div>
-                    <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">
-                      {posting.industry ?? "No industry set"}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-[8px]">
+                      <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">
+                        {posting.industry ?? "No industry set"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setViewingRow(row)}
+                        className="flex h-[28px] items-center rounded-full border border-brand-teal-dark/30 px-[12px] text-xs text-brand-teal-dark hover:bg-brand-teal-soft"
+                      >
+                        View as jobseeker
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-[8px] flex flex-wrap items-center gap-x-[8px] gap-y-[2px] text-xs text-[#4B5468]">
                     <span>{posting.location || "Location not set"}</span>
                     <span className="text-[#C7CDD7]">·</span>
                     <span>
-                      {posting.salaryMin && posting.salaryMax
-                        ? `RM${posting.salaryMin.toLocaleString()}–${posting.salaryMax.toLocaleString()}`
-                        : "Salary not disclosed"}
+                      {formatSalary(posting.salaryMin, posting.salaryMax, posting.salaryPeriod) ?? "Salary not disclosed"}
+                      {!posting.showSalary && " (hidden from jobseekers)"}
                     </span>
                     <span className="text-[#C7CDD7]">·</span>
                     <span>
@@ -392,7 +396,7 @@ export default function SuperadminJobPostingsView({
                       {posting.skills.map((skill) => (
                         <span
                           key={skill}
-                          className="rounded-full bg-[#E6F9FA] px-[10px] py-[4px] text-xs text-brand-teal-dark"
+                          className="rounded-full bg-brand-teal-soft px-[10px] py-[4px] text-xs text-brand-teal-dark"
                         >
                           {skill}
                         </span>
@@ -503,11 +507,54 @@ export default function SuperadminJobPostingsView({
                     </div>
                   ))}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       </div>
+
+      {viewingRow && (
+        <JobseekerViewModal
+          // What jobseekers would actually get — a hidden salary is stripped
+          // for them server-side, so it's left out here too.
+          posting={toJobPosting(
+            viewingRow.posting.showSalary
+              ? viewingRow
+              : { ...viewingRow, posting: { ...viewingRow.posting, salaryMin: null, salaryMax: null } },
+          )}
+          subtitle={`How ${viewingRow.companyName}'s posting appears to jobseekers once it's live.`}
+          onClose={() => setViewingRow(null)}
+          footer={
+            tab === "pending" ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busyId === viewingRow.posting.id}
+                  onClick={async () => {
+                    await approve(viewingRow.posting.id);
+                    setViewingRow(null);
+                  }}
+                  className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[22px] text-sm text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Rejecting needs a reason — typed back on the list.
+                    setRejectingId(viewingRow.posting.id);
+                    setViewingRow(null);
+                  }}
+                  className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[22px] text-sm text-red-500 hover:bg-red-50"
+                >
+                  Reject
+                </button>
+              </>
+            ) : undefined
+          }
+        />
+      )}
     </SuperadminDashboardShell>
   );
 }

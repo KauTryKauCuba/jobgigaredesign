@@ -150,15 +150,51 @@ export default function CompanyHighlights({
         onPage ? "relative z-0 pt-[16px] pb-[48px]" : "shell relative z-[1] -mt-[32px] pt-[clamp(32px,5vh,56px)] pb-[128px]"
       }
     >
-      <div className="relative z-[1] mx-auto max-w-[560px] text-center">
-        <span className="inline-flex items-center rounded-full bg-[#F1F4F8] px-[14px] py-[7px] text-xs text-[#4B5468]">
-          {onPage ? "Featured companies" : "Who's hiring"}
-        </span>
+      <div className={`relative z-[1] mx-auto text-center ${onPage ? "max-w-[560px]" : "max-w-[720px]"}`}>
+        {/* A block wrapper, not just the inline-flex span itself — the !onPage
+            h2 below is display:inline-block (needed for the gradient-clip
+            trick), so without this the pill and heading can share a text
+            line and get centered together as one group instead of each
+            getting its own row. */}
+        <div>
+          <span
+            className={`inline-flex items-center rounded-full px-[14px] py-[7px] text-xs ${
+              onPage ? "bg-[#F1F4F8] text-[#4B5468]" : "bg-brand-teal-soft text-brand-teal-dark"
+            }`}
+          >
+            {onPage ? "Featured companies" : "Who's hiring"}
+          </span>
+        </div>
         <h2
           className="mt-[16px] font-sans font-semibold text-[#141B2E]"
-          style={{ fontSize: "clamp(24px,2.6vw,32px)", lineHeight: 1.15, letterSpacing: "-0.02em" }}
+          style={{
+            fontSize: onPage ? "clamp(24px,2.6vw,32px)" : "clamp(34px, 4vw, 56px)",
+            lineHeight: onPage ? 1.15 : 1.08,
+            letterSpacing: "-0.02em",
+            // Same size and teal-into-gold gradient as the employer landing
+            // page's own hero heading ("Go beyond the summit...") — this row
+            // sits right under it, on the same page, so the two read as one family.
+            ...(onPage
+              ? {}
+              : {
+                  backgroundImage: "var(--brand-gradient-employer)",
+                  WebkitBackgroundClip: "text",
+                  backgroundClip: "text",
+                  color: "transparent",
+                  display: "inline-block",
+                  paddingBottom: "0.08em",
+                }),
+          }}
         >
-          {onPage ? "Meet the teams growing with JobGiga" : "Companies building their teams on JobGiga"}
+          {onPage ? (
+            "Meet the teams growing with JobGiga"
+          ) : (
+            <>
+              Companies building their
+              <br />
+              teams on JobGiga
+            </>
+          )}
         </h2>
       </div>
 

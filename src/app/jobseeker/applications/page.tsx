@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import JobseekerApplicationsView from "@/components/JobseekerApplicationsView";
 import { getApplicationEvents, getEmployerResponsiveness } from "@/lib/application-events";
+import { getJobseekerAiInterviewSummaries } from "@/lib/ai-interview";
 import { getAuthUser } from "@/lib/auth-user";
 import { getApplicationsForJobseeker } from "@/lib/job-applications";
 import { getJobseekerProfile } from "@/lib/jobseeker-profile";
@@ -23,14 +24,16 @@ export default async function JobseekerApplicationsPage() {
   const applications = profile ? await getApplicationsForJobseeker(profile.id) : [];
   // Each application's step-by-step history, plus how quickly its employer
   // usually replies — together they power the "where things stand" tracker.
-  const [events, responsiveness] = await Promise.all([
+  const [events, responsiveness, aiInterviews] = await Promise.all([
     getApplicationEvents(applications.map((row) => row.application.id)),
     getEmployerResponsiveness(applications.map((row) => row.posting.employerProfileId)),
+    getJobseekerAiInterviewSummaries(applications.map((row) => row.application.id)),
   ]);
   const rows = applications.map((row) => ({
     ...row,
     events: events.get(row.application.id) ?? [],
     responsiveness: responsiveness.get(row.posting.employerProfileId) ?? null,
+    aiInterview: aiInterviews.get(row.application.id) ?? null,
   }));
 
   return (

@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "./db";
 import {
@@ -12,26 +13,26 @@ import {
   users,
 } from "./db/schema";
 import { getSession } from "./session";
+import { employerHomePath, hasFullAccess, TEAM_ROLES, type TeamRole } from "./team-roles";
 
 /**
- * Everything from onboarding, for the dashboard's read-only profile summary
- * card. Direct-ownership only — this is the account that created the
- * company (employerProfiles.userId). A team member invited afterward has
- * no row here at all; use `getEmployerAccess`/`getEmployerProfileForUser`
+ * Every company this account registered itself (employerProfiles.userId —
+ * the registrant), oldest first. One account can register several, up to
+ * its company limit (src/lib/company-limit.ts). A team member invited
+ * afterward has no row here; use `getEmployerAccess`/`getEmployerProfileForUser`
  * below for "can this user use the employer dashboard, whoever they are."
  */
-export async function getEmployerProfile(userId: string) {
-  const [profile] = await db
+export async function getOwnedEmployerProfiles(userId: string) {
+  return db
     .select()
     .from(employerProfiles)
     .where(eq(employerProfiles.userId, userId))
-    .limit(1);
-  return profile ?? null;
+    .orderBy(asc(employerProfiles.createdAt));
 }
 
-export type EmployerProfile = NonNullable<Awaited<ReturnType<typeof getEmployerProfile>>>;
+export type EmployerProfile = typeof employerProfiles.$inferSelect;
 
-export type EmployerRole = "owner" | "admin";
+export type EmployerRole = TeamRole;
 
 // `joinedAt` is when *this user* joined *this* company — the owned
 // company's own createdAt for a direct owner (there may be no self-healed
@@ -40,19 +41,18 @@ export type EmployerRole = "owner" | "admin";
 export type EmployerMembership = { profile: EmployerProfile; role: EmployerRole; joinedAt: Date };
 
 /**
- * Every company this user belongs to — the one they directly own (if any,
- * always first), then every company they're an active invited member of,
- * oldest invite first. A person can be on more than one (their own company
- * plus an invite elsewhere, or several invites with no company of their
- * own) — this is the full list the company switcher renders, and what
- * `getEmployerAccess` picks a "current" one from.
+ * Every company this user belongs to — the ones they registered themselves
+ * (oldest first), then every company they're an active invited member of,
+ * oldest invite first. This is the full list the company switcher renders,
+ * and what `getEmployerAccess` picks a "current" one from.
  */
 // Wrapped in cache() — getEmployerAccess and getEmployerProfileForUser both
 // call this, and a page can end up calling more than one of those per
-// render, so without memoizing it re-ran this join (and getEmployerProfile
+// render, so without memoizing it re-ran this join (and getOwnedEmployerProfiles
 // inside it) several times over per request.
 export const getEmployerMemberships = cache(async (userId: string): Promise<EmployerMembership[]> => {
-  const owned = await getEmployerProfile(userId);
+  const owned = await getOwnedEmployerProfiles(userId);
+  const ownedIds = new Set(owned.map((p) => p.id));
 
   const rows = await db
     .select({ profile: employerProfiles, role: employerTeamMembers.role, joinedAt: employerTeamMembers.joinedAt })
@@ -61,12 +61,11 @@ export const getEmployerMemberships = cache(async (userId: string): Promise<Empl
     .where(and(eq(employerTeamMembers.userId, userId), eq(employerTeamMembers.status, "active")))
     .orderBy(asc(employerTeamMembers.invitedAt));
 
-  const memberships: EmployerMembership[] = [];
-  if (owned) memberships.push({ profile: owned, role: "owner", joinedAt: owned.createdAt });
+  const memberships: EmployerMembership[] = owned.map((p) => ({ profile: p, role: "owner" as const, joinedAt: p.createdAt }));
   for (const row of rows) {
-    // The owned company's own self-heal membership row (see
+    // An owned company's own self-heal membership row (see
     // getEmployerTeamMembers) would otherwise show up a second time here.
-    if (owned && row.profile.id === owned.id) continue;
+    if (ownedIds.has(row.profile.id)) continue;
     memberships.push({ profile: row.profile, role: row.role, joinedAt: row.joinedAt ?? row.profile.createdAt });
   }
   return memberships;
@@ -75,7 +74,7 @@ export const getEmployerMemberships = cache(async (userId: string): Promise<Empl
 /**
  * The general-purpose "does this user belong to a company, and as what
  * role, right now" resolver. Every route/page that used to do
- * `getEmployerProfile(session.userId)` to mean "the employer" should use
+ * a direct lookup by registrant to mean "the employer" should use
  * this instead, so an invited teammate isn't treated as having no company.
  *
  * A person can belong to more than one company (their own plus an invite
@@ -83,7 +82,7 @@ export const getEmployerMemberships = cache(async (userId: string): Promise<Empl
  * them; this picks whichever one the session says is "current"
  * (`employerProfileId`, set by the company switcher via
  * `setActiveEmployerCompany`), falling back to the first membership
- * (owned company, else the oldest invite) if the session hasn't picked one
+ * (first registered company, else the oldest invite) if the session hasn't picked one
  * yet or points at a company this user no longer belongs to. That fallback
  * is deliberately not persisted back into the cookie here — Next.js only
  * allows cookie mutation from a Server Action or Route Handler, and this
@@ -102,6 +101,27 @@ export const getEmployerAccess = cache(async (userId: string): Promise<EmployerM
   return memberships[0];
 });
 
+/**
+ * `getEmployerAccess`, but only for an Owner or Admin — null for a Hiring
+ * manager or Panel member. For routes that change the company account itself
+ * (company profile, team, ads, posters, sample data), so a scoped teammate
+ * gets the same "not found" as someone with no company at all.
+ */
+export async function getFullEmployerAccess(userId: string): Promise<EmployerMembership | null> {
+  const access = await getEmployerAccess(userId);
+  return access && hasFullAccess(access.role) ? access : null;
+}
+
+/**
+ * For pages that are Owner/Admin only (Post a job, Poster generator, Company
+ * Profile, Advertisement, Team): a Hiring manager or Panel member opening one
+ * (an old link, a bookmark) is sent to their own dashboard home instead.
+ */
+export async function redirectScopedTeammate(userId: string) {
+  const access = await getEmployerAccess(userId);
+  if (access && !hasFullAccess(access.role)) redirect(employerHomePath(access.role));
+}
+
 /** Same return shape as `getEmployerProfile`, but resolved via `getEmployerAccess` — a drop-in replacement everywhere a page/route only needs the profile, not the caller's role within it. */
 export async function getEmployerProfileForUser(userId: string): Promise<EmployerProfile | null> {
   const access = await getEmployerAccess(userId);
@@ -117,11 +137,49 @@ export async function getEmployerProfileForUser(userId: string): Promise<Employe
  * A no-op (and cheap — one indexed query) for the overwhelming majority of
  * sign-ins that were never invited to anything.
  */
+/**
+ * Whether this email has a team invite waiting — lets "Sign in" (which
+ * otherwise refuses emails with no account yet) go through for an invited
+ * teammate, since the invite email tells them to sign in.
+ */
+export async function hasPendingTeamInvite(email: string): Promise<boolean> {
+  const [invite] = await db
+    .select({ id: employerTeamMembers.id })
+    .from(employerTeamMembers)
+    .where(liveInviteFor(email))
+    .limit(1);
+  return !!invite;
+}
+
+// A pending invite for this email whose link hasn't expired (invites from
+// before links expired have no expiry and still count).
+function liveInviteFor(email: string) {
+  return and(
+    eq(employerTeamMembers.email, email.trim().toLowerCase()),
+    eq(employerTeamMembers.status, "pending"),
+    or(isNull(employerTeamMembers.inviteExpiresAt), gt(employerTeamMembers.inviteExpiresAt, new Date())),
+  );
+}
+
 export async function activatePendingTeamInvites(userId: string, email: string) {
-  await db
+  const joined = await db
     .update(employerTeamMembers)
     .set({ userId, status: "active", joinedAt: new Date() })
-    .where(and(eq(employerTeamMembers.email, email.trim().toLowerCase()), eq(employerTeamMembers.status, "pending")));
+    .where(liveInviteFor(email))
+    .returning({ employerProfileId: employerTeamMembers.employerProfileId, email: employerTeamMembers.email, role: employerTeamMembers.role });
+  // Shows up in the inviting company's Team activity.
+  await Promise.all(
+    joined.map((row) =>
+      logTeamActivity({
+        employerProfileId: row.employerProfileId,
+        actorUserId: userId,
+        actorLabel: row.email,
+        action: "joined",
+        targetEmail: row.email,
+        toRole: row.role,
+      }),
+    ),
+  );
 }
 
 // An employer's saved offices/branches, oldest (the one they set up during
@@ -179,6 +237,7 @@ export async function getEmployerTeamMembers(employerProfileId: string, ownerUse
       joinedAt: employerTeamMembers.joinedAt,
       name: users.name,
       avatarUrl: users.avatarUrl,
+      inviteExpiresAt: employerTeamMembers.inviteExpiresAt,
     })
     .from(employerTeamMembers)
     .leftJoin(users, eq(users.id, employerTeamMembers.userId))
@@ -190,22 +249,45 @@ export async function getEmployerTeamMembers(employerProfileId: string, ownerUse
   // only the Google-sign-in/account-level fallback, which can drift stale
   // once someone edits their employer contact name, same distinction
   // resolveNameForRole makes for Navbar/My Profile.
+  // Same for their photo: the one uploaded on My Profile
+  // (employerProfiles.avatarUrl, what the Navbar shows), falling back to the
+  // Google account photo.
   const [ownerProfile] = await db
-    .select({ contactName: employerProfiles.contactName })
+    .select({ contactName: employerProfiles.contactName, avatarUrl: employerProfiles.avatarUrl })
     .from(employerProfiles)
     .where(eq(employerProfiles.id, employerProfileId))
     .limit(1);
 
   const withOwnerName = ownerProfile
-    ? rows.map((row) => (row.userId === ownerUserId ? { ...row, name: ownerProfile.contactName } : row))
+    ? rows.map((row) =>
+        row.userId === ownerUserId
+          ? { ...row, name: ownerProfile.contactName, avatarUrl: ownerProfile.avatarUrl ?? row.avatarUrl }
+          : row,
+      )
     : rows;
 
-  return withOwnerName.sort((a, b) => (a.role === b.role ? 0 : a.role === "owner" ? -1 : 1));
+  return withOwnerName
+    .map((row) => ({
+      ...row,
+      isRegistrant: row.userId === ownerUserId,
+      // A pending invite whose link has run out — the Team page offers Resend.
+      inviteExpired: row.status === "pending" && !!row.inviteExpiresAt && row.inviteExpiresAt.getTime() < Date.now(),
+    }))
+    // Most senior first: owners, admins, hiring managers, then panel.
+    .sort((a, b) => TEAM_ROLES.indexOf(a.role) - TEAM_ROLES.indexOf(b.role));
 }
 
 export type EmployerTeamMember = Awaited<ReturnType<typeof getEmployerTeamMembers>>[number];
 
-type TeamActivityAction = "invited" | "resent_invite" | "role_changed" | "removed";
+type TeamActivityAction =
+  | "invited"
+  | "resent_invite"
+  | "role_changed"
+  | "removed"
+  | "declined"
+  | "joined"
+  | "job_assigned"
+  | "job_unassigned";
 
 // Called alongside every team-management write (invite, resend, role
 // change, remove) — never awaited by the caller as a blocker on the user
@@ -214,12 +296,13 @@ type TeamActivityAction = "invited" | "resent_invite" | "role_changed" | "remove
 // even after the actor or the target member row is later gone/renamed.
 export async function logTeamActivity(params: {
   employerProfileId: string;
-  actorUserId: string;
+  actorUserId: string | null;
   actorLabel: string;
   action: TeamActivityAction;
   targetEmail: string;
   fromRole?: EmployerRole;
   toRole?: EmployerRole;
+  detail?: string | null;
 }) {
   await db.insert(employerTeamActivity).values({
     employerProfileId: params.employerProfileId,
@@ -229,6 +312,7 @@ export async function logTeamActivity(params: {
     targetEmail: params.targetEmail,
     fromRole: params.fromRole,
     toRole: params.toRole,
+    detail: params.detail ?? null,
   });
 }
 

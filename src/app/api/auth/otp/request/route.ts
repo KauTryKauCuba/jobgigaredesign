@@ -6,6 +6,7 @@ import { otpCodes, users } from "@/lib/db/schema";
 import { sendOtpEmail } from "@/lib/email";
 import { generateOtp, hashOtp, otpExpiry } from "@/lib/otp";
 import { ACCOUNT_NOT_FOUND_MESSAGE } from "@/lib/auth-messages";
+import { hasPendingTeamInvite } from "@/lib/employer-profile";
 
 const RESEND_COOLDOWN_MS = 30 * 1000;
 
@@ -39,15 +40,22 @@ export async function POST(request: Request) {
       .where(eq(users.email, normalizedEmail))
       .limit(1);
     if (!existingUser) {
-      return NextResponse.json({ error: ACCOUNT_NOT_FOUND_MESSAGE }, { status: 404 });
+      // An invited teammate's first sign-in — the invite email tells them
+      // to "sign in", so don't turn them away for not having an account yet.
+      // The account is created (as an employer) when they verify the code.
+      if (!(await hasPendingTeamInvite(normalizedEmail))) {
+        return NextResponse.json({ error: ACCOUNT_NOT_FOUND_MESSAGE }, { status: 404 });
+      }
+      resolvedRole = "employer";
+    } else {
+      const existingRoles = await resolveExistingRoles(existingUser.id);
+      if (existingRoles.length > 1) {
+        // Genuinely ambiguous — hand it back to the client to ask, rather
+        // than guessing which side the user actually wants right now.
+        return NextResponse.json({ needsRoleChoice: true });
+      }
+      resolvedRole = existingRoles[0] ?? existingUser.role;
     }
-    const existingRoles = await resolveExistingRoles(existingUser.id);
-    if (existingRoles.length > 1) {
-      // Genuinely ambiguous — hand it back to the client to ask, rather
-      // than guessing which side the user actually wants right now.
-      return NextResponse.json({ needsRoleChoice: true });
-    }
-    resolvedRole = existingRoles[0] ?? existingUser.role;
   }
 
   const [recent] = await db

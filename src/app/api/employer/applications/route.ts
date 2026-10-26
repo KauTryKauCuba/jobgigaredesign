@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getApplicationsForEmployer } from "@/lib/job-applications";
 import { getSession } from "@/lib/session";
 
 // Employer-wide applications across every posting — for the chat assistant's
 // stat questions (interviews today, applicants to screen, etc). Trimmed down
 // to just what a count/lookup needs, not the full applicant profile fields
-// getApplicationsForEmployer also returns.
+// getApplicationsForEmployer also returns. Narrowed to what the teammate may
+// see (a Hiring manager's postings, a Panel member's interviews).
 export async function GET() {
   const session = await getSession();
   if (!session || session.role !== "employer") {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
 
-  const access = await getEmployerAccess(session.userId);
+  const access = await getScopedEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ applications: [] });
 
-  const rows = await getApplicationsForEmployer(access.profile.id);
+  const rows = await getApplicationsForEmployer(access.profile.id, access.scope);
   const applications = rows.map((r) => ({
     jobPostingId: r.jobPostingId,
     jobPostingTitle: r.jobPostingTitle,

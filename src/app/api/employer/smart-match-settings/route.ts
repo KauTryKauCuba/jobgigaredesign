@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { employerProfiles } from "@/lib/db/schema";
-import { getEmployerAccess } from "@/lib/employer-profile";
+import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { getSession } from "@/lib/session";
 
 const CRITERIA_KEYS = [
@@ -27,7 +27,7 @@ export async function PATCH(request: Request) {
   if (!session || session.role !== "employer") {
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
-  const access = await getEmployerAccess(session.userId);
+  const access = await getFullEmployerAccess(session.userId);
   if (!access) return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
 
   let body: unknown;

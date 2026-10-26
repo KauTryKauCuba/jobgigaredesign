@@ -81,7 +81,7 @@ type MatchResult = {
 // Matches" treatment, so a score reads the same wherever it shows up.
 function matchBand(score: number): { bg: string; text: string } {
   if (score >= 80) return { bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]" };
-  if (score >= 60) return { bg: "bg-[#E6F9FA]", text: "text-[#008990]" };
+  if (score >= 60) return { bg: "bg-brand-teal-soft", text: "text-brand-teal-dark" };
   return { bg: "bg-[#F1F4F8]", text: "text-[#4B5468]" };
 }
 
@@ -89,8 +89,8 @@ function matchBand(score: number): { bg: string; text: string } {
 // (EmployerJobsView.tsx), keyed by the raw db status instead of its
 // capitalized display label, so this card's badge matches exactly.
 const POSTING_STATUS_PILL: Record<string, { bg: string; text: string; label: string }> = {
-  active: { bg: "bg-[#E6F9FA]", text: "text-[#008990]", label: "Active" },
-  pending: { bg: "bg-[#FFF3D6]", text: "text-[#A67C00]", label: "Pending" },
+  active: { bg: "bg-brand-teal-soft", text: "text-brand-teal-dark", label: "Active" },
+  pending: { bg: "bg-brand-gold-soft", text: "text-brand-gold-dark", label: "Pending" },
   filled: { bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]", label: "Filled" },
   closed: { bg: "bg-black/[0.04]", text: "text-[#9AA3B2]", label: "Closed" },
   draft: { bg: "bg-[#F1ECFB]", text: "text-[#7C5CD1]", label: "Draft" },
@@ -326,7 +326,7 @@ function SlidersIcon({ className = "" }: { className?: string }) {
 function ApplicantAvatar({ url }: { url: string | null }) {
   if (!url) {
     return (
-      <div className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-[#E6F9FA] text-brand-teal-dark">
+      <div className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-brand-teal-soft text-brand-teal-dark">
         <UserIcon className="h-[14px] w-[14px]" />
       </div>
     );
@@ -356,10 +356,13 @@ export default function EmployerDashboardOverview({
   data,
   initialSmartMatchEnabled,
   initialCriteria,
+  canManage = true,
 }: {
   data: DashboardData;
   initialSmartMatchEnabled: boolean;
   initialCriteria: CriteriaFlags;
+  // false for a Hiring manager — the page covers only their assigned jobs.
+  canManage?: boolean;
 }) {
   // Same scoring "Top Matches"/the per-posting applicant list use, fetched
   // once here so "Recent applicants" can show the same score badge without
@@ -615,8 +618,9 @@ export default function EmployerDashboardOverview({
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
             <p className="text-sm text-[#141B2E]">Get started</p>
             <p className="mt-[6px] text-xs text-[#4B5468]">
-              You haven&rsquo;t posted a job yet — once you do, everything below fills in with real applicants,
-              interviews, and match insights. Here&rsquo;s a preview of what this page looks like.
+              {canManage
+                ? "You haven’t posted a job yet — once you do, everything below fills in with real applicants, interviews, and match insights. Here’s a preview of what this page looks like."
+                : "No jobs are assigned to you yet — once an owner or admin makes you hiring manager for a job, everything below fills in with its applicants and interviews. Here’s a preview of what this page looks like."}
             </p>
           </div>
         </div>
@@ -776,7 +780,11 @@ export default function EmployerDashboardOverview({
         </div>
 
         <SectionCard title="Top Matches" animationDelayMs={60}>
-          <TopMatchesCard initialEnabled={initialSmartMatchEnabled} initialCriteria={initialCriteria} />
+          <TopMatchesCard
+            initialEnabled={initialSmartMatchEnabled}
+            initialCriteria={initialCriteria}
+            canEditSettings={canManage}
+          />
         </SectionCard>
       </div>
 

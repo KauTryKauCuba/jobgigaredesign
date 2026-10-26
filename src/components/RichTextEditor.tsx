@@ -79,9 +79,9 @@ export default function RichTextEditor({
 
   return (
     <div
-      className={`overflow-hidden rounded-[12px] border border-black/[0.1] ${
+      className={`overflow-hidden rounded-[12px] border border-black/[0.1] ${disabled ? "bg-black/[0.03]" : "bg-white"} ${
         accent === "gold" ? "focus-within:border-brand-gold-dark" : "focus-within:border-brand-teal-dark"
-      } ${disabled ? "bg-black/[0.03]" : ""}`}
+      }`}
     >
       {/* Placeholder and editor share one grid cell, so a placeholder that
           wraps on a narrow screen grows the box instead of spilling over

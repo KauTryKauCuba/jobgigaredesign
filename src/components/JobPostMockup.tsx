@@ -21,7 +21,7 @@ const POSTING_SECTIONS = 4;
 // it does everywhere else a match score shows up.
 function matchBandClass(pct: number): string {
   if (pct >= 80) return "bg-[#E7F6EC] text-[#2F9E56]";
-  if (pct >= 60) return "bg-[#E6F9FA] text-[#008990]";
+  if (pct >= 60) return "bg-brand-teal-soft text-brand-teal-dark";
   return "bg-[#F1F4F8] text-[#4B5468]";
 }
 
@@ -79,7 +79,7 @@ export default function JobPostMockup() {
               <p className="mt-[2px] text-xs leading-[13px] text-[#4B5468]">Ranked by fit.</p>
             </div>
             {applicantsShown > 0 && (
-              <span className="rounded-full bg-[#E6F9FA] px-[6px] py-[1px] text-[11px] text-[#008990]">
+              <span className="rounded-full bg-brand-teal-soft px-[6px] py-[1px] text-[11px] text-brand-teal-dark">
                 {applicantsShown} new
               </span>
             )}
@@ -130,7 +130,7 @@ export default function JobPostMockup() {
 
             <div
               className={`mt-[8px] flex h-[26px] items-center justify-center gap-[5px] rounded-[8px] text-xs text-white transition-all duration-500 ${
-                posted ? "bg-[#2F9E56]" : "bg-[linear-gradient(45deg,var(--color-brand-teal-dark),#FFE9A6)]"
+                posted ? "bg-[#2F9E56]" : "bg-[linear-gradient(45deg,var(--color-brand-teal-dark),var(--color-brand-gold))]"
               } ${writing ? "ai-fill-pulse" : ""} ${typing ? "opacity-70" : "opacity-100"}`}
             >
               {posted ? (
@@ -207,7 +207,7 @@ export default function JobPostMockup() {
                   </div>
                 }
               >
-                <div className="flex items-center justify-between gap-[6px] rounded-[8px] border border-brand-teal-dark/30 bg-[#F2FAF5] px-[8px] py-[6px]">
+                <div className="flex items-center justify-between gap-[6px] rounded-[8px] border border-brand-teal-dark/30 bg-brand-teal-page px-[8px] py-[6px]">
                   <span className="truncate text-xs text-[#141B2E]">Sales Executive</span>
                   <div className="flex shrink-0 items-center gap-[6px]">
                     {applicantsShown > 0 && (
@@ -215,7 +215,7 @@ export default function JobPostMockup() {
                         {applicantsShown} applicant{applicantsShown === 1 ? "" : "s"}
                       </span>
                     )}
-                    <span className="rounded-full bg-[#E6F9FA] px-[6px] py-[1.5px] text-xs text-[#008990]">Active</span>
+                    <span className="rounded-full bg-brand-teal-soft px-[6px] py-[1.5px] text-xs text-brand-teal-dark">Active</span>
                   </div>
                 </div>
               </Reveal>

@@ -1,0 +1,1 @@
+ALTER TABLE "jobseeker_profiles" DROP COLUMN "date_of_birth";

@@ -33,6 +33,8 @@ const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   part_time: "Part-time",
   contract: "Contract",
   internship: "Internship",
+  freelance: "Freelance",
+  temporary: "Temporary",
 };
 
 const BREAKDOWN_LABELS: { key: keyof MatchBreakdown; label: string }[] = [
@@ -47,16 +49,20 @@ const BREAKDOWN_LABELS: { key: keyof MatchBreakdown; label: string }[] = [
 
 function matchBand(score: number): { label: string; bg: string; text: string } {
   if (score >= 80) return { label: "Strong match", bg: "bg-[#E7F6EC]", text: "text-[#2F9E56]" };
-  if (score >= 60) return { label: "Good match", bg: "bg-[#E6F9FA]", text: "text-[#008990]" };
+  if (score >= 60) return { label: "Good match", bg: "bg-brand-teal-soft", text: "text-brand-teal-dark" };
   return { label: "Possible match", bg: "bg-[#F1F4F8]", text: "text-[#4B5468]" };
 }
 
 export default function TopMatchesCard({
   initialEnabled,
   initialCriteria,
+  canEditSettings = true,
 }: {
   initialEnabled: boolean;
   initialCriteria: CriteriaFlags;
+  // The on/off switch and match settings are company-wide — Owners/Admins
+  // change them; a Hiring manager just sees the ranking.
+  canEditSettings?: boolean;
 }) {
   const [smartMatchOn, setSmartMatchOn] = useState(initialEnabled);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -159,33 +165,38 @@ export default function TopMatchesCard({
           <p className="mt-[2px] text-xs text-[#9AA3B2]">
             {smartMatchOn
               ? "Ranked across every open role by skills and experience fit."
-              : "Switch on to instantly surface your best-fit candidates."}
+              : canEditSettings
+                ? "Switch on to instantly surface your best-fit candidates."
+                : "Currently off for your company."}
           </p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={smartMatchOn}
-          aria-label="Toggle Smart Match"
-          onClick={toggleSmartMatch}
-          className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors ${
-            smartMatchOn ? "bg-brand-teal-dark" : "bg-black/[0.15]"
-          }`}
-        >
-          <span
-            className={`absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform ${
-              smartMatchOn ? "translate-x-[16px]" : "translate-x-0"
+        {canEditSettings && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={smartMatchOn}
+            aria-label="Toggle Smart Match"
+            onClick={toggleSmartMatch}
+            className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors ${
+              smartMatchOn ? "bg-brand-teal-dark" : "bg-black/[0.15]"
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform ${
+                smartMatchOn ? "translate-x-[16px]" : "translate-x-0"
+              }`}
+            />
+          </button>
+        )}
       </div>
 
       {!smartMatchOn ? (
         <div className="flex flex-col items-center gap-[8px] rounded-[14px] bg-[#F8FAFB] p-[20px] text-center">
           <TrendUpIcon className="h-[18px] w-[18px] text-[#9AA3B2]" />
           <p className="text-xs text-[#4B5468]">
-            Smart Match is off. Flip it on and we&rsquo;ll rank every active applicant by how well they fit —
-            no manual screening required.
+            {canEditSettings
+              ? "Smart Match is off. Flip it on and we’ll rank every active applicant by how well they fit — no manual screening required."
+              : "Smart Match is switched off for your company. An owner or admin can turn it on."}
           </p>
         </div>
       ) : loading ? (
@@ -244,16 +255,18 @@ export default function TopMatchesCard({
             >
               {showBreakdown ? "Hide score breakdown" : "What counts toward the score?"}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowSettings((v) => !v)}
-              className="text-left text-sm text-brand-teal-dark hover:underline"
-            >
-              {showSettings ? "Hide match settings" : "Match settings"}
-            </button>
+            {canEditSettings && (
+              <button
+                type="button"
+                onClick={() => setShowSettings((v) => !v)}
+                className="text-left text-sm text-brand-teal-dark hover:underline"
+              >
+                {showSettings ? "Hide match settings" : "Match settings"}
+              </button>
+            )}
           </div>
 
-          {showSettings && <MatchSettingsModal criteria={criteria} onChange={handleCriteriaChange} />}
+          {canEditSettings && showSettings && <MatchSettingsModal criteria={criteria} onChange={handleCriteriaChange} />}
 
           <label className="flex items-center gap-[8px] text-xs text-[#4B5468]">
             <button

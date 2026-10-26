@@ -1,0 +1,1 @@
+ALTER TABLE "jobseeker_profiles" ADD COLUMN "country" text DEFAULT 'Malaysia' NOT NULL;
