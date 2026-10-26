@@ -49,6 +49,11 @@
 html,
 body {
   height: 100%;
+  /* Stops the mobile "rubber-band" bounce past the top/bottom of the page —
+     without this, overscrolling reveals the plain white <body> behind
+     whichever page's own colour (mint/cream/etc.), which looks like a
+     glitch rather than part of the design. */
+  overscroll-behavior-y: none;
 }
 
 body {
