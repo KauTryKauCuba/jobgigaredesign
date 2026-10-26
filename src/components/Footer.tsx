@@ -14,6 +14,22 @@ const LINK_GROUPS: { title: string; links: { label: string; href: string }[] }[]
 
 export default function Footer({ accent = "teal" }: { accent?: "teal" | "gold" }) {
   const accentClass = accent === "gold" ? "text-brand-gold-dark" : "text-brand-teal-dark";
+  // About and Release notes stay on the page's own side (teal/employer or
+  // gold/jobseeker), like the rest of the footer — not a fixed link.
+  const side = accent === "gold" ? "/jobseeker" : "/employer";
+  const groups = [
+    ...LINK_GROUPS,
+    {
+      title: "Company",
+      links: [
+        { label: "About", href: `${side}/about` },
+        { label: "Release notes", href: `${side}/release-notes` },
+        { label: "Privacy", href: `${side}/privacy` },
+        { label: "Security", href: `${side}/security` },
+        { label: "Terms & Conditions", href: `${side}/terms` },
+      ],
+    },
+  ];
 
   return (
     // No background of its own — it sits on the page's colour (mint on the
@@ -30,7 +46,7 @@ export default function Footer({ accent = "teal" }: { accent?: "teal" | "gold" }
           </div>
 
           <div className="flex gap-[48px]">
-            {LINK_GROUPS.map((group) => (
+            {groups.map((group) => (
               <div key={group.title}>
                 <p className="text-xs tracking-[0.04em] text-[#9AA3B2] uppercase">
                   {group.title}
