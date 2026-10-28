@@ -32,6 +32,7 @@ import {
 import { jobAdFileCleanupForPostings } from "@/lib/job-ads";
 import { aiInterviewMediaCleanupForPostings } from "@/lib/ai-interview";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 
@@ -289,6 +290,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .set(updates)
     .where(and(eq(jobPostings.id, id), eq(jobPostings.employerProfileId, profile.id)))
     .returning();
+  revalidatePublicData();
 
   if (hiringManagers.ids) {
     await setJobHiringManagers({
@@ -328,6 +330,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   // they're removed once the posting is really gone.
   const cleanups = await Promise.all([jobAdFileCleanupForPostings([own.id]), aiInterviewMediaCleanupForPostings([own.id])]);
   await db.delete(jobPostings).where(eq(jobPostings.id, own.id));
+  revalidatePublicData();
   await Promise.all(cleanups.map((cleanup) => cleanup()));
 
   return NextResponse.json({ ok: true });

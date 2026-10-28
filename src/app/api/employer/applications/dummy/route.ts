@@ -30,6 +30,7 @@ import { dummyCustomAnswer } from "@/lib/dummy-screening";
 import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { screeningEligibilityCheck } from "@/lib/matching";
 import { toMalaysianMobileE164 } from "@/lib/phone";
+import { revalidatePublicData } from "@/lib/public-data";
 import type { CustomAnswer } from "@/lib/screening-questions";
 import { getSession } from "@/lib/session";
 import {
@@ -661,6 +662,7 @@ export async function POST() {
     }
   }
 
+  revalidatePublicData();
   return NextResponse.json({ ok: true, count: DUMMY_APPLICANTS.length });
 }
 
@@ -674,6 +676,7 @@ export async function DELETE() {
   if (!employerProfileId) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   await deleteDummyApplicants(employerProfileId);
+  revalidatePublicData();
 
   return NextResponse.json({ ok: true });
 }

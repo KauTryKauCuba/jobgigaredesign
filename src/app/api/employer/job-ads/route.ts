@@ -27,6 +27,7 @@ import {
   saveJobAdImage,
   saveJobAdVideo,
 } from "@/lib/job-ads";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
 
@@ -215,6 +216,7 @@ export async function POST(request: Request) {
     if (media) await deleteJobAdFile(media.fileName);
     return NextResponse.json({ error: result.error }, { status: 409 });
   }
+  revalidatePublicData();
   if (editing && media) await deleteJobAdFile(editing.fileName);
 
   const saved = result.saved;
@@ -231,6 +233,7 @@ export async function DELETE(request: Request) {
   if (!booking) return NextResponse.json({ error: "Booking not found." }, { status: 404 });
 
   await db.delete(jobAds).where(eq(jobAds.id, booking.id));
+  revalidatePublicData();
   await deleteJobAdFile(booking.fileName);
   return NextResponse.json({ ok: true });
 }

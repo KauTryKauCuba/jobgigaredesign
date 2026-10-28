@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { jobPostingReports, jobPostings } from "@/lib/db/schema";
 import { sendJobAlertsForPosting } from "@/lib/job-alerts";
 import { getJobPostingById } from "@/lib/job-postings";
+import { revalidatePublicData } from "@/lib/public-data";
 import { isSuperadminEmail } from "@/lib/superadmin";
 
 function isNonEmptyString(value: unknown): value is string {
@@ -45,6 +46,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .set({ status: "active", rejectionReason: null, flagReason: null, flaggedAt: null, updatedAt: new Date() })
       .where(eq(jobPostings.id, id))
       .returning();
+    revalidatePublicData();
     // The posting is live — tell jobseekers it's a strong match for.
     await sendJobAlertsForPosting(id);
     return NextResponse.json({ posting: updated });
@@ -59,6 +61,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .set({ status: "rejected", rejectionReason: reason.trim(), flagReason: null, flaggedAt: null, updatedAt: new Date() })
       .where(eq(jobPostings.id, id))
       .returning();
+    revalidatePublicData();
     return NextResponse.json({ posting: updated });
   }
 
@@ -77,6 +80,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       })
       .where(eq(jobPostings.id, id))
       .returning();
+    revalidatePublicData();
     // Whatever jobseeker reports led here (if any) are now resolved into a
     // formal flag with its own reason — clear them so they don't also
     // linger in the Reports queue for a posting that's already being

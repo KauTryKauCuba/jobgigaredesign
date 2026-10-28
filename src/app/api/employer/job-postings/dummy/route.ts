@@ -6,6 +6,7 @@ import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { jobAdFileCleanupForPostings } from "@/lib/job-ads";
 import { aiInterviewMediaCleanupForPostings } from "@/lib/ai-interview";
 import { generateUniqueJobPostingSlug } from "@/lib/job-postings";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { DUMMY_JOB_POSTINGS, DUMMY_POSTING_MARKER } from "@/lib/dummy-job-postings";
 
@@ -22,6 +23,7 @@ async function deleteDummyPostings(employerProfileId: string) {
   const ids = dummies.map((p) => p.id);
   const cleanups = await Promise.all([jobAdFileCleanupForPostings(ids), aiInterviewMediaCleanupForPostings(ids)]);
   await db.delete(jobPostings).where(where);
+  revalidatePublicData();
   await Promise.all(cleanups.map((cleanup) => cleanup()));
 }
 
@@ -51,6 +53,7 @@ export async function POST() {
     });
   }
   await db.insert(jobPostings).values(rows);
+  revalidatePublicData();
 
   return NextResponse.json({ ok: true, count: rows.length });
 }

@@ -4,6 +4,7 @@ import { getAuthUser } from "@/lib/auth-user";
 import { db } from "@/lib/db";
 import { employerProfiles } from "@/lib/db/schema";
 import { notify } from "@/lib/notifications";
+import { revalidatePublicData } from "@/lib/public-data";
 import { isSuperadminEmail } from "@/lib/superadmin";
 import { isUuid } from "@/lib/uuid";
 
@@ -41,6 +42,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .update(employerProfiles)
       .set({ ssmVerificationStatus: "verified", ssmVerifiedAt: new Date(), ssmRejectionReason: null, updatedAt: new Date() })
       .where(eq(employerProfiles.id, id));
+    revalidatePublicData();
     await notify([existing.userId], "employer", {
       type: "ssm_verified",
       title: "Your business is verified",
@@ -58,6 +60,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .update(employerProfiles)
       .set({ ssmVerificationStatus: "rejected", ssmVerifiedAt: null, ssmRejectionReason: reason.trim(), updatedAt: new Date() })
       .where(eq(employerProfiles.id, id));
+    revalidatePublicData();
     await notify([existing.userId], "employer", {
       type: "ssm_rejected",
       title: "Your SSM document needs another look",

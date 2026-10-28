@@ -7,6 +7,7 @@ import { jobApplications, jobPostings } from "@/lib/db/schema";
 import { getEmployerTeamMembers } from "@/lib/employer-profile";
 import { canManageApplication, canViewApplication, getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getApplicationNotificationContext, notify, notifyJobseekerOfStatus } from "@/lib/notifications";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
 
@@ -285,6 +286,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const [updated] = await db.update(jobApplications).set(updates).where(eq(jobApplications.id, id)).returning();
+  revalidatePublicData();
   await recordStatusChange(id, existing.status, updated.status);
 
   if (updates.status === "screened") await awardBadge(profile.id, "first_candidate_screened");

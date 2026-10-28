@@ -3,6 +3,7 @@ import { and, count, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { employerProfiles, employerTeamMembers, jobPostingHiringManagers, users } from "@/lib/db/schema";
 import { getActorLabel, getFullEmployerAccess, logTeamActivity } from "@/lib/employer-profile";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isTeamRole } from "@/lib/team-roles";
 import { isUuid } from "@/lib/uuid";
@@ -118,6 +119,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   await db.update(employerTeamMembers).set({ role }).where(eq(employerTeamMembers.id, id));
+  revalidatePublicData();
   // Job assignments only mean something for a Hiring manager — an Owner or
   // Admin already sees every posting, and a Panel member sees none.
   if (member.role === "hiring_manager" && role !== "hiring_manager") {
@@ -178,6 +180,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   await db.delete(employerTeamMembers).where(eq(employerTeamMembers.id, id));
+  revalidatePublicData();
 
   await logTeamActivity({
     employerProfileId: auth.profile.id,

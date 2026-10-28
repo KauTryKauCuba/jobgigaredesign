@@ -15,13 +15,13 @@ import Navbar from "@/components/Navbar";
 import ScrollWidthBackground from "@/components/ScrollWidthBackground";
 import WelcomeModal from "@/components/WelcomeModal";
 import { getAuthUser } from "@/lib/auth-user";
-import { getLiveCompanyAds } from "@/lib/company-ads";
 import {
-  getEmployersWithPostings,
-  getLatestActivePostings,
-  getLatestShortlistAndInterviewActivity,
-} from "@/lib/employer-profile";
-import { getWelcomeImageUrl } from "@/lib/welcome-images";
+  getPublicEmployersWithPostings,
+  getPublicLatestActivePostings,
+  getPublicLatestActivity,
+  getPublicLiveCompanyAds,
+  getPublicWelcomeImageUrl,
+} from "@/lib/public-data";
 
 export default async function EmployerPage() {
   const [
@@ -34,12 +34,12 @@ export default async function EmployerPage() {
     welcomeImage,
   ] = await Promise.all([
     getAuthUser(),
-    getEmployersWithPostings(5),
-    getEmployersWithPostings(6),
-    getLatestActivePostings(5),
-    getLatestShortlistAndInterviewActivity(5),
-    getLiveCompanyAds(),
-    getWelcomeImageUrl("employer"),
+    getPublicEmployersWithPostings(5),
+    getPublicEmployersWithPostings(6),
+    getPublicLatestActivePostings(5),
+    getPublicLatestActivity(5),
+    getPublicLiveCompanyAds(),
+    getPublicWelcomeImageUrl("employer"),
   ]);
   // This is the public marketing page — it never auto-redirects a signed-in
   // visitor away, not even one still in onboarding (the navbar logo brings

@@ -5,6 +5,7 @@ import { employerTeamMembers, jobPostingHiringManagers, jobPostings, users } fro
 import { DUMMY_POSTING_MARKER } from "@/lib/dummy-job-postings";
 import { buildDummyTeamEmail, buildDummyTeamLoginEmail, DUMMY_TEAM_EMAIL_DOMAIN, DUMMY_TEAM_ROSTER, slugifyName } from "@/lib/dummy-team";
 import { getFullEmployerAccess } from "@/lib/employer-profile";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 
 async function getEmployerProfileId(userId: string) {
@@ -126,5 +127,6 @@ export async function DELETE() {
   if (!employerProfileId) return NextResponse.json({ error: "No employer profile." }, { status: 404 });
 
   await deleteDummyTeam(employerProfileId);
+  revalidatePublicData();
   return NextResponse.json({ ok: true });
 }

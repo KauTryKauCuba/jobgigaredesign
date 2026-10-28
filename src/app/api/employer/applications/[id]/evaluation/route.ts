@@ -4,6 +4,7 @@ import { recordStatusChange } from "@/lib/application-events";
 import { db } from "@/lib/db";
 import { interviewEvaluations, jobApplications, jobPostings } from "@/lib/db/schema";
 import { canViewApplication, getScopedEmployerAccess } from "@/lib/hiring-scope";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
 import { getPanelEvaluations } from "@/lib/job-applications";
@@ -125,6 +126,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   let status = application.status;
   if (application.status === "evaluation" && isPanelEvaluationComplete(details.interviewerUserIds, state.evaluations)) {
     await db.update(jobApplications).set({ status: "evaluated", updatedAt: new Date() }).where(eq(jobApplications.id, id));
+    revalidatePublicData();
     await recordStatusChange(id, "evaluation", "evaluated");
     status = "evaluated";
   }
@@ -154,6 +156,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   await db.update(jobApplications).set({ status: "evaluated", updatedAt: new Date() }).where(eq(jobApplications.id, id));
+  revalidatePublicData();
   await recordStatusChange(id, "evaluation", "evaluated");
   return NextResponse.json({ ...state, status: "evaluated" });
 }

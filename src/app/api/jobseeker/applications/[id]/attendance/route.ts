@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobApplications, jobseekerProfiles } from "@/lib/db/schema";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 
 export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -42,6 +43,7 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
     .set({ jobseekerConfirmedAttendance: true, updatedAt: new Date() })
     .where(eq(jobApplications.id, id))
     .returning();
+  revalidatePublicData();
 
   return NextResponse.json({ application: updated });
 }

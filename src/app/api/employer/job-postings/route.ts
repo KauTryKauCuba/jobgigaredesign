@@ -22,6 +22,7 @@ import {
   isSkillSuggestions,
   isStringArray,
 } from "@/lib/job-posting-validation";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { INDUSTRIES } from "@/lib/industries";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
@@ -293,6 +294,7 @@ export async function POST(request: Request) {
     });
   }
 
+  revalidatePublicData();
   await awardBadge(profile.id, "first_job_posted");
   if (screening) await awardBadge(profile.id, "screening_enabled");
 

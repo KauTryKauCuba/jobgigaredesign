@@ -29,6 +29,7 @@ import {
 import { db } from "@/lib/db";
 import { companyAds } from "@/lib/db/schema";
 import { getFullEmployerAccess } from "@/lib/employer-profile";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
 
@@ -212,6 +213,7 @@ export async function POST(request: Request) {
     if (media) await deleteCompanyAdFile(media.fileName);
     return NextResponse.json({ error: result.error }, { status: 409 });
   }
+  revalidatePublicData();
   if (editing && media) await deleteCompanyAdFile(editing.fileName);
 
   const saved = result.saved;
@@ -228,6 +230,7 @@ export async function DELETE(request: Request) {
   if (!booking) return NextResponse.json({ error: "Booking not found." }, { status: 404 });
 
   await db.delete(companyAds).where(eq(companyAds.id, booking.id));
+  revalidatePublicData();
   await deleteCompanyAdFile(booking.fileName);
   return NextResponse.json({ ok: true });
 }

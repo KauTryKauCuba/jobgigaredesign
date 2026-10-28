@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth-user";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isSuperadminEmail } from "@/lib/superadmin";
 import {
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "We couldn't read that image — try a JPG or PNG." }, { status: 400 });
   }
+  revalidatePublicData();
   return NextResponse.json({ images: await getWelcomeImages() });
 }
 
@@ -61,5 +63,6 @@ export async function DELETE(request: Request) {
   const role = new URL(request.url).searchParams.get("role");
   if (!isWelcomeRole(role)) return NextResponse.json({ error: "Choose employer or jobseeker." }, { status: 400 });
   await resetWelcomeImage(role);
+  revalidatePublicData();
   return NextResponse.json({ images: await getWelcomeImages() });
 }

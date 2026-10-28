@@ -147,6 +147,11 @@ export async function getCompanyAdBookings(employerProfileId: string, today = to
 /** The landing page's ads: approved and running today, up to the slot count. */
 export async function getLiveCompanyAds(today = todayMY()) {
   await syncCompanyAds(today);
+  return queryLiveCompanyAds(today);
+}
+
+/** getLiveCompanyAds without the housekeeping — for callers that run syncCompanyAds themselves. */
+export async function queryLiveCompanyAds(today: string) {
   const rows = await db
     .select(adWithCompany)
     .from(companyAds)

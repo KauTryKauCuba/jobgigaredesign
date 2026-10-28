@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { employerTeamMembers, users } from "@/lib/db/schema";
 import { getEmployerAccess } from "@/lib/employer-profile";
 import { CONTACT_ROLES } from "@/lib/positions";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 import { isBase64DataUrl, saveBase64Upload } from "@/lib/uploads";
 
@@ -93,6 +94,7 @@ export async function PATCH(request: Request) {
         ),
       );
   });
+  revalidatePublicData();
 
   return NextResponse.json({ ok: true });
 }

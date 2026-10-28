@@ -10,9 +10,11 @@ import * as schema from "./schema";
  */
 const globalForDb = globalThis as unknown as { pgPool?: Pool };
 
+// pg's default of 10 connections is less than two concurrent visits to a
+// page that runs several queries in parallel; Postgres allows 100.
 const pool =
   globalForDb.pgPool ??
-  new Pool({ connectionString: process.env.DATABASE_URL });
+  new Pool({ connectionString: process.env.DATABASE_URL, max: 20 });
 
 if (process.env.NODE_ENV !== "production") globalForDb.pgPool = pool;
 

@@ -7,6 +7,7 @@ import { users } from "@/lib/db/schema";
 import { activatePendingTeamInvites, hasPendingTeamInvite } from "@/lib/employer-profile";
 import { consumeInviteCompany } from "@/lib/team-invite";
 import { getPostAuthRedirect } from "@/lib/onboarding";
+import { revalidatePublicData } from "@/lib/public-data";
 import { createSession } from "@/lib/session";
 import { ACCOUNT_NOT_FOUND_MESSAGE } from "@/lib/auth-messages";
 
@@ -166,6 +167,8 @@ export async function GET(request: Request) {
       .set({ googleId: googleUser.sub, avatarUrl: user.avatarUrl ?? googleUser.picture })
       .where(eq(users.id, user.id))
       .returning();
+    // A first Google sign-in can give a posting's contact person a photo.
+    revalidatePublicData();
   }
 
   // Connects any pending "invite this email to my team" row to this actual

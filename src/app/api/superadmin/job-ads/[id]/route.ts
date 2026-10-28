@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { employerProfiles, jobAds, jobPostings } from "@/lib/db/schema";
 import { JOB_ADS_PAGE, syncJobAds } from "@/lib/job-ads";
 import { notify } from "@/lib/notifications";
+import { revalidatePublicData } from "@/lib/public-data";
 import { isSuperadminEmail } from "@/lib/superadmin";
 import { isUuid } from "@/lib/uuid";
 
@@ -57,6 +58,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .update(jobAds)
       .set({ status: "approved", rejectionReason: null, reviewedAt: new Date() })
       .where(eq(jobAds.id, id));
+    revalidatePublicData();
     // Starting today: the "Your job ad is live" notification (syncJobAds)
     // says it all, so this one only goes out for a future start.
     if (existing.startDate > todayMY()) {
@@ -81,6 +83,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .update(jobAds)
       .set({ status: "rejected", rejectionReason: reason.trim(), reviewedAt: new Date() })
       .where(eq(jobAds.id, id));
+    revalidatePublicData();
     await notify(recipients, "employer", {
       type: "job_ad_rejected",
       title: wasLive ? "Your job ad was taken down" : "Your job ad needs changes",

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { removeDummyCompanies, seedDummyCompanies } from "@/lib/dummy-companies";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 
 async function requireEmployerUser() {
@@ -23,6 +24,7 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
 
   await seedDummyCompanies(db, user, user.email);
+  revalidatePublicData();
   return NextResponse.json({ ok: true });
 }
 
@@ -38,5 +40,6 @@ export async function DELETE() {
   if (!user) return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
 
   const removed = await removeDummyCompanies(db, user.id);
+  revalidatePublicData();
   return NextResponse.json({ removed });
 }

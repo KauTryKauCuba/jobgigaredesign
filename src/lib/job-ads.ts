@@ -167,6 +167,11 @@ export async function getAdvertisableJobPostings(employerProfileId: string) {
 /** The jobseeker page's featured jobs: approved, running today, on a still-active posting, up to the slot count. */
 export async function getLiveJobAds(today = todayMY()) {
   await syncJobAds(today);
+  return queryLiveJobAds(today);
+}
+
+/** getLiveJobAds without the housekeeping — for callers that run syncJobAds themselves. */
+export async function queryLiveJobAds(today: string) {
   const rows = await db
     .select(adWithJob)
     .from(jobAds)

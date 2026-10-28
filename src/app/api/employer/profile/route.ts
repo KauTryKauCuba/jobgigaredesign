@@ -9,6 +9,7 @@ import { DEFAULT_COMPANY_LIMIT, getCompanyLimitInfo } from "@/lib/company-limit"
 import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { isValidMalaysianPhone } from "@/lib/phone";
+import { revalidatePublicData } from "@/lib/public-data";
 import {
   AWARD_TITLE_MAX,
   DRESS_CODES,
@@ -563,6 +564,7 @@ export async function POST(request: Request) {
     );
   }
   const profileId = saved;
+  revalidatePublicData();
 
   // Best-effort, after the main save succeeds — badges are supplementary,
   // never something that should fail the actual profile save. Required

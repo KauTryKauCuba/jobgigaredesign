@@ -5,6 +5,7 @@ import { companyAds, employerProfiles, employerTeamMembers, jobAds, users } from
 import { deleteCompanyAdFile } from "@/lib/company-ads";
 import { getOwnedEmployerProfiles } from "@/lib/employer-profile";
 import { deleteJobAdFile } from "@/lib/job-ads";
+import { revalidatePublicData } from "@/lib/public-data";
 import { clearSession, getSession } from "@/lib/session";
 
 // Deletes the signed-in employer's own account. Two shapes, depending on
@@ -87,6 +88,7 @@ export async function DELETE(request: Request) {
     ...jobAdFiles.map((r) => deleteJobAdFile(r.fileName)),
   ]);
 
+  revalidatePublicData();
   await clearSession();
   return NextResponse.json({ ok: true });
 }

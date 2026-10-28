@@ -9,24 +9,20 @@ import Navbar from "@/components/Navbar";
 import WelcomeModal from "@/components/WelcomeModal";
 import ResumeUpload from "@/components/ResumeUpload";
 import { getAuthUser, getJobseekerResumeInfo } from "@/lib/auth-user";
-import { getLiveJobAds } from "@/lib/job-ads";
 import { getAppliedJobPostingIds, getJobseekerProfileId } from "@/lib/job-applications";
-import { getJobPostingsByStatus, stripCustomQuestionAnswers } from "@/lib/job-postings";
-import { getPostingContacts } from "@/lib/posting-extras";
+import { getPublicActivePostings, getPublicLiveJobAds, getPublicWelcomeImageUrl } from "@/lib/public-data";
 import { getSavedJobPostingIds } from "@/lib/saved-jobs";
 import { getVideoPitchForProfile } from "@/lib/video-pitch";
 import { getSession } from "@/lib/session";
-import { getWelcomeImageUrl } from "@/lib/welcome-images";
 
 export default async function JobseekerPage() {
+  // Postings come with each one's "Posted by" contact — public details only.
   const [authUser, activePostings, liveJobAds, welcomeImage] = await Promise.all([
     getAuthUser(),
-    getJobPostingsByStatus("active"),
-    getLiveJobAds(),
-    getWelcomeImageUrl("jobseeker"),
+    getPublicActivePostings(),
+    getPublicLiveJobAds(),
+    getPublicWelcomeImageUrl("jobseeker"),
   ]);
-  // Each posting's "Posted by" contact — public details only.
-  const contacts = await getPostingContacts(activePostings.map((row) => row.posting));
 
   // This is the public marketing page — like "/employer", it never
   // auto-redirects a signed-in visitor away, not even one still in onboarding
@@ -38,8 +34,9 @@ export default async function JobseekerPage() {
   // Only meaningful for an actual jobseeker session — an employer viewing
   // this page via the toggle has no jobseeker resume to show.
   const session = authUser?.role === "jobseeker" ? await getSession() : null;
-  const existingResume = session ? await getJobseekerResumeInfo(session.userId) : null;
-  const jobseekerProfileId = session ? await getJobseekerProfileId(session.userId) : null;
+  const [existingResume, jobseekerProfileId] = session
+    ? await Promise.all([getJobseekerResumeInfo(session.userId), getJobseekerProfileId(session.userId)])
+    : [null, null];
   const [appliedJobPostingIds, savedJobPostingIds, videoPitch] = jobseekerProfileId
     ? await Promise.all([
         getAppliedJobPostingIds(jobseekerProfileId),
@@ -71,17 +68,7 @@ export default async function JobseekerPage() {
       <JobseekerHowItWorks />
       <AnimatedRibbon accent="gold" />
       <JobPostingHighlights
-        postings={JSON.parse(
-          JSON.stringify(
-            activePostings.map((row) => ({
-              ...row,
-              posting: {
-                ...stripCustomQuestionAnswers(row.posting),
-                contact: contacts.get(`${row.posting.employerProfileId}:${row.posting.contactUserId}`) ?? null,
-              },
-            })),
-          ),
-        )}
+        postings={JSON.parse(JSON.stringify(activePostings))}
         canApply={authUser?.role === "jobseeker"}
         appliedJobPostingIds={appliedJobPostingIds}
         savedJobPostingIds={savedJobPostingIds}

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobApplications, jobseekerProfiles } from "@/lib/db/schema";
 import { getApplicationNotificationContext, getJobNotificationRecipients, notify } from "@/lib/notifications";
+import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
 
 const RESPONSES = ["accepted", "declined", "reschedule_requested"] as const;
@@ -51,6 +52,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .set({ interviewResponseStatus: response as (typeof RESPONSES)[number], updatedAt: new Date() })
     .where(eq(jobApplications.id, id))
     .returning();
+  revalidatePublicData();
 
   // Tell whoever's running the interview — the panel if there is one,
   // otherwise the posting's hiring team (Owners/Admins and its Hiring managers).
