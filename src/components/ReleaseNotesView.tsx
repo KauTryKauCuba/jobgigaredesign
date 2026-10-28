@@ -16,6 +16,14 @@ const CONTENT: Record<Role, { headline: string; intro: string; releases: Release
     releases: [
       {
         date: "October 2026",
+        title: "About, release notes, and legal pages",
+        items: [
+          "New pages in the footer: About, Release notes, Privacy, Security, and Terms & Conditions.",
+          "Fixed a mobile scrolling glitch where overscrolling past the top or bottom briefly showed a plain white background.",
+        ],
+      },
+      {
+        date: "October 2026",
         title: "Applicants' preferred work locations and certification files",
         items: [
           "Applicant profiles now show the towns and areas they'd like to work in, picked from a real place search.",
@@ -55,6 +63,14 @@ const CONTENT: Record<Role, { headline: string; intro: string; releases: Release
     headline: "What's new for jobseekers",
     intro: "A plain-language log of what's changed in JobGiga — newest first.",
     releases: [
+      {
+        date: "October 2026",
+        title: "About, release notes, and legal pages",
+        items: [
+          "New pages in the footer: About, Release notes, Privacy, Security, and Terms & Conditions.",
+          "Fixed a mobile scrolling glitch where overscrolling past the top or bottom briefly showed a plain white background.",
+        ],
+      },
       {
         date: "October 2026",
         title: "Pick your exact town or area",
@@ -107,7 +123,10 @@ export default function ReleaseNotesView({ role, authUser }: { role: Role; authU
     <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${gold ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>
       <Navbar initialUser={authUser} pageRole={role} />
 
-      <div className="shell pt-[clamp(40px,7vh,72px)]">
+      {/* Same top padding as the landing page's hero (minus this pill + its
+          gap, ~46px, which the hero doesn't have), so the heading below
+          sits at the same distance from the navbar the hero's does. */}
+      <div className="shell pt-[clamp(2px,calc(9vh-46px),50px)]">
         <div className="mx-auto max-w-[720px] text-center">
           <span className="inline-flex items-center rounded-full bg-[#F1F4F8] px-[14px] py-[7px] text-xs text-[#4B5468]">
             Release notes · For {gold ? "jobseekers" : "employers"}

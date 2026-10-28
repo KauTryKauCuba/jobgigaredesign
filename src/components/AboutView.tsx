@@ -182,14 +182,30 @@ export default function AboutView({ role, authUser }: { role: Role; authUser: Au
     <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${gold ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>
       <Navbar initialUser={authUser} pageRole={role} />
 
-      <div className="shell pt-[clamp(40px,7vh,72px)]">
+      {/* Same top padding as the landing page's hero (minus this pill + its
+          gap, ~46px, which the hero doesn't have), so the heading below
+          sits at the same distance from the navbar the hero's does. */}
+      <div className="shell pt-[clamp(2px,calc(9vh-46px),50px)]">
         <div className="mx-auto max-w-[720px] text-center">
           <span className="inline-flex items-center rounded-full bg-[#F1F4F8] px-[14px] py-[7px] text-xs text-[#4B5468]">
             About JobGiga · For {gold ? "jobseekers" : "employers"}
           </span>
           <h1
             className="mt-[16px] font-sans font-semibold text-[#141B2E]"
-            style={{ fontSize: "clamp(30px,3.6vw,48px)", lineHeight: 1.1, letterSpacing: "-0.02em" }}
+            style={{
+              // Same size and gradient as the landing page's own hero
+              // heading ("Go beyond the summit..." / "Job hunting in
+              // Malaysia...") — About reads as part of that same family.
+              fontSize: "clamp(34px, 4vw, 56px)",
+              lineHeight: 1.08,
+              letterSpacing: "-0.02em",
+              backgroundImage: `var(--brand-gradient-${gold ? "jobseeker" : "employer"})`,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+              display: "inline-block",
+              paddingBottom: "0.08em",
+            }}
           >
             {c.headline}
           </h1>

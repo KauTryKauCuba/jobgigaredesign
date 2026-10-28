@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import EmployerDashboardShell from "./EmployerDashboardShell";
 import EmployerDashboardOverview, { type DashboardData } from "./EmployerDashboardOverview";
@@ -24,17 +23,7 @@ export default function EmployerDashboard({
   const router = useRouter();
   // A Hiring manager's dashboard covers only their assigned jobs.
   const canManage = hasFullAccess(authUser.teamRole ?? "owner");
-  const [refreshing, setRefreshing] = useState(false);
   const firstName = authUser.name?.split(" ")[0] ?? "there";
-
-  function refresh() {
-    setRefreshing(true);
-    router.refresh();
-    // router.refresh() doesn't return a promise we can await — this is just
-    // enough to give the button a brief pressed/disabled state so a click
-    // registers as having done something.
-    setTimeout(() => setRefreshing(false), 600);
-  }
 
   return (
     <EmployerDashboardShell
@@ -43,14 +32,6 @@ export default function EmployerDashboard({
       heading={`Welcome back, ${firstName}`}
       headerAction={
         <div className="flex flex-wrap items-center gap-[8px]">
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={refresh}
-            className="flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] px-[16px] text-sm text-[#141B2E] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {refreshing ? "Refreshing…" : "Refresh"}
-          </button>
           {canManage && (
             <button
               type="button"

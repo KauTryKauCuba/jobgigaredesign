@@ -12,7 +12,18 @@ import RewardPopup from "./RewardPopup";
 import SampleDataBanner from "./SampleDataBanner";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
-import { BriefcaseIcon, BuildingIcon, CalendarIcon, GiftIcon, HomeIcon, MegaphoneIcon, UserIcon, UsersIcon } from "./icons";
+import { SIDEBAR_COLLAPSED_ATTR, SIDEBAR_COLLAPSED_KEY } from "@/lib/employer-dashboard-prefs";
+import {
+  BriefcaseIcon,
+  BuildingIcon,
+  CalendarIcon,
+  ChevronDownIcon,
+  GiftIcon,
+  HomeIcon,
+  MegaphoneIcon,
+  UserIcon,
+  UsersIcon,
+} from "./icons";
 import type { AuthUser } from "./AuthModal";
 import type { TeamRole } from "@/lib/team-roles";
 
@@ -26,6 +37,7 @@ export type EmployerNavKey =
   | "team"
   | "profile"
   | "rewards";
+
 
 const NAV_ITEMS = [
   { key: "overview", href: "/employer/dashboard", label: "Dashboard", icon: HomeIcon },
@@ -68,10 +80,16 @@ function Sidebar({
   active,
   teamRole,
   hasRewards,
+  collapsed,
+  onToggleCollapsed,
 }: {
   active: EmployerNavKey;
   teamRole: TeamRole | null | undefined;
   hasRewards: boolean;
+  // Icon-only, xl+ only — below that it's already the compact horizontal
+  // pill row, so there's nothing further to collapse there.
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
@@ -83,19 +101,32 @@ function Sidebar({
           key={item.key}
           href={item.href}
           aria-current={item.key === active ? "page" : undefined}
+          title={collapsed ? item.label : undefined}
           onClick={(e) => {
             if (item.key === active) return;
             e.preventDefault();
             guardNavigation(() => router.push(item.href));
           }}
-          className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-brand-teal-soft xl:aria-[current=page]:text-brand-teal-dark xl:aria-[current=page]:shadow-none ${
+          className={`emp-nav-link flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:h-[40px] xl:rounded-[10px] xl:aria-[current=page]:bg-brand-teal-soft xl:aria-[current=page]:text-brand-teal-dark xl:aria-[current=page]:shadow-none ${
             item.key === active ? "animate-fade-in-up" : ""
-          }`}
+          } ${collapsed ? "xl:justify-center xl:px-0" : ""}`}
         >
           <item.icon className="h-[16px] w-[16px] shrink-0" />
-          {item.label}
+          <span className={`emp-nav-label ${collapsed ? "xl:hidden" : ""}`}>{item.label}</span>
         </Link>
       ))}
+      {/* Collapse/expand — xl only, where the vertical layout has width worth reclaiming. */}
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className="hidden shrink-0 items-center justify-center rounded-[10px] py-[10px] text-[#9AA3B2] transition-colors hover:bg-black/[0.03] hover:text-[#4B5468] xl:flex"
+      >
+        <ChevronDownIcon
+          className={`h-[11px] w-[11px] transition-transform ${collapsed ? "-rotate-90" : "rotate-90"}`}
+        />
+      </button>
     </aside>
   );
 }
@@ -143,6 +174,43 @@ export default function EmployerDashboardShell({
   const [phoneBarClosed, setPhoneBarClosed] = useState(phoneBannerClosedThisVisit);
   const showPhoneBar = !!authUser.showPhoneVerifyBar && !phoneBarClosed;
 
+  // Icon-only sidebar, remembered per browser — loaded after mount (not
+  // during the initial render) so server and client agree on the first
+  // paint, same reasoning as the dashboard's other saved-locally prefs.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") setSidebarCollapsed(true);
+    } catch {
+      // Storage unavailable — just show the sidebar expanded.
+    }
+  }, []);
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // Won't persist past a reload, but still reflects locally.
+      }
+      // The before-paint script (app/layout.tsx) only ever ADDS this
+      // attribute, never removes it — it has no reason to on its own, since
+      // a page load starts from a fresh <body> each time. Clicking here,
+      // mid-session, is the one path that can leave it stuck "collapsed"
+      // from an earlier load: its CSS rule targets the rail by id, which
+      // outranks a Tailwind width *class*, so without this, expanding would
+      // update the state/classes but the sidebar would stay visually
+      // collapsed anyway.
+      try {
+        document.body.toggleAttribute(SIDEBAR_COLLAPSED_ATTR, next);
+      } catch {
+        // No DOM access — nothing to desync.
+      }
+      return next;
+    });
+  }
+
   return (
     <UnsavedChangesGuardBoundary>
     <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-brand-teal-page pb-[92px]">
@@ -166,15 +234,30 @@ export default function EmployerDashboardShell({
           {/* `contents` below xl flattens this column so its pieces stack
               with the page content on smaller screens; xl restores the sticky rail. */}
           <div
+            id="employer-sidebar-rail"
             ref={railRef}
-            className="contents xl:sticky xl:flex xl:w-[220px] xl:shrink-0 xl:flex-col xl:gap-[10px]"
+            // `sticky` makes this its own stacking context, so its own
+            // z-index decides whether it (and anything that opens inside
+            // it, like the company switcher's dropdown) paints above or
+            // below the main content next to it — without one, it's z-auto
+            // and loses to content, which comes later in the markup.
+            className={`contents xl:sticky xl:z-20 xl:flex xl:shrink-0 xl:flex-col xl:gap-[10px] ${sidebarCollapsed ? "xl:w-[64px]" : "xl:w-[220px]"}`}
             style={{ top: railTop }}
           >
             {/* Only renders once someone actually belongs to more than one
                 company — invisible for the common single-company case. */}
-            <CompanySwitcher />
-            <Sidebar active={active} teamRole={authUser.teamRole} hasRewards={!!authUser.rewards?.hasRewards || active === "rewards"} />
+            <CompanySwitcher collapsed={sidebarCollapsed} />
+            <Sidebar
+              active={active}
+              teamRole={authUser.teamRole}
+              hasRewards={!!authUser.rewards?.hasRewards || active === "rewards"}
+              collapsed={sidebarCollapsed}
+              onToggleCollapsed={toggleSidebarCollapsed}
+            />
           </div>
+          {/* The matching before-paint script that sets this look from
+              localStorage (so there's no snap-to-collapsed on load) lives
+              in the root layout, not here — see app/layout.tsx. */}
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center justify-between gap-[12px]">

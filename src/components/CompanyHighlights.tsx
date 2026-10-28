@@ -110,9 +110,14 @@ function buildDisplayCompanies(realCompanies: HighlightCompany[]): Company[] {
 export default function CompanyHighlights({
   realCompanies,
   variant = "landing",
+  accent = "employer",
 }: {
   realCompanies: HighlightCompany[];
   variant?: "landing" | "page";
+  // Which side's gradient the page-variant heading uses (the Find
+  // companies page can be viewed as either). The landing variant is only
+  // ever shown on the employer page, so it always uses that gradient.
+  accent?: "employer" | "jobseeker";
 }) {
   const onPage = variant === "page";
   const { ref, progress } = useScrollReveal();
@@ -147,10 +152,10 @@ export default function CompanyHighlights({
   return (
     <div
       className={
-        onPage ? "relative z-0 pt-[16px] pb-[48px]" : "shell relative z-[1] -mt-[32px] pt-[clamp(32px,5vh,56px)] pb-[128px]"
+        onPage ? "relative z-0 pb-[48px]" : "shell relative z-[1] -mt-[32px] pt-[clamp(32px,5vh,56px)] pb-[128px]"
       }
     >
-      <div className={`relative z-[1] mx-auto text-center ${onPage ? "max-w-[560px]" : "max-w-[720px]"}`}>
+      <div className="relative z-[1] mx-auto max-w-[720px] text-center">
         {/* A block wrapper, not just the inline-flex span itself — the !onPage
             h2 below is display:inline-block (needed for the gradient-clip
             trick), so without this the pill and heading can share a text
@@ -168,22 +173,19 @@ export default function CompanyHighlights({
         <h2
           className="mt-[16px] font-sans font-semibold text-[#141B2E]"
           style={{
-            fontSize: onPage ? "clamp(24px,2.6vw,32px)" : "clamp(34px, 4vw, 56px)",
-            lineHeight: onPage ? 1.15 : 1.08,
+            fontSize: "clamp(34px, 4vw, 56px)",
+            lineHeight: 1.08,
             letterSpacing: "-0.02em",
-            // Same size and teal-into-gold gradient as the employer landing
-            // page's own hero heading ("Go beyond the summit...") — this row
-            // sits right under it, on the same page, so the two read as one family.
-            ...(onPage
-              ? {}
-              : {
-                  backgroundImage: "var(--brand-gradient-employer)",
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                  display: "inline-block",
-                  paddingBottom: "0.08em",
-                }),
+            // Same size and gradient as the hero heading on the employer
+            // landing page ("Go beyond the summit...") — the landing variant
+            // sits right under that hero, and the page variant is this same
+            // row reused on Find companies, so both read as one family.
+            backgroundImage: `var(--brand-gradient-${accent})`,
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+            display: "inline-block",
+            paddingBottom: "0.08em",
           }}
         >
           {onPage ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import AnimatedRibbon from "./AnimatedRibbon";
 import ApplicantDetailModal from "./ApplicantDetailModal";
 import VideoPitchBadge, { type ApplicantVideoPitch } from "./VideoPitchBadge";
@@ -225,6 +226,14 @@ export default function EmployerInterviewsView({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  // Arriving from a dashboard tile ("Reschedules"/"No-shows") lands straight
+  // on list view with that response filter already applied, instead of a
+  // generic unfiltered page.
+  const searchParams = useSearchParams();
+  const initialResponseFilter = ((): InterviewResponseStatus | null => {
+    const param = searchParams.get("response");
+    return param === "reschedule_requested" || param === "no_show" ? param : null;
+  })();
   const [view, setView] = useState<"list" | "kanban" | "calendar">("list");
   // Kanban drag state — dragOverKey highlights the column under the
   // pointer, draggingId dims the card being dragged.
@@ -241,7 +250,7 @@ export default function EmployerInterviewsView({
   const [openViaSchedulePicker, setOpenViaSchedulePicker] = useState(false);
   const [nameQuery, setNameQuery] = useState("");
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
-  const [responseFilter, setResponseFilter] = useState<InterviewResponseStatus | null>(null);
+  const [responseFilter, setResponseFilter] = useState<InterviewResponseStatus | null>(initialResponseFilter);
 
   function toggleResponseFilter(status: InterviewResponseStatus) {
     setResponseFilter((prev) => (prev === status ? null : status));

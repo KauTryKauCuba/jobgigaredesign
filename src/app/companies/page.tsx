@@ -29,9 +29,13 @@ export default async function CompaniesPage() {
     <SiteThemeLayer audience={accent} />
     <main className={`flex min-h-[100svh] flex-col overflow-x-clip pb-[92px] ${accent === "jobseeker" ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>
       <Navbar initialUser={authUser} pageRole={accent} />
-      <div className="shell pt-[24px]">
+      {/* Same top padding as the landing page's hero (minus this page's own
+          "Featured companies" pill + its gap, ~46px, which the hero doesn't
+          have), so this page's heading sits at the same distance from the
+          navbar the hero's does. */}
+      <div className="shell pt-[clamp(2px,calc(9vh-46px),50px)]">
         {/* The employer landing page's "Who's hiring" row, as a showcase above the full directory. */}
-        <CompanyHighlights variant="page" realCompanies={JSON.parse(JSON.stringify(highlightCompanies))} />
+        <CompanyHighlights variant="page" accent={accent} realCompanies={JSON.parse(JSON.stringify(highlightCompanies))} />
         {/* Above the showcase row, on the page's own background, so its cards
             tuck in behind this whole section as the page scrolls. */}
         <div className={`relative z-[2] pt-[32px] ${accent === "jobseeker" ? "bg-brand-gold-page" : "bg-brand-teal-page"}`}>

@@ -89,6 +89,40 @@ body {
   }
 }
 
+/* Employer dashboard's collapsible sidebar: a pre-hydration inline script
+   (see EmployerDashboardShell.tsx) sets this attribute from localStorage
+   before the page paints, so the collapsed width/labels are already right
+   on the very first frame — without it, the sidebar would render expanded
+   (React's default state) and visibly snap to collapsed a moment later
+   once the effect that reads localStorage runs. */
+@media (min-width: 1280px) {
+  [data-emp-sidebar-collapsed="true"] #employer-sidebar-rail {
+    width: 64px;
+  }
+  [data-emp-sidebar-collapsed="true"] .emp-nav-label {
+    display: none;
+  }
+  [data-emp-sidebar-collapsed="true"] .emp-nav-link {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* The company switcher (only rendered for someone on more than one
+     company) — same height as expanded so collapsing never changes the
+     sidebar's total height, just swapped for a centered logo button. */
+  [data-emp-sidebar-collapsed="true"] .emp-company-switcher {
+    height: 150px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  [data-emp-sidebar-collapsed="true"] .emp-switcher-full {
+    display: none;
+  }
+  [data-emp-sidebar-collapsed="true"] .emp-switcher-collapsed {
+    display: flex;
+  }
+}
+
 @media (max-width: 640px) {
   .app-shell {
     padding-inline: 16px;

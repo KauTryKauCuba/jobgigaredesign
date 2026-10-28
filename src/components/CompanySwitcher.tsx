@@ -71,7 +71,7 @@ function CompanyLogo({ url }: { url: string | null }) {
 // lists down. Renders nothing for the common case (one company, nothing to
 // switch between) — only shows up once someone actually belongs to more
 // than one.
-export default function CompanySwitcher() {
+export default function CompanySwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[] | null>(cachedCompanies);
   const [currentId, setCurrentId] = useState<string | null>(cachedCurrentId);
@@ -145,63 +145,91 @@ export default function CompanySwitcher() {
   const current = companies.find((c) => c.id === currentId) ?? companies[0];
 
   return (
-    <div ref={menuRef} className="relative shrink-0 rounded-[14px] border border-[#EAEDF2] bg-white p-[22px]">
-      <div className="flex items-center justify-between gap-[8px]">
-        <p className="text-xs text-[#4B5468]">Company</p>
-        <div className="flex shrink-0 items-center gap-[6px]">
-          <span className={`rounded-full px-[9px] py-[3px] text-xs ${ROLE_PILL[current.role]}`}>
-            {ROLE_LABEL[current.role]}
-          </span>
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((v) => !v)}
-            aria-expanded={detailsOpen}
-            aria-label={detailsOpen ? "Hide company details" : "Show company details"}
-            className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05]"
-          >
-            <ChevronDownIcon className={`h-[9px] w-[9px] transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-[14px] flex items-center gap-[10px]">
-        <CompanyLogo url={current.logoUrl} />
-        <span className="min-w-0 flex-1 truncate text-sm text-[#141B2E]">{current.companyName}</span>
-      </div>
-
-      <div
-        className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
-          detailsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        }`}
-      >
-        <div className="overflow-hidden">
-          <div className="mt-[12px] flex flex-col gap-[4px] text-xs text-[#4B5468]">
-            <p>
-              <span className="text-[#9AA3B2]">Owner:</span> {current.ownerName}
-            </p>
-            <p>
-              <span className="text-[#9AA3B2]">Joined:</span> {formatJoinedDate(current.joinedAt)}
-            </p>
-            <p>
-              <span className="text-[#9AA3B2]">Industry:</span> {current.industry}
-            </p>
-            <p>
-              <span className="text-[#9AA3B2]">Size:</span> {current.companySize} employees
-            </p>
+    <div
+      ref={menuRef}
+      className={`emp-company-switcher relative shrink-0 rounded-[14px] border border-[#EAEDF2] bg-white py-[22px] ${
+        collapsed ? "xl:h-[150px] xl:px-[6px]" : "px-[22px]"
+      }`}
+    >
+      {/* Full card — always shown below xl (where collapse doesn't apply); at
+          xl+ only when expanded. */}
+      <div className={`emp-switcher-full ${collapsed ? "xl:hidden" : ""}`}>
+        <div className="flex items-center justify-between gap-[8px]">
+          <p className="text-xs text-[#4B5468]">Company</p>
+          <div className="flex shrink-0 items-center gap-[6px]">
+            <span className={`rounded-full px-[9px] py-[3px] text-xs ${ROLE_PILL[current.role]}`}>
+              {ROLE_LABEL[current.role]}
+            </span>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((v) => !v)}
+              aria-expanded={detailsOpen}
+              aria-label={detailsOpen ? "Hide company details" : "Show company details"}
+              className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[#9AA3B2] hover:bg-black/[0.05]"
+            >
+              <ChevronDownIcon className={`h-[9px] w-[9px] transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
+            </button>
           </div>
         </div>
+        <div className="mt-[14px] flex items-center gap-[10px]">
+          <CompanyLogo url={current.logoUrl} />
+          <span className="min-w-0 flex-1 truncate text-sm text-[#141B2E]">{current.companyName}</span>
+        </div>
+
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+            detailsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="mt-[12px] flex flex-col gap-[4px] text-xs text-[#4B5468]">
+              <p>
+                <span className="text-[#9AA3B2]">Owner:</span> {current.ownerName}
+              </p>
+              <p>
+                <span className="text-[#9AA3B2]">Joined:</span> {formatJoinedDate(current.joinedAt)}
+              </p>
+              <p>
+                <span className="text-[#9AA3B2]">Industry:</span> {current.industry}
+              </p>
+              <p>
+                <span className="text-[#9AA3B2]">Size:</span> {current.companySize} employees
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          disabled={switching}
+          className="mt-[14px] flex w-full items-center justify-center gap-[4px] rounded-full border border-[#EAEDF2] px-[10px] py-[5px] text-xs text-[#4B5468] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Change company
+          <ChevronDownIcon className="h-[8px] w-[8px] shrink-0 text-[#9AA3B2]" />
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        disabled={switching}
-        className="mt-[14px] flex w-full items-center justify-center gap-[4px] rounded-full border border-[#EAEDF2] px-[10px] py-[5px] text-xs text-[#4B5468] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        Change company
-        <ChevronDownIcon className="h-[8px] w-[8px] shrink-0 text-[#9AA3B2]" />
-      </button>
+      {/* Collapsed — xl+ only, same outer height as the full card above
+          (pinned via xl:h-[150px] on the wrapper), just the current
+          company's logo, centered, still opening the same menu. */}
+      {collapsed && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label={`Switch company — currently ${current.companyName}`}
+          title={current.companyName}
+          disabled={switching}
+          className="emp-switcher-collapsed hidden h-full w-full flex-col items-center justify-center gap-[6px] rounded-[10px] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 xl:flex"
+        >
+          <CompanyLogo url={current.logoUrl} />
+          <ChevronDownIcon className="h-[8px] w-[8px] shrink-0 text-[#9AA3B2]" />
+        </button>
+      )}
 
       {open && (
         <div

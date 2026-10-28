@@ -153,7 +153,13 @@ export default function EmployerApplicantsView({
   });
   const [collapsedPostings, setCollapsedPostings] = useState<Set<string>>(() => new Set());
   const [howStagesWorkOpen, setHowStagesWorkOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Arriving from a dashboard tile ("Needs evaluation"/"New applicants"/etc.)
+  // lands straight on that status tab already selected, instead of a
+  // generic unfiltered page.
+  const [statusFilter, setStatusFilter] = useState<string | null>(() => {
+    const status = searchParams.get("status");
+    return status && STATUS_ORDER.includes(status) ? status : null;
+  });
   const [nameQuery, setNameQuery] = useState("");
   const [matchScores, setMatchScores] = useState<
     Record<string, { score: number; eligible: boolean; ineligibleReasons: string[] }>
@@ -217,6 +223,15 @@ export default function EmployerApplicantsView({
     if (!initialJobId) return;
     document.getElementById(`posting-${initialJobId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [initialJobId]);
+
+  // Arriving from a dashboard tile with ?status= — scroll past the status
+  // tiles straight to the (now pre-filtered) list below them.
+  useEffect(() => {
+    if (!statusFilter) return;
+    document.getElementById("applicants-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Only on arrival — not every time the filter changes via a tile click.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   async function updateStatus(applicationId: string, status: string, interviewDetails?: InterviewDetails) {

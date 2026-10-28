@@ -518,7 +518,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Score and decide next step",
       icon: PencilIcon,
       gradient: "#FFCFA3",
-      href: "/employer/applicants",
+      href: "/employer/applicants?status=evaluation",
     },
     {
       id: "reschedule-requests",
@@ -529,7 +529,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Pick a new time",
       icon: CalendarIcon,
       gradient: "#FFCDA1",
-      href: "/employer/interviews",
+      href: "/employer/interviews?response=reschedule_requested",
     },
     {
       id: "postings-needing-attention",
@@ -551,7 +551,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Reschedule or move on",
       icon: XCircleIcon,
       gradient: "#D4D7DC",
-      href: "/employer/interviews",
+      href: "/employer/interviews?response=no_show",
     },
     {
       id: "new-applicants",
@@ -562,7 +562,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Review new applicants",
       icon: StackIcon,
       gradient: "#C9CFDA",
-      href: "/employer/applicants",
+      href: "/employer/applicants?status=applied",
     },
     {
       id: "kiv",
@@ -573,7 +573,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Revisit these candidates",
       icon: ClockIcon,
       gradient: "#B9C3F9",
-      href: "/employer/applicants",
+      href: "/employer/applicants?status=kiv",
     },
     {
       id: "stale-offers",
@@ -584,7 +584,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Follow up with candidate",
       icon: DraftIcon,
       gradient: "#FFCDA1",
-      href: "/employer/applicants",
+      href: "/employer/applicants?status=offer",
     },
     {
       id: "interviewed-not-evaluated",
@@ -595,7 +595,7 @@ export default function EmployerDashboardOverview({
       actionLabel: "Start the evaluation",
       icon: CheckCircleIcon,
       gradient: "#A5C6F7",
-      href: "/employer/applicants",
+      href: "/employer/applicants?status=interviewed",
     },
   ];
 
