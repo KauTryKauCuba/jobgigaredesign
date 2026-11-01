@@ -18,7 +18,7 @@ function isNonEmptyString(value: unknown): value is string {
 // reject (with a reason shown back to the employer on their Advertisement page).
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) {
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) {
     return NextResponse.json({ error: "Not authorized." }, { status: 403 });
   }
 

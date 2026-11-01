@@ -1,6 +1,13 @@
 import "server-only";
 import { and, asc, desc, eq, isNull, lt } from "drizzle-orm";
-import type { AssistantAction, AssistantConversationSummary, AssistantMessage } from "./assistant-types";
+import type {
+  AssistantAction,
+  AssistantConversationSummary,
+  AssistantMessage,
+  AssistantMessageStats,
+  SimpleActionResolution,
+  StageChangeResolution,
+} from "./assistant-types";
 import { db } from "./db";
 import { assistantConversations, assistantMessages } from "./db/schema";
 import { getEmployerAccess } from "./employer-profile";
@@ -62,7 +69,7 @@ export async function getConversationMessages(scope: ChatScope, conversationId: 
     .from(assistantMessages)
     .where(eq(assistantMessages.conversationId, conversationId))
     .orderBy(asc(assistantMessages.createdAt));
-  return rows.map((r) => ({ id: r.id, role: r.role, text: r.content, action: r.action ?? null }));
+  return rows.map((r) => ({ id: r.id, role: r.role, text: r.content, action: r.action ?? null, stats: r.stats ?? null }));
 }
 
 export async function createConversation(scope: ChatScope, firstMessage: string): Promise<string> {
@@ -78,10 +85,11 @@ export async function appendMessage(
   role: "user" | "assistant",
   content: string,
   action: AssistantAction | null = null,
+  stats: AssistantMessageStats | null = null,
 ): Promise<string> {
   const [row] = await db
     .insert(assistantMessages)
-    .values({ conversationId, role, content, action })
+    .values({ conversationId, role, content, action, stats })
     .returning({ id: assistantMessages.id });
   await db.update(assistantConversations).set({ updatedAt: new Date() }).where(eq(assistantConversations.id, conversationId));
   return row.id;
@@ -95,24 +103,61 @@ export async function deleteConversation(scope: ChatScope, conversationId: strin
   return deleted.length > 0;
 }
 
-// Records the user's answer to a "close this posting?" confirmation on the
-// message itself, so reopening the chat later shows it as resolved instead
-// of offering the buttons again.
-export async function setCloseResolution(
+// Same idea for a stage-change card: Confirmed (with each move's result) or
+// Cancelled, so it never offers its buttons twice.
+export async function setStageChangeResolution(
   scope: ChatScope,
   messageId: string,
-  resolution: "closed" | "kept",
+  resolution: StageChangeResolution,
+  results: Record<string, string>,
 ): Promise<boolean> {
   const [row] = await db
     .select({ action: assistantMessages.action, conversationId: assistantMessages.conversationId })
     .from(assistantMessages)
     .where(eq(assistantMessages.id, messageId))
     .limit(1);
-  if (!row || row.action?.type !== "close_posting") return false;
+  if (!row || row.action?.type !== "change_stage") return false;
+  // Answered once — except that a confirmed card can later be undone.
+  const current = row.action.resolution;
+  if (current && !(current === "done" && resolution === "undone")) return false;
+  if (!(await conversationExists(scope, row.conversationId))) return false;
+  // Only results for applicants that were actually on the card are kept.
+  const onCard = new Set(row.action.items.map((i) => i.applicationId));
+  const kept = Object.fromEntries(
+    Object.entries(results)
+      .filter(([id, value]) => onCard.has(id) && typeof value === "string")
+      .map(([id, value]) => [id, value.slice(0, 200)]),
+  );
+  await db
+    .update(assistantMessages)
+    .set({ action: { ...row.action, resolution, results: kept } })
+    .where(eq(assistantMessages.id, messageId));
+  return true;
+}
+
+// Same idea for schedule_interview / cancel_interview / record_evaluation /
+// close_posting / create_job_posting — each is a single-card action,
+// answered once, with no per-item results. create_job_posting's `extra`
+// carries back the newly saved draft's id, so reopening the chat still
+// links to it instead of just showing "created".
+export async function setSimpleActionResolution(
+  scope: ChatScope,
+  messageId: string,
+  type: "schedule_interview" | "cancel_interview" | "record_evaluation" | "close_posting" | "create_job_posting",
+  resolution: SimpleActionResolution,
+  extra?: Record<string, unknown>,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ action: assistantMessages.action, conversationId: assistantMessages.conversationId })
+    .from(assistantMessages)
+    .where(eq(assistantMessages.id, messageId))
+    .limit(1);
+  if (!row || row.action?.type !== type) return false;
+  if (row.action.resolution) return false;
   if (!(await conversationExists(scope, row.conversationId))) return false;
   await db
     .update(assistantMessages)
-    .set({ action: { ...row.action, resolution } })
+    .set({ action: { ...row.action, ...extra, resolution } })
     .where(eq(assistantMessages.id, messageId));
   return true;
 }

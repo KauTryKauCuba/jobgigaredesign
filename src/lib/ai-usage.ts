@@ -15,7 +15,8 @@ type AiUsageFeature =
   | "assistant_chat"
   | "ai_interview_questions"
   | "ai_interview_transcription"
-  | "ai_interview_scoring";
+  | "ai_interview_scoring"
+  | "resume_review";
 
 type TokenUsage = {
   prompt_tokens?: number;
@@ -34,10 +35,13 @@ export async function logAiUsage(params: {
   feature: AiUsageFeature;
   provider: string | null;
   // The specific model string sent in the request (e.g. "deepseek-chat",
-  // "mimo-v2.5", "mimo-v2.5-asr") — a provider can serve more than one
+  // "mimo-v2.6-flash", "mimo-v2.5-asr") — a provider can serve more than one
   // model, so this is separate from `provider`.
   model?: string | null;
   usage: TokenUsage;
+  // How many prompt tokens hit the provider's automatic prompt cache — only
+  // the assistant chat route currently reports this (see ai-provider-race.ts).
+  cachedTokens?: number | null;
   durationMs: number | null;
   // Perplexity Search calls — no token usage to report, so this is the only
   // volume metric available for that provider.
@@ -56,6 +60,7 @@ export async function logAiUsage(params: {
       promptTokens: params.usage?.prompt_tokens ?? null,
       completionTokens: params.usage?.completion_tokens ?? null,
       totalTokens: params.usage?.total_tokens ?? null,
+      cachedTokens: params.cachedTokens ?? null,
       callCount: params.callCount ?? null,
       durationMs: params.durationMs,
       actualCostUsd: params.actualCostUsd ?? null,
@@ -72,11 +77,12 @@ export async function logAiUsage(params: {
 //
 // DeepSeek (deepseek-chat, standard/non-discounted hours):
 //   https://api-docs.deepseek.com/quick_start/pricing — $0.27 / 1M input
-//   tokens (cache miss), $1.10 / 1M output tokens, as of DeepSeek's Sept
-//   2025 pricing update. Off-peak (UTC 16:30–00:30) is ~50% cheaper and
-//   a cache-hit input rate is far lower ($0.07/1M) — neither is
-//   distinguishable from the usage this app logs, so this always uses the
-//   standard/cache-miss rate, which is a worst-case (upper-bound) estimate.
+//   tokens (cache miss), $0.07 / 1M cache-hit input, $1.10 / 1M output
+//   tokens, as of DeepSeek's Sept 2025 pricing update. Off-peak (UTC
+//   16:30–00:30) is ~50% cheaper still, not reflected here. Cache-hit
+//   tokens are only split out where the assistant chat route reports them
+//   (`cachedTokens` on the log row) — every other route logs plain
+//   promptTokens and is priced at the miss rate throughout, an upper bound.
 //   Source confidence: high.
 //
 // Perplexity Search API: https://docs.perplexity.ai/getting-started/pricing
@@ -84,13 +90,13 @@ export async function logAiUsage(params: {
 //   requests "high", priced at $12 / 1000 requests ($0.012/call).
 //   Source confidence: medium — verify against your actual invoice.
 //
-// MiMo (api.xiaomimimo.com, model "mimo-v2.5"): Xiaomi has no official
-// public pricing page this app could locate — the rate below is taken from
-// third-party AI-pricing aggregators (e.g. pricepertoken.com), NOT from
-// Xiaomi/MiMo directly, and other aggregators quote different numbers for
-// other MiMo variants. Treat this as a rough guess, not a verified rate.
-// Source confidence: low — replace with the real rate as soon as one is
-// confirmed from Xiaomi's own docs or console.
+// MiMo (api.xiaomimimo.com, model "mimo-v2.6-flash" — see ai-models.ts):
+// $0.14 / 1M input tokens (cache miss), $0.0028 / 1M cache-hit input,
+// $0.28 / 1M output, per Xiaomi's overseas rate card (platform.xiaomimimo.com
+// pricing page, confirmed Nov 2026). Older rows logged as "mimo-v2.5"
+// (~$1 / $3) are priced at this rate too, so they're slightly
+// under-estimated. Source confidence: medium — check against the MiMo
+// console.
 //
 // icreat (Seedream 5.0 image generation): every logged row already carries
 // the real per-call cost icreat's own API returns (`costUSD`, stored as
@@ -98,10 +104,12 @@ export async function logAiUsage(params: {
 // where that wasn't captured. $0.035/call is what a single generation
 // actually cost during testing — not a published rate, just an observed one.
 const DEEPSEEK_INPUT_PER_M = 0.27;
+const DEEPSEEK_CACHED_INPUT_PER_M = 0.07;
 const DEEPSEEK_OUTPUT_PER_M = 1.1;
 const PERPLEXITY_PER_CALL = 0.012;
-const MIMO_INPUT_PER_M = 1.0;
-const MIMO_OUTPUT_PER_M = 3.0;
+const MIMO_INPUT_PER_M = 0.14;
+const MIMO_CACHED_INPUT_PER_M = 0.0028;
+const MIMO_OUTPUT_PER_M = 0.28;
 const ICREAT_PER_CALL_FALLBACK = 0.035;
 
 function estimateCostUsd(
@@ -109,15 +117,27 @@ function estimateCostUsd(
   promptTokens: number,
   completionTokens: number,
   callCount: number,
+  cachedTokens: number,
 ): number | null {
+  // Cached tokens are billed at the cheap cache-hit rate; the rest of the
+  // prompt (never less than 0) at the normal miss rate.
+  const missTokens = Math.max(promptTokens - cachedTokens, 0);
   if (provider === "deepseek") {
-    return (promptTokens / 1_000_000) * DEEPSEEK_INPUT_PER_M + (completionTokens / 1_000_000) * DEEPSEEK_OUTPUT_PER_M;
+    return (
+      (missTokens / 1_000_000) * DEEPSEEK_INPUT_PER_M +
+      (cachedTokens / 1_000_000) * DEEPSEEK_CACHED_INPUT_PER_M +
+      (completionTokens / 1_000_000) * DEEPSEEK_OUTPUT_PER_M
+    );
   }
   if (provider === "perplexity") {
     return callCount * PERPLEXITY_PER_CALL;
   }
   if (provider === "mimo") {
-    return (promptTokens / 1_000_000) * MIMO_INPUT_PER_M + (completionTokens / 1_000_000) * MIMO_OUTPUT_PER_M;
+    return (
+      (missTokens / 1_000_000) * MIMO_INPUT_PER_M +
+      (cachedTokens / 1_000_000) * MIMO_CACHED_INPUT_PER_M +
+      (completionTokens / 1_000_000) * MIMO_OUTPUT_PER_M
+    );
   }
   if (provider === "icreat") {
     return callCount * ICREAT_PER_CALL_FALLBACK;
@@ -143,6 +163,7 @@ export async function getAiUsageByProviderForUser(userId: string) {
       totalCompletionTokens: sql<number>`coalesce(sum(${aiUsageLogs.completionTokens}), 0)::int`,
       totalTokens: sql<number>`coalesce(sum(${aiUsageLogs.totalTokens}), 0)::int`,
       totalCallCount: sql<number>`coalesce(sum(${aiUsageLogs.callCount}), 0)::int`,
+      totalCachedTokens: sql<number>`coalesce(sum(${aiUsageLogs.cachedTokens}), 0)::int`,
       totalActualCostUsd: sql<number | null>`sum(${aiUsageLogs.actualCostUsd})`,
     })
     .from(aiUsageLogs)
@@ -163,7 +184,8 @@ export async function getAiUsageByProviderForUser(userId: string) {
         // Real reported cost (e.g. icreat) wins over the token-based
         // published-pricing estimate when any row in the group has one.
         costUsd:
-          r.totalActualCostUsd ?? estimateCostUsd(r.provider, r.totalPromptTokens, r.totalCompletionTokens, calls),
+          r.totalActualCostUsd ??
+          estimateCostUsd(r.provider, r.totalPromptTokens, r.totalCompletionTokens, calls, r.totalCachedTokens),
       };
     });
 }
@@ -212,6 +234,7 @@ export const AI_FEATURE_LABEL: Record<AiUsageFeature, string> = {
   ai_interview_questions: "AI interview questions",
   ai_interview_transcription: "AI interview transcription",
   ai_interview_scoring: "AI interview scoring",
+  resume_review: "Resume review",
 };
 
 type UsageTotals = { calls: number; tokens: number; costUsd: number };
@@ -244,6 +267,7 @@ export async function getPlatformAiUsage(days = 30) {
     completion_tokens: string;
     total_tokens: string;
     call_count: string;
+    cached_tokens: string;
     actual_cost: number | null;
   }>(sql`
     SELECT
@@ -259,6 +283,7 @@ export async function getPlatformAiUsage(days = 30) {
       coalesce(sum(l.completion_tokens), 0) AS completion_tokens,
       coalesce(sum(l.total_tokens), 0) AS total_tokens,
       coalesce(sum(l.call_count), 0) AS call_count,
+      coalesce(sum(l.cached_tokens), 0) AS cached_tokens,
       sum(l.actual_cost_usd) AS actual_cost
     FROM ai_usage_logs l
     LEFT JOIN users u ON u.id = l.user_id
@@ -278,7 +303,9 @@ export async function getPlatformAiUsage(days = 30) {
     const tokens = Number(r.total_tokens);
     const cost =
       r.actual_cost ??
-      (r.provider ? estimateCostUsd(r.provider, Number(r.prompt_tokens), Number(r.completion_tokens), calls) : null) ??
+      (r.provider
+        ? estimateCostUsd(r.provider, Number(r.prompt_tokens), Number(r.completion_tokens), calls, Number(r.cached_tokens))
+        : null) ??
       0;
 
     addTo(totals, calls, tokens, cost);

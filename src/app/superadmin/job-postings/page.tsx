@@ -7,7 +7,7 @@ import { isSuperadminEmail } from "@/lib/superadmin";
 
 export default async function SuperadminJobPostingsPage() {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) redirect("/");
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   const [pendingRows, activeRows, flaggedRows, reportRows] = await Promise.all([
     getJobPostingsByStatus("pending"),

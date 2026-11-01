@@ -525,11 +525,14 @@ export async function POST(request: Request) {
     preferredWorkPlaces: workPlaces ?? undefined,
   };
 
+  // The name and size only mean something alongside the file itself — without
+  // one, a stray name made the dashboard show a resume that isn't stored
+  // (and Resume Review had nothing to open). Same rule as the update below.
   const insertValues = {
     ...baseValues,
     resumeUrl: hasNewResume ? (resolvedResumeUrl as string).trim() : null,
-    resumeFileName: isNonEmptyString(resumeFileName) ? resumeFileName.trim() : null,
-    resumeFileSize: isNonNegativeInt(resumeFileSize) ? resumeFileSize : null,
+    resumeFileName: hasNewResume && isNonEmptyString(resumeFileName) ? resumeFileName.trim() : null,
+    resumeFileSize: hasNewResume && isNonNegativeInt(resumeFileSize) ? resumeFileSize : null,
   };
 
   const updateValues = {

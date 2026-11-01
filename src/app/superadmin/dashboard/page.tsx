@@ -70,7 +70,7 @@ function TileGrid({ title, tiles }: { title: string; tiles: Tile[] }) {
 
 export default async function SuperadminDashboardPage() {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) redirect("/");
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   const weekAgo = daysAgo(7);
   const threeDaysAgo = daysAgo(3);

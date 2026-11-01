@@ -5,8 +5,14 @@ import "server-only";
 // future one) — each provider is genuinely called (not just whichever
 // answers first), so the caller can log every attempt's real usage/cost
 // afterward rather than only the winner's.
-export const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
-export const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
+import {
+  DEEPSEEK_CHAT_MODEL,
+  DEEPSEEK_ENDPOINT,
+  MIMO_CHAT_MODEL,
+  MIMO_ENDPOINT,
+  chatRequestExtras,
+} from "./ai-models";
+
 const RETRY_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -14,6 +20,11 @@ export type ProviderUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  // Automatic prompt-caching, reported differently by each provider — MiMo
+  // (OpenAI-style) nests it and omits the field entirely on a miss; DeepSeek
+  // always reports both counts explicitly.
+  prompt_tokens_details?: { cached_tokens?: number } | null;
+  prompt_cache_hit_tokens?: number;
 };
 
 type ChatCompletionResponse = {
@@ -63,6 +74,7 @@ async function callProvider(
             { role: "system", content: systemPrompt },
             { role: "user", content: userContent },
           ],
+          ...chatRequestExtras(endpoint),
         }),
       });
 
@@ -115,10 +127,10 @@ export async function raceChatProviders(params: {
   const attempts: Promise<ProviderRaceAttempt>[] = [];
   if (mimoKey) {
     attempts.push(
-      callProvider(MIMO_ENDPOINT, "mimo-v2.5", mimoKey, systemPrompt, userContent, temperature, maxTokens, "MiMo", taskLabel).then(
+      callProvider(MIMO_ENDPOINT, MIMO_CHAT_MODEL, mimoKey, systemPrompt, userContent, temperature, maxTokens, "MiMo", taskLabel).then(
         (r) => {
           if (!r.ok) throw new ProviderRaceError(r.error, r.status);
-          return { ...r, provider: "mimo", model: "mimo-v2.5" };
+          return { ...r, provider: "mimo", model: MIMO_CHAT_MODEL };
         },
       ),
     );
@@ -127,7 +139,7 @@ export async function raceChatProviders(params: {
     attempts.push(
       callProvider(
         DEEPSEEK_ENDPOINT,
-        "deepseek-chat",
+        DEEPSEEK_CHAT_MODEL,
         deepseekKey,
         systemPrompt,
         userContent,
@@ -137,7 +149,7 @@ export async function raceChatProviders(params: {
         taskLabel,
       ).then((r) => {
         if (!r.ok) throw new ProviderRaceError(r.error, r.status);
-        return { ...r, provider: "deepseek", model: "deepseek-chat" };
+        return { ...r, provider: "deepseek", model: DEEPSEEK_CHAT_MODEL };
       }),
     );
   }

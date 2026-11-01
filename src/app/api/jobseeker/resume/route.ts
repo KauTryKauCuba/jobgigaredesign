@@ -71,8 +71,8 @@ export async function POST(request: Request) {
   await logAiUsage({
     userId: session.userId,
     feature: "resume_parse",
-    provider: "deepseek",
-    model: "deepseek-chat",
+    provider: result.provider,
+    model: result.model,
     usage: result.usage,
     durationMs: result.durationMs,
   });

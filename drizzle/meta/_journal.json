@@ -862,6 +862,34 @@
       "when": 1792883733490,
       "tag": "0122_talented_scrambler",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1793441787004,
+      "tag": "0123_aspiring_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1793447955816,
+      "tag": "0124_bumpy_the_twelve",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1793499547332,
+      "tag": "0125_natural_otto_octavius",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1793500087196,
+      "tag": "0126_milky_cyclops",
+      "breakpoints": true
     }
   ]
 }

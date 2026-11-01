@@ -8,28 +8,30 @@ import type { HiringScope } from "./hiring-scope";
 import { getApplicationsForEmployer, getApplicationsForJobseeker, getJobseekerProfileId } from "./job-applications";
 import { getJobPostingsForEmployer } from "./job-postings";
 import { getJobseekerProfile } from "./jobseeker-profile";
-import { computeMatchResults } from "./match-results";
+import { malaysiaStateOf } from "./malaysia";
 
 // Everything the assistant is told about the user's own data is computed
 // here, server-side, as plain text with the numbers already worked out — the
 // model only has to read and phrase them, never count or do date math, which
-// is where LLMs quietly get things wrong.
+// is where LLMs quietly get things wrong. (The employer's lookup tools in
+// assistant-tools.ts follow the same rule.)
 
 const TIME_ZONE = "Asia/Kuala_Lumpur";
 
-function dayKey(date: Date): string {
+/** "2026-10-31" — the Malaysia calendar day this instant falls on. */
+export function dayKey(date: Date): string {
   return date.toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
 }
 
-function daysBetween(fromKey: string, toKey: string): number {
+export function daysBetween(fromKey: string, toKey: string): number {
   return Math.round((Date.parse(toKey) - Date.parse(fromKey)) / 86_400_000);
 }
 
-function fmtDate(date: Date | string): string {
+export function fmtDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("en-MY", { timeZone: TIME_ZONE, day: "numeric", month: "short", year: "numeric" });
 }
 
-function fmtDateTime(date: Date | string): string {
+export function fmtDateTime(date: Date | string): string {
   return new Date(date).toLocaleString("en-MY", {
     timeZone: TIME_ZONE,
     weekday: "short",
@@ -40,15 +42,46 @@ function fmtDateTime(date: Date | string): string {
   });
 }
 
-function countBy<T>(items: T[], key: (item: T) => string): string {
+export function countBy<T>(items: T[], key: (item: T) => string): string {
   const counts = new Map<string, number>();
   for (const item of items) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
   return [...counts.entries()].map(([k, n]) => `${k} ${n}`).join(", ") || "none";
 }
 
+/**
+ * Where applicants are from, by state with the towns inside it — "Selangor 5
+ * (Petaling Jaya 3, Shah Alam 2); Kuala Lumpur 7" — so "how many from
+ * Selangor" and "how many from Petaling Jaya" are both a lookup, not a sum.
+ */
+export function locationBreakdown(locations: (string | null)[]): string {
+  const byState = new Map<string, Map<string, number>>();
+  let unknown = 0;
+  for (const raw of locations) {
+    const location = raw?.trim();
+    if (!location) {
+      unknown++;
+      continue;
+    }
+    const group = malaysiaStateOf(location) ?? location;
+    const towns = byState.get(group) ?? new Map<string, number>();
+    towns.set(location, (towns.get(location) ?? 0) + 1);
+    byState.set(group, towns);
+  }
+  const parts = [...byState.entries()]
+    .map(([state, towns]) => {
+      const total = [...towns.values()].reduce((sum, n) => sum + n, 0);
+      const detail = [...towns.entries()].filter(([town]) => town !== state);
+      return { total, text: `${state} ${total}${detail.length ? ` (${detail.map(([t, n]) => `${t} ${n}`).join(", ")})` : ""}` };
+    })
+    .sort((a, b) => b.total - a.total)
+    .map((p) => p.text);
+  if (unknown) parts.push(`location not given ${unknown}`);
+  return parts.join("; ") || "none";
+}
+
 export function todayLine(): string {
   const now = new Date();
-  return `Today is ${now.toLocaleDateString("en-MY", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" })} (Malaysia time).`;
+  return `Today is ${now.toLocaleDateString("en-MY", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" })} (${dayKey(now)}, Malaysia time).`;
 }
 
 export function currentPostingSlug(pathname: string | null): string | null {
@@ -65,10 +98,9 @@ export async function buildEmployerContext(
   pathname: string | null,
   scope?: HiringScope,
 ) {
-  const [postings, applications, matches, team, usage] = await Promise.all([
+  const [postings, applications, team, usage] = await Promise.all([
     getJobPostingsForEmployer(profile.id, scope),
     getApplicationsForEmployer(profile.id, scope),
-    computeMatchResults(profile, scope),
     db
       .select({ status: employerTeamMembers.status })
       .from(employerTeamMembers)
@@ -78,6 +110,14 @@ export async function buildEmployerContext(
 
   const today = dayKey(new Date());
   const lines: string[] = [`Company: ${profile.companyName}.`];
+  if (scope?.kind === "limited") {
+    lines.push(
+      scope.jobPostingIds.length > 0
+        ? "This user is a Hiring manager: they see only the postings assigned to them (below) and candidates whose interview panel they're on."
+        : "This user is a Panel member: they see only the candidates whose interview panel they're on, not job postings.",
+      "The company may have other postings and applicants they can't see — never say one doesn't exist; say it isn't one they have access to.",
+    );
+  }
 
   const viewingSlug = currentPostingSlug(pathname);
   const viewing = viewingSlug ? postings.find((p) => p.slug === viewingSlug) : null;
@@ -141,31 +181,10 @@ export async function buildEmployerContext(
     })
     .sort((x, y) => x.at.getTime() - y.at.getTime());
   const todayCount = upcoming.filter(({ at }) => dayKey(at) === today).length;
-  lines.push("", `INTERVIEWS in the next 7 days (${upcoming.length}, of which ${todayCount} today):`);
-  for (const { a, at } of upcoming.slice(0, 15)) {
-    lines.push(
-      `- ${a.applicantName} for "${a.jobPostingTitle}", ${fmtDateTime(at)}, round ${a.application.interviewDetails!.round} ${a.application.interviewDetails!.mode}, response ${a.application.interviewResponseStatus ?? "pending"}`,
-    );
-  }
-
-  lines.push("", "MOST RECENT APPLICANTS:");
-  for (const a of applications.slice(0, 10)) {
-    lines.push(
-      `- ${a.applicantName} (${a.applicantLocation ?? "location unknown"}) applied to "${a.jobPostingTitle}" on ${fmtDate(a.application.appliedAt)}, stage ${a.application.status}`,
-    );
-  }
-
-  const locations = countBy(
-    applications.filter((a) => a.applicantLocation),
-    (a) => a.applicantLocation!,
-  );
-  lines.push(`Applicants by location: ${locations}.`);
-
-  lines.push("", "TOP MATCHES (eligible candidates, 0-100 fit score) per posting:");
-  for (const p of postings.filter((p) => matches.some((m) => m.jobPostingId === p.id))) {
-    const top = matches.filter((m) => m.jobPostingId === p.id && m.eligible).slice(0, 3);
-    lines.push(`- "${p.title}": ${top.map((m) => `${m.applicantName} ${m.score}%`).join(", ") || "no eligible candidates yet"}`);
-  }
+  // Names, locations, fit scores and interview times come from the lookup
+  // tools (assistant-tools.ts) — this overview stays small so every reply,
+  // with or without a lookup, starts fast.
+  lines.push(`Interviews in the next 7 days: ${upcoming.length}, of which ${todayCount} today.`);
 
   lines.push(
     "",
@@ -173,7 +192,7 @@ export async function buildEmployerContext(
     `AI USAGE: ${usage.totalCalls} AI calls, ${usage.totalTokens.toLocaleString()} tokens total.`,
   );
 
-  return { text: lines.join("\n"), postings };
+  return { text: lines.join("\n"), postings, applications };
 }
 
 export async function buildJobseekerContext(userId: string) {

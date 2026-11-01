@@ -12,9 +12,14 @@ import {
   type AiInterviewRecommendation,
   type AiInterviewReport,
 } from "./ai-interview-shared";
-
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
-const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
+import {
+  DEEPSEEK_CHAT_MODEL,
+  DEEPSEEK_ENDPOINT,
+  MIMO_ASR_MODEL,
+  MIMO_CHAT_MODEL,
+  MIMO_ENDPOINT,
+  chatRequestExtras,
+} from "./ai-models";
 
 type Usage = { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
 
@@ -170,7 +175,7 @@ export async function transcribeAnswer(
         signal: AbortSignal.timeout(60_000),
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: "mimo-v2.5-asr",
+          model: MIMO_ASR_MODEL,
           messages: [
             {
               role: "user",
@@ -191,7 +196,7 @@ export async function transcribeAnswer(
           userId: opts.userId,
           feature: "ai_interview_transcription",
           provider: "mimo",
-          model: "mimo-v2.5-asr",
+          model: MIMO_ASR_MODEL,
           usage: data.usage ?? null,
           durationMs: Date.now() - startedAt,
         });
@@ -249,8 +254,8 @@ async function callScoringModel(
   // can't be reached at all (the connection is intermittently flaky), and
   // the report records which model actually scored.
   const targets = [
-    deepseekKey ? { endpoint: DEEPSEEK_ENDPOINT, model: "deepseek-chat", key: deepseekKey, provider: "deepseek" } : null,
-    mimoKey ? { endpoint: MIMO_ENDPOINT, model: "mimo-v2.5", key: mimoKey, provider: "mimo" } : null,
+    deepseekKey ? { endpoint: DEEPSEEK_ENDPOINT, model: DEEPSEEK_CHAT_MODEL, key: deepseekKey, provider: "deepseek" } : null,
+    mimoKey ? { endpoint: MIMO_ENDPOINT, model: MIMO_CHAT_MODEL, key: mimoKey, provider: "mimo" } : null,
   ].filter((t): t is NonNullable<typeof t> => t !== null);
   if (targets.length === 0) return { ok: false, error: "AI scoring is not configured." };
 
@@ -286,6 +291,7 @@ async function callOneScoringTarget(
             { role: "system", content: SCORING_SYSTEM_PROMPT },
             { role: "user", content: userContent },
           ],
+          ...chatRequestExtras(target.endpoint),
         }),
       });
       const data = (await upstream.json().catch(() => ({}))) as {

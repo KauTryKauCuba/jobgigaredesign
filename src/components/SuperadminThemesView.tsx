@@ -27,9 +27,13 @@ import {
   type ThemeColors,
 } from "@/lib/site-themes-shared";
 
-const SIDES: Record<ThemeAudience, { label: string; page: string; accent: "teal" | "gold" }> = {
-  employer: { label: "Employer side", page: "/employer", accent: "teal" },
-  jobseeker: { label: "Jobseeker side", page: "/jobseeker", accent: "gold" },
+// The page's own controls (buttons, tabs, frames, inputs) always use the
+// superadmin colour — "teal" here, which src/app/superadmin/layout.tsx turns
+// blue — on both sides. Only the swatches and ThemePreview show a side's
+// own colours, since they're previews of that side.
+const SIDES: Record<ThemeAudience, { label: string; page: string }> = {
+  employer: { label: "Employer side", page: "/employer" },
+  jobseeker: { label: "Jobseeker side", page: "/jobseeker" },
 };
 
 const COLOR_FIELDS: Record<ThemeAudience, { key: "main" | "accent" | "soft" | "page"; label: string; hint: string }[]> = {
@@ -243,7 +247,6 @@ export default function SuperadminThemesView({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
 
-  const { accent } = SIDES[side];
   const sideThemes = themes.filter((t) => t.audience === side);
   const live = sideThemes.find((t) => t.isActive) ?? null;
   const editing = editingId ? (themes.find((t) => t.id === editingId) ?? null) : null;
@@ -385,19 +388,15 @@ export default function SuperadminThemesView({
     }
   }
 
-  const primaryBtnFor = (a: "teal" | "gold") =>
-    `flex h-[38px] items-center justify-center gap-[6px] rounded-full px-[18px] text-sm hover:opacity-90 disabled:opacity-50 ${
-      a === "gold" ? "bg-brand-gold text-[#141B2E]" : "bg-brand-teal-dark text-white"
-    }`;
-  const primaryBtn = primaryBtnFor(accent);
+  const primaryBtn =
+    "flex h-[38px] items-center justify-center gap-[6px] rounded-full bg-brand-teal-dark px-[18px] text-sm text-white hover:opacity-90 disabled:opacity-50";
   const secondaryBtn =
     "flex h-[38px] items-center justify-center rounded-full border border-black/[0.1] bg-white px-[16px] text-sm text-[#4B5468] hover:bg-black/[0.03] disabled:opacity-50";
-  const accentText = accent === "gold" ? "text-brand-gold-dark" : "text-brand-teal-dark";
+  const accentText = "text-brand-teal-dark";
 
   // ---- Editor -------------------------------------------------------------
   if (editing && draft) {
     const audience = editing.audience;
-    const edAccent = SIDES[audience].accent;
     const preset = findPreset(editing.presetKey);
     const warnings = colorWarnings(audience, draft.colors);
     const setColors = (patch: Partial<ThemeColors>) => setDraft({ ...draft, colors: { ...draft.colors, ...patch } });
@@ -418,7 +417,7 @@ export default function SuperadminThemesView({
         }`}
       >
         <div className="grid grid-cols-1 items-start gap-[20px] lg:grid-cols-[minmax(0,1fr)_380px]">
-          <div className={gradientFrameClass(edAccent)}>
+          <div className={gradientFrameClass("teal")}>
             <div className="flex flex-col gap-[26px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
               <section>
                 <label className="text-sm font-semibold text-[#141B2E]" htmlFor="theme-name">
@@ -429,7 +428,7 @@ export default function SuperadminThemesView({
                   value={draft.name}
                   maxLength={THEME_NAME_MAX}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className={`${inputClass(edAccent)} mt-[8px]`}
+                  className={`${inputClass("teal")} mt-[8px]`}
                   placeholder="e.g. Hari Raya 2027"
                 />
                 <p className="mt-[6px] text-xs text-[#9AA3B2]">Only superadmins see the name.</p>
@@ -463,7 +462,7 @@ export default function SuperadminThemesView({
                       key={f.key}
                       label={f.label}
                       hint={f.hint}
-                      accent={edAccent}
+                      accent="teal"
                       value={draft.colors[f.key]}
                       onChange={(hex) => setColors({ [f.key]: hex })}
                     />
@@ -508,7 +507,7 @@ export default function SuperadminThemesView({
                   <Switch
                     on={draft.banner.enabled}
                     label="Show the banner"
-                    accent={edAccent}
+                    accent="teal"
                     onChange={() => setBanner({ enabled: !draft.banner.enabled })}
                   />
                 </div>
@@ -523,7 +522,7 @@ export default function SuperadminThemesView({
                         maxLength={16}
                         disabled={!!draft.banner.imageUrl}
                         title={draft.banner.imageUrl ? "The picture shows instead of the emoji" : undefined}
-                        className={`${fixedInputClass(edAccent)} w-[64px] shrink-0 text-center disabled:bg-[#F1F4F8]`}
+                        className={`${fixedInputClass("teal")} w-[64px] shrink-0 text-center disabled:bg-[#F1F4F8]`}
                       />
                       <div className="min-w-0 flex-1">
                         <textarea
@@ -533,7 +532,7 @@ export default function SuperadminThemesView({
                           rows={2}
                           maxLength={BANNER_TEXT_MAX}
                           placeholder="Selamat Hari Raya! Maaf zahir dan batin."
-                          className={textareaClass(edAccent)}
+                          className={textareaClass("teal")}
                         />
                         <p className="text-right text-xs text-[#9AA3B2]">
                           {draft.banner.text.length}/{BANNER_TEXT_MAX}
@@ -547,14 +546,14 @@ export default function SuperadminThemesView({
                         aria-label="Banner button label"
                         maxLength={BANNER_LINK_LABEL_MAX}
                         placeholder="Button (optional)"
-                        className={inputClass(edAccent)}
+                        className={inputClass("teal")}
                       />
                       <input
                         value={draft.banner.linkUrl}
                         onChange={(e) => setBanner({ linkUrl: e.target.value })}
                         aria-label="Banner button link"
                         placeholder={audience === "employer" ? "/employer/jobs or https://…" : "/jobseeker/jobs or https://…"}
-                        className={inputClass(edAccent)}
+                        className={inputClass("teal")}
                       />
                     </div>
                     <div className="flex flex-wrap items-center gap-[10px]">
@@ -613,10 +612,8 @@ export default function SuperadminThemesView({
                         onClick={() => setDraft({ ...draft, effect: e })}
                         className={`rounded-full border px-[14px] py-[7px] text-sm transition-colors ${
                           on
-                            ? edAccent === "gold"
-                              ? "border-brand-gold-dark bg-brand-gold-soft text-brand-gold-dark"
-                              : "border-brand-teal-dark bg-brand-teal-soft text-brand-teal-dark"
-                            : "border-black/[0.1] bg-white text-[#4B5468] hover:bg-black/[0.03]"
+                            ? "border-brand-teal-dark bg-brand-teal-soft text-brand-teal-dark"
+                            :"border-black/[0.1] bg-white text-[#4B5468] hover:bg-black/[0.03]"
                         }`}
                       >
                         {EFFECT_LABELS[e]}
@@ -638,7 +635,7 @@ export default function SuperadminThemesView({
                           name="effect-scope"
                           checked={draft.effectScope === value}
                           onChange={() => setDraft({ ...draft, effectScope: value })}
-                          className={edAccent === "gold" ? "accent-brand-gold-dark" : "accent-brand-teal-dark"}
+                          className="accent-brand-teal-dark"
                         />
                         {label}
                       </label>
@@ -650,7 +647,7 @@ export default function SuperadminThemesView({
               <div className="flex flex-col gap-[10px] border-t border-black/[0.06] pt-[18px]">
                 {editorError && <p className="text-sm text-red-500">{editorError}</p>}
                 {savedNote && !dirty && !editorError && (
-                  <p className={`text-sm ${SIDES[audience].accent === "gold" ? "text-brand-gold-dark" : "text-brand-teal-dark"}`}>
+                  <p className="text-sm text-brand-teal-dark">
                     Saved{editing.isActive ? " — the site now shows these changes." : "."}
                   </p>
                 )}
@@ -659,7 +656,7 @@ export default function SuperadminThemesView({
                     type="button"
                     disabled={!dirty || busy === "save"}
                     onClick={() => void save()}
-                    className={primaryBtnFor(edAccent)}
+                    className={primaryBtn}
                   >
                     {busy === "save" ? "Saving…" : "Save changes"}
                   </button>
@@ -741,7 +738,7 @@ export default function SuperadminThemesView({
             }}
             className={`rounded-full px-[16px] py-[8px] text-sm transition-colors ${
               side === a
-                ? `bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] ${SIDES[a].accent === "gold" ? "text-brand-gold-dark" : "text-brand-teal-dark"}`
+                ? "bg-white text-brand-teal-dark shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
                 : "text-[#4B5468] hover:text-[#141B2E]"
             }`}
           >
@@ -750,7 +747,7 @@ export default function SuperadminThemesView({
         ))}
       </div>
 
-      <div className={`mt-[16px] ${gradientFrameClass(accent)}`}>
+      <div className={`mt-[16px] ${gradientFrameClass("teal")}`}>
         <div className="flex flex-wrap items-center gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[20px]">
           <Swatches colors={live?.colors ?? DEFAULT_THEME_COLORS[side]} size={24} />
           <div className="min-w-0 flex-1">
@@ -789,7 +786,7 @@ export default function SuperadminThemesView({
           {sideThemes.map((t) => {
             const preset = findPreset(t.presetKey);
             return (
-              <div key={t.id} className={gradientFrameClass(accent)}>
+              <div key={t.id} className={gradientFrameClass("teal")}>
                 <div className="flex flex-col gap-[12px] rounded-[19px] bg-white p-[16px]">
                   <div className="h-[8px] rounded-full" style={{ backgroundImage: gradientCss(t.colors.gradient) }} />
                   <div className="flex items-start gap-[12px]">
@@ -797,11 +794,7 @@ export default function SuperadminThemesView({
                       <p className="flex items-center gap-[8px] text-sm font-semibold text-[#141B2E]">
                         <span className="truncate">{t.name}</span>
                         {t.isActive && (
-                          <span
-                            className={`shrink-0 rounded-full px-[8px] py-[2px] text-xs font-normal ${
-                              accent === "gold" ? "bg-brand-gold-soft text-brand-gold-dark" : "bg-brand-teal-soft text-brand-teal-dark"
-                            }`}
-                          >
+                          <span className="shrink-0 rounded-full bg-brand-teal-soft px-[8px] py-[2px] text-xs font-normal text-brand-teal-dark">
                             Live
                           </span>
                         )}
@@ -815,7 +808,7 @@ export default function SuperadminThemesView({
                     <Switch
                       on={t.isActive}
                       label={`${t.name} live`}
-                      accent={accent}
+                      accent="teal"
                       disabled={busy !== null}
                       onChange={() => (t.isActive ? setActive(t, false) : setConfirmOn(t))}
                     />

@@ -7,7 +7,6 @@ import EmployerInterviewCard from "@/components/EmployerInterviewCard";
 import EmployerJobPostCard from "@/components/EmployerJobPostCard";
 import EmployerManageJobCard from "@/components/EmployerManageJobCard";
 import EmployerPosterCard from "@/components/EmployerPosterCard";
-import FloatingAssistant from "@/components/FloatingAssistant";
 import Footer from "@/components/Footer";
 import Hero from "@/components/Hero";
 import HiringStats from "@/components/HiringStats";
@@ -49,7 +48,7 @@ export default async function EmployerPage() {
   // actually take an employer to "/employer/dashboard".
 
   return (
-    <main className="flex min-h-[100svh] flex-col overflow-x-hidden bg-brand-teal-page pb-[92px]">
+    <main className="flex min-h-[100svh] flex-col overflow-x-hidden bg-brand-teal-page">
       <Navbar initialUser={authUser} hideProfileLinks />
       {!authUser && <WelcomeModal role="employer" image={welcomeImage} />}
       <Hero
@@ -79,11 +78,11 @@ export default async function EmployerPage() {
       <CompanyHighlights realCompanies={JSON.parse(JSON.stringify(highlightCompanies))} />
       {/* Same band as the "Write jobs with AI" and "Interview your way" sections. */}
       <ScrollWidthBackground
-        color="#E3F2EB"
+        color="var(--band-employer)"
         fadeEdges
         startWidth={45}
         durationMs={1400}
-        gradient="linear-gradient(120deg, #DDF0E8 0%, #E3F2EB 45%, #FBF3DC 100%)"
+        gradient="var(--band-gradient-employer)"
         // Stock placeholder (Pexels) — trying out a video background here.
         video={{ src: "/videos/spotlight-bg.mp4", poster: "/videos/spotlight-bg-poster.jpg" }}
       >
@@ -98,16 +97,11 @@ export default async function EmployerPage() {
       <EmployerInterviewCard />
       <EmployerPosterCard />
       <Footer accent="teal" />
-      {/* Clipped to its top half and pulled down past the floating-chat
-          clearance (-mb cancels the <main> padding reserved for it) so the
-          ribbon reads as bleeding off the bottom edge, same treatment as the
-          employer dashboard shell. */}
-      <div className="-mb-[92px] h-[80px] overflow-hidden sm:h-[110px] lg:h-[150px]">
+      {/* Clipped to its top half so the ribbon reads as bleeding off the
+          bottom edge, same treatment as the employer dashboard shell. */}
+      <div className="h-[80px] overflow-hidden sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon />
       </div>
-      {/* FloatingAssistant is fixed to the viewport bottom, like the navbar
-          pinned to the top — it renders here for source order, not layout. */}
-      <FloatingAssistant />
     </main>
   );
 }

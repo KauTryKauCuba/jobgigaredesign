@@ -272,6 +272,7 @@ export default function ApplicantDetailModal({
   currentUserAvatarUrl,
   currentUserRole,
   teamMembers = [],
+  variant = "modal",
 }: {
   applicant: ApplicantDetail;
   updating: boolean;
@@ -312,14 +313,21 @@ export default function ApplicantDetailModal({
   // only) rather than typed freely, so an interviewer is always a real
   // account on the Team page, not an arbitrary name.
   teamMembers?: EmployerTeamMember[];
+  // "panel": the same profile as a side panel beside the JobGiga Assistant's
+  // chat (no overlay, one scrolling column, hiring stage on top) instead of
+  // a pop-up window.
+  variant?: "modal" | "panel";
 }) {
+  const panel = variant === "panel";
   useEffect(() => {
+    // A panel sits beside the chat, where Escape is for the message box.
+    if (panel) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  }, [onClose, panel]);
 
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   // Interview details waiting on the "send this invite?" confirmation.
@@ -552,15 +560,19 @@ export default function ApplicantDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8"
-      onClick={onClose}
+      className={panel ? "flex h-full min-h-0 w-full" : "fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8"}
+      onClick={panel ? undefined : onClose}
     >
       <div
-        role="dialog"
-        aria-modal="true"
+        role={panel ? "region" : "dialog"}
+        aria-modal={panel ? undefined : "true"}
         aria-label={`${applicant.applicantName} — applicant details`}
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-full w-full max-w-[1100px] flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_24px_48px_-16px_rgba(0,0,0,0.24)]"
+        className={
+          panel
+            ? "flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[14px] border border-[#EAEDF2] bg-white"
+            : "flex max-h-full w-full max-w-[1100px] flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_24px_48px_-16px_rgba(0,0,0,0.24)]"
+        }
       >
         <div className="flex items-start justify-between gap-[12px] border-b border-black/[0.06] px-[22px] py-[18px]">
           <div className="flex items-start gap-[12px]">
@@ -604,8 +616,22 @@ export default function ApplicantDetailModal({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-          <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] pt-[18px] pb-[40px] sm:basis-2/3">
+        {/* A panel is one scrolling column on phones, and the window's two
+            columns (details | hiring stage) from md up. */}
+        <div
+          className={
+            panel
+              ? "flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden"
+              : "flex min-h-0 flex-1 flex-col sm:flex-row"
+          }
+        >
+          <div
+            className={
+              panel
+                ? "flex flex-col gap-[18px] px-[22px] pt-[18px] pb-[40px] md:min-h-0 md:flex-1 md:basis-2/3 md:overflow-y-auto"
+                : "flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] pt-[18px] pb-[40px] sm:basis-2/3"
+            }
+          >
             {applicant.videoPitch && <VideoPitchPanel key={applicant.videoPitch.id} pitch={applicant.videoPitch} />}
             <AiInterviewPanel
               key={applicant.application.id}
@@ -919,7 +945,14 @@ export default function ApplicantDetailModal({
 
           </div>
 
-          <div className="flex min-h-0 flex-col gap-[10px] overflow-y-auto border-t border-black/[0.06] bg-[#F8FAFB] px-[18px] pt-[18px] pb-[40px] sm:basis-1/3 sm:border-t-0 sm:border-l">
+          <div
+            className={
+              panel
+                ? // Hiring stage first in a stacked panel — it's what you act on.
+                  "order-first flex flex-col gap-[10px] border-b border-black/[0.06] bg-[#F8FAFB] px-[18px] pt-[18px] pb-[18px] md:order-none md:min-h-0 md:basis-1/3 md:overflow-y-auto md:border-b-0 md:border-l md:pb-[40px]"
+                : "flex min-h-0 flex-col gap-[10px] overflow-y-auto border-t border-black/[0.06] bg-[#F8FAFB] px-[18px] pt-[18px] pb-[40px] sm:basis-1/3 sm:border-t-0 sm:border-l"
+            }
+          >
             {showInterviewForm ? (
               <div className="flex flex-col gap-[8px]">
                 <p className="text-xs text-[#141B2E]">Set up the interview</p>

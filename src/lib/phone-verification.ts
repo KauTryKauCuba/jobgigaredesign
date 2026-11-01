@@ -185,7 +185,7 @@ async function alertBudgetReached(sent: number, limit: number) {
       .values({ key: BUDGET_ALERT_SETTING_KEY, value: { at: new Date().toISOString(), sent, limit } })
       .onConflictDoUpdate({ target: siteSettings.key, set: { value: { at: new Date().toISOString(), sent, limit }, updatedAt: new Date() } });
     console.error(`Phone verification paused: ${sent} codes in 24h, daily limit ${limit}.`);
-    await sendPhoneBudgetAlertEmail(getSuperadminEmails(), sent, limit);
+    await sendPhoneBudgetAlertEmail(await getSuperadminEmails(), sent, limit);
   } catch (err) {
     console.error("Failed to send the phone verification budget alert:", err);
   }

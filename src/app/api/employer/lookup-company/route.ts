@@ -1,4 +1,11 @@
 import { after, NextResponse } from "next/server";
+import {
+  DEEPSEEK_CHAT_MODEL,
+  DEEPSEEK_ENDPOINT,
+  MIMO_CHAT_MODEL,
+  MIMO_ENDPOINT,
+  chatRequestExtras,
+} from "@/lib/ai-models";
 import { logAiUsage } from "@/lib/ai-usage";
 import {
   AWARD_TITLE_MAX,
@@ -15,8 +22,6 @@ import { MALAYSIA_STATES } from "@/lib/malaysia";
 import { getSession } from "@/lib/session";
 
 const PERPLEXITY_ENDPOINT = "https://api.perplexity.ai/search";
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
-const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
 const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"] as const;
 const COMPANY_TYPES = ["Startup", "SME", "MNC", "GLC", "Government"] as const;
 const CURRENT_YEAR = new Date().getFullYear();
@@ -671,6 +676,7 @@ async function callStructuringProvider(
             { role: "system", content: STRUCTURE_SYSTEM_PROMPT },
             { role: "user", content: userContent },
           ],
+          ...chatRequestExtras(endpoint),
         }),
       });
 
@@ -760,17 +766,17 @@ async function raceStructuring(
   const attempts: Promise<StructuringSuccess>[] = [];
   if (deepseekKey) {
     attempts.push(
-      callStructuringProvider(DEEPSEEK_ENDPOINT, "deepseek-chat", deepseekKey, userContent, "DeepSeek").then((r) => {
+      callStructuringProvider(DEEPSEEK_ENDPOINT, DEEPSEEK_CHAT_MODEL, deepseekKey, userContent, "DeepSeek").then((r) => {
         if (!r.ok) throw new StructuringError(r.error, r.status);
-        return { ...r, provider: "deepseek", model: "deepseek-chat" };
+        return { ...r, provider: "deepseek", model: DEEPSEEK_CHAT_MODEL };
       }),
     );
   }
   if (mimoKey) {
     attempts.push(
-      callStructuringProvider(MIMO_ENDPOINT, "mimo-v2.5", mimoKey, userContent, "MiMo").then((r) => {
+      callStructuringProvider(MIMO_ENDPOINT, MIMO_CHAT_MODEL, mimoKey, userContent, "MiMo").then((r) => {
         if (!r.ok) throw new StructuringError(r.error, r.status);
-        return { ...r, provider: "mimo", model: "mimo-v2.5" };
+        return { ...r, provider: "mimo", model: MIMO_CHAT_MODEL };
       }),
     );
   }

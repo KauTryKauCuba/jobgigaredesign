@@ -474,6 +474,15 @@ export default function Navbar({
                           )}
                         </>
                       )}
+                      {user.isSuperadmin && (
+                        <Link
+                          href="/superadmin/dashboard"
+                          onClick={() => setMenuOpen(false)}
+                          className="block px-[16px] py-[9px] text-sm text-[#141B2E] hover:bg-black/[0.03]"
+                        >
+                          Superadmin panel
+                        </Link>
+                      )}
                       <div className="px-[16px] py-[9px]">
                         <p className="text-xs text-[#141B2E]">AI Usage</p>
                         <p className="mt-[2px] text-xs text-[#9AA3B2]">

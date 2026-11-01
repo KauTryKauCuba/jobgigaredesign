@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import JobseekerDashboard from "@/components/JobseekerDashboard";
-import { getEmployerResponsiveness } from "@/lib/application-events";
+import JobseekerDashboard, { DASHBOARD_APPLICATION_PREVIEW_COUNT } from "@/components/JobseekerDashboard";
+import { getApplicationEvents, getEmployerResponsiveness } from "@/lib/application-events";
 import { getAuthUser } from "@/lib/auth-user";
 import { getApplicationsForJobseeker } from "@/lib/job-applications";
 import { getJobPostingsByStatus, stripCustomQuestionAnswers } from "@/lib/job-postings";
@@ -31,6 +31,11 @@ export default async function JobseekerDashboardPage() {
     getEmployerResponsiveness(activePostings.map((row) => row.posting.employerProfileId)),
     profile ? getSavedJobPostingIds(profile.id) : [],
   ]);
+  // Only the applications the dashboard previews need their history, for the progress steps.
+  const events = await getApplicationEvents(
+    applications.slice(0, DASHBOARD_APPLICATION_PREVIEW_COUNT).map((row) => row.application.id),
+  );
+  const applicationsWithEvents = applications.map((row) => ({ ...row, events: events.get(row.application.id) ?? [] }));
   // Sent to the jobseeker's browser — screening answers stay server-side.
   const postingsWithResponsiveness = activePostings.map((row) => ({
     ...row,
@@ -43,7 +48,7 @@ export default async function JobseekerDashboardPage() {
       authUser={authUser}
       resume={resume}
       activePostings={JSON.parse(JSON.stringify(postingsWithResponsiveness))}
-      applications={JSON.parse(JSON.stringify(applications))}
+      applications={JSON.parse(JSON.stringify(applicationsWithEvents))}
       savedJobPostingIds={savedJobPostingIds}
     />
   );

@@ -7,7 +7,7 @@ import { isSuperadminEmail } from "@/lib/superadmin";
 
 export default async function SuperadminCompanyAdsPage() {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) redirect("/");
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   const today = todayMY();
   await syncCompanyAds(today);

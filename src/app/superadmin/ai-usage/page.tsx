@@ -21,7 +21,7 @@ const frame =
 
 export default async function SuperadminAiUsagePage({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) redirect("/");
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   const requested = Number((await searchParams).days);
   const days = (RANGES as readonly number[]).includes(requested) ? requested : 30;
@@ -101,8 +101,10 @@ export default async function SuperadminAiUsagePage({ searchParams }: { searchPa
         </div>
 
         <div className="grid grid-cols-1 gap-[20px] xl:grid-cols-2">
+          {/* h-full on both side-by-side cards: the grid stretches the frame to the taller one's height, so the white
+              must fill it too or the frame's gradient shows below the shorter card. */}
           <div className={frame}>
-            <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+            <div className="h-full rounded-[19px] bg-white p-[16px] sm:p-[22px]">
               <p className="text-sm text-[#141B2E]">By feature</p>
               {usage.features.length === 0 ? (
                 <p className="mt-[12px] rounded-[14px] bg-[#F8FAFB] p-[16px] text-xs text-[#9AA3B2]">No AI calls in this period.</p>
@@ -130,7 +132,7 @@ export default async function SuperadminAiUsagePage({ searchParams }: { searchPa
           </div>
 
           <div className={frame}>
-            <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+            <div className="h-full rounded-[19px] bg-white p-[16px] sm:p-[22px]">
               <p className="text-sm text-[#141B2E]">Top users</p>
               {usage.topUsers.length === 0 ? (
                 <p className="mt-[12px] rounded-[14px] bg-[#F8FAFB] p-[16px] text-xs text-[#9AA3B2]">No AI calls in this period.</p>

@@ -6,7 +6,7 @@ import { isSuperadminEmail } from "@/lib/superadmin";
 
 export default async function SuperadminJobseekersPage() {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) redirect("/");
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   const jobseekers = await getJobseekersForSuperadmin();
 

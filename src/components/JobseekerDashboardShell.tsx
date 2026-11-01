@@ -2,25 +2,39 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import AnimatedRibbon from "./AnimatedRibbon";
 import FloatingAssistant from "./FloatingAssistant";
 import Navbar from "./Navbar";
+import NavLinkIcon from "./NavLinkIcon";
 import PhoneVerifyBanner from "./PhoneVerifyBanner";
 import RewardPopup from "./RewardPopup";
 import SidebarResumeCard from "./SidebarResumeCard";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
-import { BriefcaseIcon, DraftIcon, FileIcon, GiftIcon, HeartIcon, HomeIcon, UserIcon } from "./icons";
+import { BriefcaseIcon, CheckCircleIcon, DraftIcon, FileIcon, GiftIcon, HeartIcon, HomeIcon, UserIcon } from "./icons";
 import type { AuthUser } from "./AuthModal";
 
-export type JobseekerNavKey = "overview" | "applications" | "saved" | "coverLetters" | "resumeDesigner" | "profile" | "rewards";
+export type JobseekerNavKey =
+  | "overview"
+  | "applications"
+  | "saved"
+  | "coverLetters"
+  | "resumeDesigner"
+  | "resumeReview"
+  | "profile"
+  | "rewards";
 
+// A sidebar nav spinner clears itself after this long even if the
+// transition it's tracking never resolves.
+const NAV_PENDING_TIMEOUT_MS = 10_000;
 const NAV_ITEMS = [
   { key: "overview", href: "/jobseeker/dashboard", label: "Dashboard", icon: HomeIcon },
   { key: "applications", href: "/jobseeker/applications", label: "My Applications", icon: BriefcaseIcon },
   { key: "saved", href: "/jobseeker/saved", label: "Saved Jobs", icon: HeartIcon },
   { key: "coverLetters", href: "/jobseeker/cover-letters", label: "Cover Letters", icon: FileIcon },
   { key: "resumeDesigner", href: "/jobseeker/resume-designer", label: "Resume Designer", icon: DraftIcon },
+  { key: "resumeReview", href: "/jobseeker/resume-review", label: "Resume Review", icon: CheckCircleIcon },
   { key: "profile", href: "/jobseeker/profile", label: "My Profile", icon: UserIcon },
 ] as const;
 
@@ -44,6 +58,17 @@ function Sidebar({
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
   const barRef = useCenterActiveTab<HTMLElement>();
+  // router.push inside a transition, so the clicked item can show it's loading.
+  const [navigating, startNavigation] = useTransition();
+  const [clickedKey, setClickedKey] = useState<JobseekerNavKey | null>(null);
+  // Self-heals a spinner that never clears (e.g. the destination page threw
+  // during the transition, so `navigating` never goes back to false) — the
+  // page itself may already be there even if the nav state got stuck.
+  useEffect(() => {
+    if (clickedKey === null) return;
+    const timer = setTimeout(() => setClickedKey(null), NAV_PENDING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [clickedKey]);
   const items: readonly { key: JobseekerNavKey; href: string; label: string; icon: typeof HomeIcon }[] = hasRewards
     ? [...NAV_ITEMS, REWARDS_ITEM]
     : NAV_ITEMS;
@@ -60,13 +85,16 @@ function Sidebar({
             onClick={(e) => {
               if (item.key === active) return;
               e.preventDefault();
-              guardNavigation(() => router.push(item.href));
+              guardNavigation(() => {
+                setClickedKey(item.key);
+                startNavigation(() => router.push(item.href));
+              });
             }}
             className={`flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:rounded-[10px] xl:aria-[current=page]:bg-brand-gold-soft xl:aria-[current=page]:text-brand-gold-dark xl:aria-[current=page]:shadow-none ${
               item.key === active ? "animate-fade-in-up" : ""
             }`}
           >
-            <item.icon className="h-[16px] w-[16px] shrink-0" />
+            <NavLinkIcon icon={item.icon} pending={navigating && clickedKey === item.key} />
             {item.label}
           </Link>
         ))}

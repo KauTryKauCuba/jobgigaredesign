@@ -291,6 +291,10 @@ export function themeCssVars(audience: ThemeAudience, colors: ThemeColors): Reco
   const page = pick(colors.page, d.page);
   const g = d.gradient.map((fallback, i) => pick(colors.gradient?.[i], fallback));
   const gradient = `linear-gradient(90deg, ${g[0]} 0%, ${g[1]} 35%, ${g[2]} 60%, ${g[3]} 100%)`;
+  // The pale feature-section bands, like the default design's: a tint of the
+  // main colour easing into a tint of the heading gradient's far end.
+  const band = `color-mix(in srgb, ${main} 12%, white)`;
+  const bandGradient = `linear-gradient(120deg, color-mix(in srgb, ${main} 15%, white) 0%, ${band} 45%, color-mix(in srgb, ${g[3]} 16%, white) 100%)`;
 
   if (audience === "employer") {
     return {
@@ -302,6 +306,8 @@ export function themeCssVars(audience: ThemeAudience, colors: ThemeColors): Reco
       "--brand-gradient-employer": gradient,
       "--ribbon-teal-light": `color-mix(in srgb, ${accent} 62%, white)`,
       "--ribbon-teal-pale": `color-mix(in srgb, ${accent} 20%, white)`,
+      "--band-employer": band,
+      "--band-gradient-employer": bandGradient,
       "--theme-main": main,
       "--theme-deep": g[0],
     };
@@ -313,6 +319,8 @@ export function themeCssVars(audience: ThemeAudience, colors: ThemeColors): Reco
     "--color-brand-gold-page": page,
     "--brand-gradient-jobseeker": gradient,
     "--ribbon-gold-vivid": `color-mix(in srgb, ${main} 55%, ${accent})`,
+    "--band-jobseeker": band,
+    "--band-gradient-jobseeker": bandGradient,
     "--theme-main": main,
     "--theme-deep": g[0],
   };

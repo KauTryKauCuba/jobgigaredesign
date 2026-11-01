@@ -19,12 +19,14 @@ import {
   RESUME_PAGE_HEIGHT,
   RESUME_PAGE_WIDTH,
   RESUME_TEMPLATES,
+  pagedResumeHtml,
   renderResumeHtml,
   resumeDocument,
   type ResumeData,
   type ResumeLanguage,
   type ResumeTemplate,
 } from "@/lib/resume-templates";
+import { RESUME_PAGE_TOP_MARGIN, paginateResume, type ResumeSlice } from "@/lib/resume-pagination";
 
 const QUALIFICATION_OPTIONS = ["SPM", "STPM", "Diploma", "Degree", "Master", "PhD", "Other"].map((v) => ({
   value: v,
@@ -391,14 +393,16 @@ function ChipsInput({
 }
 
 /**
- * The A4 page, scaled down to fit the column. Also measures how tall the
- * content runs so the jobseeker can see whether it fits on one page.
+ * The resume as real A4 pages, scaled down to fit the column — split where
+ * the PDF will split it (never through an entry or a line of text), so the
+ * jobseeker sees exactly what they'll download. The pages run on as one
+ * sheet, with a red line where each new page starts.
  */
-function ResumePreview({ html, onPagesChange }: { html: string; onPagesChange: (pages: number) => void }) {
+function ResumePreview({ html, onSlicesChange }: { html: string; onSlicesChange: (slices: ResumeSlice[]) => void }) {
   const outerRef = useRef<HTMLDivElement | null>(null);
-  const pageRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.6);
-  const [contentHeight, setContentHeight] = useState(RESUME_PAGE_HEIGHT);
+  const [slices, setSlices] = useState<ResumeSlice[]>([{ start: 0, end: RESUME_PAGE_HEIGHT }]);
 
   useLayoutEffect(() => {
     const outer = outerRef.current;
@@ -408,33 +412,38 @@ function ResumePreview({ html, onPagesChange }: { html: string; onPagesChange: (
     return () => observer.disconnect();
   }, []);
 
+  // Laid out once, unscaled and invisible, to work out where the pages break.
   useLayoutEffect(() => {
-    const page = pageRef.current?.firstElementChild as HTMLElement | null;
+    const page = measureRef.current?.firstElementChild as HTMLElement | null;
     if (!page) return;
     function measure() {
-      const height = Math.max(RESUME_PAGE_HEIGHT, page!.scrollHeight);
-      setContentHeight(height);
-      onPagesChange(Math.max(1, Math.ceil((height - 2) / RESUME_PAGE_HEIGHT)));
+      const next = paginateResume(page!);
+      setSlices(next);
+      onSlicesChange(next);
     }
     measure();
-    // Photos load after the first paint and can change the height.
+    // Photos load after the first paint and can change the layout.
     const observer = new ResizeObserver(measure);
     observer.observe(page);
     return () => observer.disconnect();
-  }, [html, onPagesChange]);
+  }, [html, onSlicesChange]);
 
-  const pageBreaks = Array.from({ length: Math.ceil(contentHeight / RESUME_PAGE_HEIGHT) - 1 }, (_, i) => i + 1);
+  const paged = useMemo(() => pagedResumeHtml(html, slices, RESUME_PAGE_TOP_MARGIN), [html, slices]);
+  const pageBreaks = slices.slice(1).map((_, i) => i + 1);
 
   return (
-    <div ref={outerRef} className="w-full">
+    <div ref={outerRef} className="relative w-full">
+      <div aria-hidden className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden">
+        <div ref={measureRef} style={{ width: RESUME_PAGE_WIDTH }} dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
       <div
         className="relative overflow-hidden rounded-[10px] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_20px_50px_-30px_rgba(20,27,46,0.35)]"
-        style={{ height: contentHeight * scale }}
+        style={{ height: slices.length * RESUME_PAGE_HEIGHT * scale }}
       >
         <div
-          ref={pageRef}
+          className="rz-preview"
           style={{ width: RESUME_PAGE_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }}
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: paged }}
         />
         {pageBreaks.map((n) => (
           <div
@@ -471,7 +480,9 @@ export default function ResumeDesignerView({
   const settings = fallbackSettings ?? storedSettings;
   const { template, lang, showPhoto } = settings;
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
-  const [pages, setPages] = useState(1);
+  // Where the pages break — worked out by the preview, and reused for the PDF so they match.
+  const [slices, setSlices] = useState<ResumeSlice[]>([{ start: 0, end: RESUME_PAGE_HEIGHT }]);
+  const pages = slices.length;
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
   const [pendingProceed, setPendingProceed] = useState<(() => void) | null>(null);
@@ -586,7 +597,7 @@ export default function ResumeDesignerView({
     const title = `${draft.fullName.trim() || "Resume"} - Resume`;
     // The print window is about:blank — a <base> makes the photo's relative
     // /uploads/... URL resolve against this site.
-    win.document.write(resumeDocument(title, html, window.location.origin));
+    win.document.write(resumeDocument(title, pagedResumeHtml(html, slices, RESUME_PAGE_TOP_MARGIN), window.location.origin));
     win.document.close();
     // Wait for the photo (if any) before printing.
     const print = () => {
@@ -858,7 +869,9 @@ export default function ResumeDesignerView({
           </div>
         </div>
       </div>
-      <ResumePreview html={html} onPagesChange={setPages} />
+      <div className="animate-fade-in-up" style={{ animationDelay: "120ms" }}>
+        <ResumePreview html={html} onSlicesChange={setSlices} />
+      </div>
     </div>
   );
 

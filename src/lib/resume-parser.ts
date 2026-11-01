@@ -2,12 +2,17 @@ import "server-only";
 import { extractImages as extractPdfImages, extractText as extractPdfText, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
 import sharp from "sharp";
+import {
+  DEEPSEEK_CHAT_MODEL,
+  DEEPSEEK_ENDPOINT,
+  MIMO_CHAT_MODEL,
+  MIMO_ENDPOINT,
+  chatRequestExtras,
+} from "@/lib/ai-models";
 import { normalizeSpokenLanguages } from "@/lib/languages";
 
 export const RESUME_MAX_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_CHARS = 15000;
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
-const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
 const RETRY_ATTEMPTS = 3;
 
 export const EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship", "freelance", "temporary"] as const;
@@ -290,8 +295,12 @@ export function validateParsedProfile(raw: unknown): ParsedProfile {
 }
 
 async function extractText(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const name = file.name.toLowerCase();
+  return extractResumeText(Buffer.from(await file.arrayBuffer()), file.name);
+}
+
+/** A stored resume's plain text — PDF or Word (.docx), told apart by file name. Also used by Resume Review. */
+export async function extractResumeText(buffer: Buffer, fileName: string): Promise<string> {
+  const name = fileName.toLowerCase();
 
   if (name.endsWith(".pdf")) {
     const result = await extractPdfText(new Uint8Array(buffer), { mergePages: true });
@@ -304,6 +313,12 @@ async function extractText(file: File): Promise<string> {
   }
 
   throw new Error("Unsupported file type.");
+}
+
+/** How many pages a PDF has (Resume Review's length check). */
+export async function countPdfPages(buffer: Buffer): Promise<number> {
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  return pdf.numPages;
 }
 
 // A resume photo is almost always close to square/portrait and a modest
@@ -444,6 +459,7 @@ async function callProvider(
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: text.slice(0, MAX_TEXT_CHARS) },
           ],
+          ...chatRequestExtras(endpoint),
         }),
       });
 
@@ -474,20 +490,26 @@ async function callProvider(
 async function callBestProvider(
   text: string,
 ): Promise<
-  | { ok: true; content: string; usage: ProviderUsage | null; provider: string }
+  | { ok: true; content: string; usage: ProviderUsage | null; provider: string; model: string }
   | { ok: false; error: string; status: number }
 > {
   const deepseekKey = process.env.DEEPSEEK_API_KEY ?? null;
   const mimoKey = process.env.MIMO_API_KEY ?? null;
 
-  const attempts: Promise<{ content: string; usage: ProviderUsage | null; provider: string }>[] = [];
+  const attempts: Promise<{ content: string; usage: ProviderUsage | null; provider: string; model: string }>[] = [];
   if (deepseekKey) {
     attempts.push(
-      callProvider(DEEPSEEK_ENDPOINT, "deepseek-chat", deepseekKey, text).then((r) => ({ ...r, provider: "deepseek" })),
+      callProvider(DEEPSEEK_ENDPOINT, DEEPSEEK_CHAT_MODEL, deepseekKey, text).then((r) => ({
+        ...r,
+        provider: "deepseek",
+        model: DEEPSEEK_CHAT_MODEL,
+      })),
     );
   }
   if (mimoKey) {
-    attempts.push(callProvider(MIMO_ENDPOINT, "mimo-v2.5", mimoKey, text).then((r) => ({ ...r, provider: "mimo" })));
+    attempts.push(
+      callProvider(MIMO_ENDPOINT, MIMO_CHAT_MODEL, mimoKey, text).then((r) => ({ ...r, provider: "mimo", model: MIMO_CHAT_MODEL })),
+    );
   }
 
   if (attempts.length === 0) {
@@ -518,6 +540,7 @@ export type ResumeParseResult =
       profile: ParsedProfile;
       usage: ProviderUsage | null;
       provider: string;
+      model: string;
       durationMs: number;
       photoUrl: string | null;
     }
@@ -563,6 +586,7 @@ export async function parseResumeFile(file: File): Promise<ResumeParseResult> {
     profile: validateParsedProfile(parsed),
     usage: result.usage,
     provider: result.provider,
+    model: result.model,
     durationMs,
     photoUrl,
   };

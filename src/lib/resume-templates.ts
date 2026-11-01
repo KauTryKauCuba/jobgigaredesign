@@ -273,6 +273,13 @@ export const RESUME_CSS = `
 .rz-modern .rz-header{display:block;margin-bottom:8px}
 .rz-modern .rz-name{font-size:32px}
 
+/* Pages: each A4 sheet shows its own slice of the resume (see pagedResumeHtml) */
+.rz-sheet{position:relative;width:${RESUME_PAGE_WIDTH}px;height:${RESUME_PAGE_HEIGHT}px;overflow:hidden;background:#fff;break-after:page}
+.rz-sheet:last-child{break-after:auto}
+.rz-slice{position:absolute;left:0;right:0;overflow:hidden}
+/* Modern's sidebar colour carries on through each page's top/bottom margin. */
+.rz-sheet-modern{background:linear-gradient(to right,#0F5C63 250px,#fff 250px)}
+
 /* Executive */
 .rz-executive{font-family:Georgia,"Times New Roman",serif;padding:54px 60px}
 .rz-executive .rz-header{flex-direction:column;text-align:center;gap:12px;border-bottom:1px solid #A8842C;padding-bottom:18px}
@@ -283,10 +290,26 @@ export const RESUME_CSS = `
 .rz-executive .rz-chip{border-color:#D9C79A}
 `;
 
+/**
+ * The resume as separate A4 sheets, one per page slice (from paginateResume
+ * in resume-pagination.ts): each sheet shows only its own part, below a top
+ * margin from page 2 on. Used by both the preview and the PDF, so they match.
+ */
+export function pagedResumeHtml(bodyHtml: string, slices: { start: number; end: number }[], topMargin: number) {
+  const modern = bodyHtml.includes("rz-modern");
+  return slices
+    .map(
+      (s, i) =>
+        `<div class="rz-sheet${modern ? " rz-sheet-modern" : ""}"><div class="rz-slice" style="top:${i === 0 ? 0 : topMargin}px;height:${Math.ceil(
+          s.end - s.start,
+        )}px"><div style="margin-top:${-Math.floor(s.start)}px">${bodyHtml}</div></div></div>`,
+    )
+    .join("");
+}
+
 /** A complete standalone document for print/PDF. */
 export function resumeDocument(title: string, bodyHtml: string, baseHref?: string) {
   return `<!doctype html><html><head><meta charset="utf-8">${baseHref ? `<base href="${esc(baseHref)}/">` : ""}<title>${esc(title)}</title>
-<style>@page{size:A4;margin:0}html,body{margin:0;padding:0;background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}${RESUME_CSS}
-@media print{.rz-page{min-height:${RESUME_PAGE_HEIGHT}px}.rz-modern .rz-side{min-height:${RESUME_PAGE_HEIGHT}px}}</style>
+<style>@page{size:A4;margin:0}html,body{margin:0;padding:0;background:#fff}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}${RESUME_CSS}</style>
 </head><body>${bodyHtml}</body></html>`;
 }

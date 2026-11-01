@@ -114,8 +114,8 @@ export default function AiUsageCard({ aiUsage }: { aiUsage: AiUsageRow[] }) {
               );
             })}
             <p className="text-[11px] text-[#9AA3B2]">
-              Estimated from published list pricing, not an exact bill — MiMo&rsquo;s rate is an unverified
-              third-party estimate, not an official Xiaomi rate.
+              Estimated from published list pricing, not an exact bill — MiMo&rsquo;s rate is as reported by
+              third-party sites, not read from Xiaomi directly.
             </p>
           </div>
         )}

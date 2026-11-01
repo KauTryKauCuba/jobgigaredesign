@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { resolveAvatarUrl, resolveEmployerBadge, resolveNameForRole, resolvePhoneVerified } from "@/lib/auth-user";
 import { users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { isSuperadminEmail } from "@/lib/superadmin";
 
 export async function GET() {
   const session = await getSession();
@@ -16,11 +17,12 @@ export async function GET() {
     .limit(1);
   if (!user) return NextResponse.json({ user: null });
 
-  const [avatarUrl, name, badge, phoneVerified] = await Promise.all([
+  const [avatarUrl, name, badge, phoneVerified, isSuperadmin] = await Promise.all([
     resolveAvatarUrl(session.userId, session.role, user.avatarUrl),
     resolveNameForRole(session.userId, session.role, user.name),
     session.role === "employer" ? resolveEmployerBadge(session.userId) : null,
     resolvePhoneVerified(session.userId, session.role),
+    isSuperadminEmail(user.email),
   ]);
 
   return NextResponse.json({
@@ -34,6 +36,7 @@ export async function GET() {
       teamRole: badge?.teamRole ?? null,
       companyLogoUrl: badge?.companyLogoUrl ?? null,
       phoneVerified,
+      isSuperadmin,
     },
   });
 }

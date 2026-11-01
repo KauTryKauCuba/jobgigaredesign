@@ -1,26 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 import AnimatedRibbon from "./AnimatedRibbon";
 import CompanySwitcher from "./CompanySwitcher";
-import FloatingAssistant from "./FloatingAssistant";
+import FloatingAssistant, { type ChatRailActions } from "./FloatingAssistant";
 import Navbar from "./Navbar";
+import NavLinkIcon from "./NavLinkIcon";
 import PhoneVerifyBanner, { phoneBannerClosedThisVisit } from "./PhoneVerifyBanner";
 import RewardPopup from "./RewardPopup";
 import SampleDataBanner from "./SampleDataBanner";
+import SiriOrb from "./SiriOrb";
 import { UnsavedChangesGuardBoundary, useUnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useCenterActiveTab } from "./useCenterActiveTab";
-import { SIDEBAR_COLLAPSED_ATTR, SIDEBAR_COLLAPSED_KEY } from "@/lib/employer-dashboard-prefs";
+import { CHAT_MODE_COOKIE, SIDEBAR_COLLAPSED_ATTR, SIDEBAR_COLLAPSED_KEY } from "@/lib/employer-dashboard-prefs";
 import {
   BriefcaseIcon,
   BuildingIcon,
   CalendarIcon,
   ChevronDownIcon,
+  ClockIcon,
   GiftIcon,
+  GridIcon,
   HomeIcon,
   MegaphoneIcon,
+  PlusIcon,
   UserIcon,
   UsersIcon,
 } from "./icons";
@@ -76,26 +81,78 @@ function navItemsFor(teamRole: TeamRole | null | undefined, hasRewards: boolean)
 // EmployerDashboardShell's own body would read the tree position ABOVE that
 // Boundary (a component can't be inside a Provider it renders as part of its
 // own output), always getting the default no-op guard.
+// A sidebar nav spinner clears itself after this long even if the
+// transition it's tracking never resolves — see the watchdog in Sidebar.
+const NAV_PENDING_TIMEOUT_MS = 10_000;
+const NAV_ITEM =
+  "emp-nav-link flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] xl:h-[40px] xl:rounded-[10px]";
+// The current page (or, in Chat mode, an open Past chats panel).
+const NAV_ITEM_SELECTED =
+  "bg-white text-[#141B2E] shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:bg-brand-teal-soft xl:text-brand-teal-dark xl:shadow-none";
+
 function Sidebar({
   active,
   teamRole,
   hasRewards,
   collapsed,
   onToggleCollapsed,
+  chatActions,
+  onNavigate,
 }: {
-  active: EmployerNavKey;
+  // null in Chat mode, where no dashboard page is showing.
+  active: EmployerNavKey | null;
   teamRole: TeamRole | null | undefined;
   hasRewards: boolean;
   // Icon-only, xl+ only — below that it's already the compact horizontal
   // pill row, so there's nothing further to collapse there.
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  // Chat mode: New chat and Past chats, above the pages.
+  chatActions?: ChatRailActions;
+  // Chat mode: opening a page goes through here (it switches back to
+  // Dashboard mode first, so the page actually shows).
+  onNavigate?: (href: string) => void;
 }) {
   const router = useRouter();
   const guardNavigation = useUnsavedChangesGuard();
   const barRef = useCenterActiveTab<HTMLElement>();
+  // router.push inside a transition, so the clicked item can show it's loading.
+  const [navigating, startNavigation] = useTransition();
+  const [clickedKey, setClickedKey] = useState<EmployerNavKey | null>(null);
+  // Self-heals a spinner that never clears (e.g. the destination page threw
+  // during the transition, so `navigating` never goes back to false) — the
+  // page itself may already be there even if the nav state got stuck.
+  useEffect(() => {
+    if (clickedKey === null) return;
+    const timer = setTimeout(() => setClickedKey(null), NAV_PENDING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [clickedKey]);
+  const itemClass = (selected: boolean) =>
+    `${NAV_ITEM} ${selected ? `${NAV_ITEM_SELECTED} animate-fade-in-up` : ""} ${collapsed ? "xl:justify-center xl:px-0" : ""}`;
+  const label = (text: string) => <span className={`emp-nav-label ${collapsed ? "xl:hidden" : ""}`}>{text}</span>;
   return (
     <aside ref={barRef} className="scrollbar-hide flex shrink-0 flex-row gap-[4px] overflow-x-auto rounded-full bg-[#F1F4F8] p-[4px] xl:flex-col xl:gap-[2px] xl:rounded-[14px] xl:border xl:border-[#EAEDF2] xl:bg-white xl:p-[10px]">
+      {chatActions && (
+        <>
+          <button type="button" onClick={chatActions.newChat} title={collapsed ? "New chat" : undefined} className={itemClass(false)}>
+            <PlusIcon className="h-[16px] w-[16px] shrink-0" />
+            {label("New chat")}
+          </button>
+          {chatActions.canShowPastChats && (
+            <button
+              type="button"
+              onClick={chatActions.togglePastChats}
+              aria-pressed={chatActions.pastChatsOpen}
+              title={collapsed ? "Past chats" : undefined}
+              className={itemClass(chatActions.pastChatsOpen)}
+            >
+              <ClockIcon className="h-[16px] w-[16px] shrink-0" />
+              {label("Past chats")}
+            </button>
+          )}
+          <span aria-hidden className="mx-[2px] my-[8px] w-px shrink-0 bg-black/[0.1] xl:mx-[6px] xl:my-[6px] xl:h-px xl:w-auto xl:bg-[#EAEDF2]" />
+        </>
+      )}
       {navItemsFor(teamRole, hasRewards).map((item) => (
         <Link
           key={item.key}
@@ -105,14 +162,19 @@ function Sidebar({
           onClick={(e) => {
             if (item.key === active) return;
             e.preventDefault();
-            guardNavigation(() => router.push(item.href));
+            if (onNavigate) {
+              onNavigate(item.href);
+              return;
+            }
+            guardNavigation(() => {
+              setClickedKey(item.key);
+              startNavigation(() => router.push(item.href));
+            });
           }}
-          className={`emp-nav-link flex shrink-0 items-center gap-[10px] whitespace-nowrap rounded-full px-[16px] py-[10px] text-sm text-[#4B5468] transition-colors hover:bg-black/[0.03] aria-[current=page]:bg-white aria-[current=page]:text-[#141B2E] aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:h-[40px] xl:rounded-[10px] xl:aria-[current=page]:bg-brand-teal-soft xl:aria-[current=page]:text-brand-teal-dark xl:aria-[current=page]:shadow-none ${
-            item.key === active ? "animate-fade-in-up" : ""
-          } ${collapsed ? "xl:justify-center xl:px-0" : ""}`}
+          className={itemClass(item.key === active)}
         >
-          <item.icon className="h-[16px] w-[16px] shrink-0" />
-          <span className={`emp-nav-label ${collapsed ? "xl:hidden" : ""}`}>{item.label}</span>
+          <NavLinkIcon icon={item.icon} pending={navigating && clickedKey === item.key} />
+          {label(item.label)}
         </Link>
       ))}
       {/* Collapse/expand — xl only, where the vertical layout has width worth reclaiming. */}
@@ -128,6 +190,48 @@ function Sidebar({
         />
       </button>
     </aside>
+  );
+}
+
+type ViewMode = "dashboard" | "chat";
+
+// How long the outgoing view takes to fade out (matches .animate-mode-out).
+const MODE_FADE_MS = 220;
+
+/**
+ * Dashboard / Chat — under the assistant's message box, sized to match the
+ * "AI can make mistakes" note beside it. Chat turns the page into a
+ * full-screen assistant.
+ */
+function ModeSwitch({ mode, onChange, disabled }: { mode: ViewMode; onChange: (mode: ViewMode) => void; disabled: boolean }) {
+  return (
+    <div role="radiogroup" aria-label="View" className="flex rounded-full bg-white/80 p-[2px] backdrop-blur-sm">
+      {(["dashboard", "chat"] as const).map((option) => {
+        const selected = mode === option;
+        const label = option === "dashboard" ? "Dashboard" : "Chat";
+        return (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={label}
+            disabled={disabled}
+            onClick={() => onChange(option)}
+            className={`flex h-[17px] items-center gap-[4px] rounded-full px-[8px] text-[11px] transition-colors ${
+              selected ? "bg-brand-teal-soft text-brand-teal-dark" : "text-[#9AA3B2] hover:text-[#4B5468]"
+            }`}
+          >
+            {option === "dashboard" ? (
+              <GridIcon className="h-[10px] w-[10px]" />
+            ) : (
+              <SiriOrb className="h-[10px] w-[10px]" active={selected} />
+            )}
+            <span>{label}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -211,9 +315,80 @@ export default function EmployerDashboardShell({
     });
   }
 
+  // Dashboard / Chat mode, remembered in a cookie the server reads (see
+  // getAuthUser), so a page always arrives in the right mode — no flash.
+  const router = useRouter();
+  const pathname = usePathname();
+  const [mode, setMode] = useState<ViewMode>(authUser.chatMode ? "chat" : "dashboard");
+  const [switching, setSwitching] = useState(false);
+  // The view that's just come in plays its fade-in (not on a plain page load).
+  const [arrived, setArrived] = useState(false);
+
+  function saveMode(next: ViewMode) {
+    document.cookie = `${CHAT_MODE_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+  }
+
+  function switchMode(next: ViewMode) {
+    if (next === mode || switching) return;
+    saveMode(next);
+    const apply = () => {
+      setMode(next);
+      setArrived(true);
+      setSwitching(false);
+      window.scrollTo(0, 0);
+    };
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      apply();
+      return;
+    }
+    setSwitching(true);
+    setTimeout(apply, MODE_FADE_MS);
+  }
+
+  // Chat mode's page links (the rail, and links in the assistant's replies)
+  // switch back to Dashboard mode so the page actually shows.
+  function openFromChat(href: string) {
+    if (href.split(/[?#]/)[0] === pathname) {
+      switchMode("dashboard");
+      if (href !== pathname) router.push(href);
+      return;
+    }
+    saveMode("dashboard");
+    router.push(href);
+  }
+
+  const chat = mode === "chat";
+  const hasRewards = !!authUser.rewards?.hasRewards || active === "rewards";
+
+  // Chat mode's left rail: the very same company card and sidebar (and its
+  // collapse state, and its height), with New chat / Past chats on top —
+  // flush against the left edge.
+  const chatRail = (actions: ChatRailActions) => (
+    <div
+      // No overflow clipping here — the company switcher's dropdown opens out
+      // past the rail's edge — and above the chat, like the dashboard's rail.
+      className={`relative z-20 flex shrink-0 flex-col gap-[10px] px-4 pt-[16px] xl:self-start xl:px-0 xl:py-[16px] xl:pl-[16px] ${
+        sidebarCollapsed ? "xl:w-[80px]" : "xl:w-[236px]"
+      }`}
+    >
+      <CompanySwitcher collapsed={sidebarCollapsed} />
+      <Sidebar
+        active={null}
+        teamRole={authUser.teamRole}
+        hasRewards={hasRewards}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebarCollapsed}
+        chatActions={actions}
+        onNavigate={openFromChat}
+      />
+    </div>
+  );
+
   return (
     <UnsavedChangesGuardBoundary>
-    <main className="flex min-h-[100svh] flex-col overflow-x-clip bg-brand-teal-page pb-[92px]">
+    <main
+      className={`flex flex-col overflow-x-clip bg-brand-teal-page ${chat ? "h-[100svh] overflow-hidden" : "min-h-[100svh] pb-[92px]"}`}
+    >
       <div className="lg:sticky lg:top-0 lg:z-30 lg:bg-brand-teal-page">
         <Navbar initialUser={authUser} hideProfileLinks appShell />
       </div>
@@ -229,6 +404,11 @@ export default function EmployerDashboardShell({
       )}
       <RewardPopup reward={authUser.rewards?.popup} />
 
+      {!chat && (
+      <div
+        id="employer-dashboard-view"
+        className={`flex flex-1 flex-col ${switching ? "animate-mode-out" : arrived ? "animate-mode-in" : ""}`}
+      >
       <div className="app-shell pt-[20px]">
         <div className="flex flex-col gap-[24px] xl:flex-row xl:items-start">
           {/* `contents` below xl flattens this column so its pieces stack
@@ -250,7 +430,7 @@ export default function EmployerDashboardShell({
             <Sidebar
               active={active}
               teamRole={authUser.teamRole}
-              hasRewards={!!authUser.rewards?.hasRewards || active === "rewards"}
+              hasRewards={hasRewards}
               collapsed={sidebarCollapsed}
               onToggleCollapsed={toggleSidebarCollapsed}
             />
@@ -286,9 +466,28 @@ export default function EmployerDashboardShell({
       <div className="-mb-[92px] h-[80px] overflow-hidden sm:h-[110px] lg:h-[150px]">
         <AnimatedRibbon />
       </div>
-      {/* FloatingAssistant is fixed to the viewport bottom, like the navbar
-          pinned to the top — it renders here for source order, not layout. */}
-      <FloatingAssistant />
+      </div>
+      )}
+      {/* Dashboard mode: the bar fixed to the viewport bottom (it renders
+          here for source order, not layout). Chat mode: the same component
+          fills the page — one instance either way, so the chat carries
+          across a switch. */}
+      <FloatingAssistant
+        layout={chat ? "full" : "floating"}
+        leaving={switching}
+        entering={arrived && !switching}
+        greetingName={authUser.name}
+        viewer={{
+          id: authUser.id,
+          isOwner: authUser.teamRole === "owner",
+          name: authUser.name,
+          avatarUrl: authUser.avatarUrl,
+          position: authUser.position,
+        }}
+        rail={chatRail}
+        onNavigate={chat ? openFromChat : undefined}
+        modeSwitch={<ModeSwitch mode={mode} onChange={switchMode} disabled={switching} />}
+      />
     </main>
     </UnsavedChangesGuardBoundary>
   );

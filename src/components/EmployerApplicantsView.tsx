@@ -8,6 +8,7 @@ import AnimatedRibbon from "./AnimatedRibbon";
 import ApplicantDetailModal from "./ApplicantDetailModal";
 import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import EmployerDashboardShell from "./EmployerDashboardShell";
+import ExportApplicantsButton from "./ExportApplicantsButton";
 import { gradientFrameClass } from "./formStyles";
 import { STATUS_ICON, STATUS_TILE_GRADIENT } from "./applicationStatusTiles";
 import {
@@ -543,18 +544,25 @@ export default function EmployerApplicantsView({
           <div id="applicants-list" className="mt-[24px] scroll-mt-[100px]">
             <div className="flex flex-wrap items-center justify-between gap-[8px]">
               <p className="text-sm text-[#141B2E]">Applicants, grouped by job posting</p>
-              {hasActiveFilter && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatusFilter(null);
-                    setNameQuery("");
-                  }}
-                  className="text-sm text-brand-teal-dark hover:underline"
-                >
-                  Clear filter
-                </button>
-              )}
+              <div className="flex items-center gap-[12px]">
+                {hasActiveFilter && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(null);
+                      setNameQuery("");
+                    }}
+                    className="text-sm text-brand-teal-dark hover:underline"
+                  >
+                    Clear filter
+                  </button>
+                )}
+                {/* Exactly what's listed below — the filter applies, in the same order. */}
+                <ExportApplicantsButton
+                  applicationIds={postings.flatMap((p) => p.applicants.map((a) => a.application.id))}
+                  title={statusFilter ? `${APPLICATION_STATUS_LABEL[statusFilter] ?? statusFilter} applicants` : "Applicants"}
+                />
+              </div>
             </div>
             <div className="mt-[10px] flex items-center gap-[8px] rounded-[12px] border border-black/[0.1] px-[12px] focus-within:border-brand-teal-dark">
               <SearchIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />

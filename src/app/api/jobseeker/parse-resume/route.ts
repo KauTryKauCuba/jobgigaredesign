@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     userId: session.userId,
     feature: "resume_parse",
     provider: result.provider,
+    model: result.model,
     usage: result.usage,
     durationMs: result.durationMs,
   });

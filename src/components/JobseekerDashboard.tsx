@@ -5,7 +5,8 @@ import { APPLICATION_STATUS_COLOR, APPLICATION_STATUS_LABEL, relativeTimeAgo } f
 import type { AuthUser } from "./AuthModal";
 import ResponsivenessBadge from "./ResponsivenessBadge";
 import SaveJobButton from "./SaveJobButton";
-import type { EmployerResponsiveness } from "@/lib/responsiveness";
+import type { ApplicationEvent, EmployerResponsiveness } from "@/lib/responsiveness";
+import { ApplicationSteps } from "./ApplicationTracker";
 import { formatSalary } from "@/lib/job-posting-options";
 
 type ActivePostingRow = {
@@ -38,9 +39,11 @@ type ApplicationRow = {
     location: string;
   };
   companyName: string;
+  // Filled in for the previewed applications only (see the dashboard page).
+  events: ApplicationEvent[];
 };
 
-const DASHBOARD_APPLICATION_PREVIEW_COUNT = 3;
+export const DASHBOARD_APPLICATION_PREVIEW_COUNT = 3;
 
 const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
   full_time: "Full-time",
@@ -106,28 +109,27 @@ export default function JobseekerDashboard({
               </p>
             ) : (
               <div className="mt-[14px] flex flex-col gap-[10px]">
-                {applications.slice(0, DASHBOARD_APPLICATION_PREVIEW_COUNT).map(({ application, posting, companyName }) => {
+                {applications.slice(0, DASHBOARD_APPLICATION_PREVIEW_COUNT).map(({ application, posting, companyName, events }) => {
                   const color = APPLICATION_STATUS_COLOR[application.status] ?? APPLICATION_STATUS_COLOR.applied;
                   return (
                     <div
                       key={application.id}
-                      className="flex flex-col gap-[8px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-[14px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px] md:flex-row md:items-center md:justify-between"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-[#141B2E]">{posting.title}</p>
+                        <p className="flex flex-wrap items-center gap-[8px] text-sm text-[#141B2E]">
+                          <span className="truncate">{posting.title}</span>
+                          <span className={`shrink-0 rounded-full px-[10px] py-[2px] text-xs ${color.bg} ${color.text}`}>
+                            {APPLICATION_STATUS_LABEL[application.status] ?? application.status}
+                          </span>
+                        </p>
                         <p className="mt-[2px] text-xs text-[#4B5468]">
                           {companyName} · {posting.location || "Location not set"}
                         </p>
+                        <p className="mt-[2px] text-xs text-[#9AA3B2]">Applied {relativeTimeAgo(application.appliedAt)}</p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-[10px]">
-                        <span className="text-xs text-[#9AA3B2]">
-                          Applied {relativeTimeAgo(application.appliedAt)}
-                        </span>
-                        <span
-                          className={`rounded-full px-[10px] py-[3px] text-xs ${color.bg} ${color.text}`}
-                        >
-                          {APPLICATION_STATUS_LABEL[application.status] ?? application.status}
-                        </span>
+                      <div className="w-full shrink-0 md:w-[340px]">
+                        <ApplicationSteps status={application.status} appliedAt={application.appliedAt} events={events} compact />
                       </div>
                     </div>
                   );

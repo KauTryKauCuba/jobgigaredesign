@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { gradientFrameClass } from "./formStyles";
 import { FileIcon, UploadIcon, XIcon } from "./icons";
@@ -15,6 +17,7 @@ export default function SidebarResumeCard({
 }: {
   initialResume: { fileName: string; fileSize: number | null } | null;
 }) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [resume, setResume] = useState(initialResume);
   const [parsing, setParsing] = useState(false);
@@ -51,6 +54,8 @@ export default function SidebarResumeCard({
           ? "Profile updated from your resume."
           : "Resume saved — didn't find new details to fill in.",
       );
+      // So the page behind it (e.g. Resume Review's viewer) shows the new file.
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't read that resume.");
     } finally {
@@ -72,6 +77,7 @@ export default function SidebarResumeCard({
       const res = await fetch("/api/jobseeker/resume", { method: "DELETE" });
       if (!res.ok) throw new Error("Couldn't remove that resume.");
       setResume(null);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't remove that resume.");
     }
@@ -172,6 +178,15 @@ export default function SidebarResumeCard({
             <XIcon className="h-[10px] w-[10px]" />
             Reset
           </button>
+        )}
+
+        {resume && (
+          <Link
+            href="/jobseeker/resume-review"
+            className="mt-[8px] flex h-[34px] w-full items-center justify-center rounded-[10px] border border-brand-gold-dark/30 px-[10px] text-sm text-brand-gold-dark hover:bg-brand-gold-soft"
+          >
+            Get feedback
+          </Link>
         )}
 
         {error && <p className="mt-[8px] text-xs text-red-500">{error}</p>}

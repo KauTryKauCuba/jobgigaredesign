@@ -1,10 +1,15 @@
 import { after, NextResponse } from "next/server";
+import {
+  DEEPSEEK_CHAT_MODEL,
+  DEEPSEEK_ENDPOINT,
+  MIMO_CHAT_MODEL,
+  MIMO_ENDPOINT,
+  chatRequestExtras,
+} from "@/lib/ai-models";
 import { logAiUsage } from "@/lib/ai-usage";
 import { isSalaryPeriod, SALARY_PERIODS } from "@/lib/job-posting-options";
 import { getSession } from "@/lib/session";
 
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
-const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
 const REQUEST_TIMEOUT_MS = 20_000;
 
 // The Salary card's "Suggest salary" — a typical range for this specific
@@ -34,6 +39,7 @@ async function callProvider(endpoint: string, model: string, apiKey: string, use
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userContent },
       ],
+      ...chatRequestExtras(endpoint),
     }),
   });
   const data: ProviderResponse = await upstream.json().catch(() => ({}));
@@ -84,8 +90,8 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   const attempts: Promise<Attempt>[] = [];
-  if (deepseekKey) attempts.push(callProvider(DEEPSEEK_ENDPOINT, "deepseek-chat", deepseekKey, userContent, "deepseek"));
-  if (mimoKey) attempts.push(callProvider(MIMO_ENDPOINT, "mimo-v2.5", mimoKey, userContent, "mimo"));
+  if (deepseekKey) attempts.push(callProvider(DEEPSEEK_ENDPOINT, DEEPSEEK_CHAT_MODEL, deepseekKey, userContent, "deepseek"));
+  if (mimoKey) attempts.push(callProvider(MIMO_ENDPOINT, MIMO_CHAT_MODEL, mimoKey, userContent, "mimo"));
 
   let won: Attempt;
   try {

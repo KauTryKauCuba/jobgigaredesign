@@ -6,7 +6,7 @@ import { isSuperadminEmail } from "@/lib/superadmin";
 
 export async function requireSuperadmin(): Promise<{ id: string; email: string } | null> {
   const [authUser, session] = await Promise.all([getAuthUser(), getSession()]);
-  return authUser && session && isSuperadminEmail(authUser.email) ? { id: session.userId, email: authUser.email } : null;
+  return authUser && session && (await isSuperadminEmail(authUser.email)) ? { id: session.userId, email: authUser.email } : null;
 }
 
 export const notAuthorized = () => NextResponse.json({ error: "Not authorized." }, { status: 403 });

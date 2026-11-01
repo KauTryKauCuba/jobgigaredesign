@@ -5,7 +5,21 @@ import { useEffect, useState } from "react";
 import { useCenterActiveTab } from "./useCenterActiveTab";
 import AnimatedRibbon from "./AnimatedRibbon";
 import Navbar from "./Navbar";
-import { BriefcaseIcon, GiftIcon, HomeIcon, ImageIcon, MegaphoneIcon, PaletteIcon, StarIcon, TrendUpIcon, UserIcon, UsersIcon } from "./icons";
+import NavLinkIcon from "./NavLinkIcon";
+import {
+  BriefcaseIcon,
+  ConnectionsIcon,
+  GiftIcon,
+  HomeIcon,
+  ImageIcon,
+  MegaphoneIcon,
+  PaletteIcon,
+  StarIcon,
+  TrendUpIcon,
+  UserCheckIcon,
+  UserIcon,
+  UsersIcon,
+} from "./icons";
 import type { AuthUser } from "./AuthModal";
 
 export type SuperadminNavKey =
@@ -13,24 +27,28 @@ export type SuperadminNavKey =
   | "job-postings"
   | "jobseekers"
   | "employers"
+  | "matching"
   | "company-ads"
   | "job-ads"
   | "welcome-popup"
   | "themes"
   | "campaigns"
-  | "ai-usage";
+  | "ai-usage"
+  | "admins";
 
 const NAV_ITEMS = [
   { key: "overview", href: "/superadmin/dashboard", label: "Dashboard", icon: HomeIcon },
   { key: "job-postings", href: "/superadmin/job-postings", label: "Job Postings", icon: BriefcaseIcon },
   { key: "jobseekers", href: "/superadmin/jobseekers", label: "Jobseekers", icon: UserIcon },
   { key: "employers", href: "/superadmin/employers", label: "Employers", icon: UsersIcon },
+  { key: "matching", href: "/superadmin/matching", label: "Matching", icon: ConnectionsIcon },
   { key: "company-ads", href: "/superadmin/company-ads", label: "Company Ads", icon: MegaphoneIcon },
   { key: "job-ads", href: "/superadmin/job-ads", label: "Job Ads", icon: ImageIcon },
   { key: "welcome-popup", href: "/superadmin/welcome-popup", label: "Welcome Popup", icon: StarIcon },
   { key: "themes", href: "/superadmin/themes", label: "Themes", icon: PaletteIcon },
   { key: "campaigns", href: "/superadmin/campaigns", label: "Campaigns", icon: GiftIcon },
   { key: "ai-usage", href: "/superadmin/ai-usage", label: "AI Usage", icon: TrendUpIcon },
+  { key: "admins", href: "/superadmin/admins", label: "Admins", icon: UserCheckIcon },
 ] as const;
 
 // Campaign rewards waiting for approval, for the number beside "Campaigns".
@@ -102,7 +120,7 @@ export default function SuperadminDashboardShell({
                   item.key === active ? "animate-fade-in-up" : ""
                 }`}
               >
-                <item.icon className="h-[16px] w-[16px] shrink-0" />
+                <NavLinkIcon icon={item.icon} />
                 {item.label}
                 {item.key === "campaigns" && pendingRewards > 0 && (
                   <span

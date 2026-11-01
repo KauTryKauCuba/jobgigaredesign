@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 // Where uploaded files actually live: `public/uploads/<category>/<file>`.
@@ -54,6 +54,22 @@ export async function saveBufferUpload(buffer: Buffer, mimeType: string, categor
   const fileName = `${randomUUID()}.${extensionForMime(mimeType)}`;
   await writeFile(path.join(dir, fileName), buffer);
   return `/uploads/${category}/${fileName}`;
+}
+
+/**
+ * Reads back a file saved by saveBufferUpload, from its "/uploads/…" URL.
+ * Null for anything that isn't a file inside the uploads folder (including
+ * "../" tricks) or doesn't exist.
+ */
+export async function readUploadBuffer(url: string): Promise<Buffer | null> {
+  if (!url.startsWith("/uploads/")) return null;
+  const filePath = path.resolve(UPLOADS_ROOT, url.slice("/uploads/".length));
+  if (!filePath.startsWith(UPLOADS_ROOT + path.sep)) return null;
+  try {
+    return await readFile(filePath);
+  } catch {
+    return null;
+  }
 }
 
 // Same, for callers that still have a `data:<mime>;base64,<data>` string

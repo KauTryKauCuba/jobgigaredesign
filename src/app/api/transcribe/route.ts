@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const MIMO_ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
+import { MIMO_ASR_MODEL, MIMO_ENDPOINT } from "@/lib/ai-models";
 
 type MimoUsage = {
   prompt_tokens?: number;
@@ -24,7 +23,7 @@ async function callMimo(audio: string, apiKey: string) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "mimo-v2.5-asr",
+      model: MIMO_ASR_MODEL,
       messages: [
         {
           role: "user",

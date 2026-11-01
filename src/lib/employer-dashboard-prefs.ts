@@ -5,3 +5,8 @@
 // module would.
 export const SIDEBAR_COLLAPSED_KEY = "jobgiga:employerSidebarCollapsed";
 export const SIDEBAR_COLLAPSED_ATTR = "data-emp-sidebar-collapsed";
+
+// Dashboard / Chat mode switch — "chat" turns the dashboard into a
+// full-screen assistant. A cookie (not localStorage) so the server renders
+// the right mode straight away: no flash of the dashboard on reload.
+export const CHAT_MODE_COOKIE = "jobgiga_employer_view";

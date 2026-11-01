@@ -18,7 +18,7 @@ function isWelcomeRole(value: unknown): value is WelcomeRole {
 
 async function requireSuperadmin() {
   const [authUser, session] = await Promise.all([getAuthUser(), getSession()]);
-  return authUser && session && isSuperadminEmail(authUser.email) ? { id: session.userId } : null;
+  return authUser && session && (await isSuperadminEmail(authUser.email)) ? { id: session.userId } : null;
 }
 
 // Replace a landing page's welcome popup image. Multipart: role

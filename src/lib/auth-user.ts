@@ -1,8 +1,10 @@
 import "server-only";
 import { cache } from "react";
 import { and, eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 import type { AuthUser, Role } from "@/components/AuthModal";
 import { db } from "./db";
+import { CHAT_MODE_COOKIE } from "./employer-dashboard-prefs";
 import { getEmployerAccess, type EmployerRole } from "./employer-profile";
 import {
   employerOnboardingDrafts,
@@ -223,11 +225,12 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   // frame instead of popping in after a client-side fetch (which used to
   // shove the page down on every refresh). Worked out alongside the reward
   // hints (neither needs the other), so the page waits for one round trip.
+  const isSuperadmin = await isSuperadminEmail(user.email);
   const [hasSampleData, rewards] = await Promise.all([
     session.role === "employer" && !user.sampleDataBannerDismissedAt && access ? companyHasSampleData(access.profile.id) : true,
     // Reward campaigns: never for superadmins (they run them). A failure here
     // must never break the page — the dashboard just shows no reward bits.
-    isSuperadminEmail(user.email)
+    isSuperadmin
       ? null
       : getRewardHints(session.userId, user.email, session.role, phoneVerified, mayVerifyPhone).catch((err) => {
           console.error("Failed to load reward hints", err);
@@ -251,5 +254,9 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     showPhoneVerifyBar: !phoneVerified && !user.phoneVerifyBannerDismissedAt && mayVerifyPhone,
     showSampleDataBar,
     rewards,
+    isSuperadmin,
+    // Read here, server-side, so the dashboard renders in the right mode on
+    // the first frame (see EmployerDashboardShell's Dashboard / Chat switch).
+    chatMode: session.role === "employer" && (await cookies()).get(CHAT_MODE_COOKIE)?.value === "chat",
   };
 }

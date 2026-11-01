@@ -11,7 +11,7 @@ import { isSuperadminEmail } from "./superadmin";
 export async function canSeeUnreviewedAd(employerProfileId: string) {
   const [session, authUser] = await Promise.all([getSession(), getAuthUser()]);
   if (!session || !authUser) return false;
-  if (isSuperadminEmail(authUser.email)) return true;
+  if ((await isSuperadminEmail(authUser.email))) return true;
   const memberships = await getEmployerMemberships(session.userId);
   return memberships.some((m) => m.profile.id === employerProfileId);
 }

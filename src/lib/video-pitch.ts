@@ -250,7 +250,7 @@ export async function resolvePitchAccess(
   if (access.ok) return access;
 
   const [viewer] = await db.select({ email: users.email }).from(users).where(eq(users.id, session.userId)).limit(1);
-  if (!isSuperadminEmail(viewer?.email)) return { ok: false };
+  if (!(await isSuperadminEmail(viewer?.email))) return { ok: false };
   const [pitch] = await db.select().from(videoPitches).where(eq(videoPitches.id, pitchId)).limit(1);
   return pitch ? { ok: true, pitch, viewer: "superadmin" } : { ok: false };
 }

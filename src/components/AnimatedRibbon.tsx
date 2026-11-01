@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import RibbonLayer, { type Pool } from "./RibbonLayer";
 import { useRibbonAnimation } from "@/hooks/useRibbonAnimation";
 import { VB_HEIGHT, VB_WIDTH, buildMorphValues, buildStaticPath } from "@/lib/ribbonGeometry";
@@ -87,6 +88,11 @@ const MORPH_VALUES = buildMorphValues();
 export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | "gold" }) {
   const { pointer, animate } = useRibbonAnimation();
   const POOLS = accent === "gold" ? POOLS_GOLD : POOLS_TEAL;
+  // Per-instance prefix for every SVG id below. With fixed ids, a second
+  // ribbon on the page resolves url(#…) to the first one's defs — and when
+  // that first ribbon is hidden (e.g. the inactive Advertisement tab), Chrome
+  // draws the second one blank. useId's punctuation isn't id-safe, so strip it.
+  const uid = `rb${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   return (
     <div
@@ -106,7 +112,7 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
             instead of terminating as a visible hairline.
           */}
           <filter
-            id="bandFeather"
+            id={`${uid}-bandFeather`}
             x="-10%"
             y="-40%"
             width="120%"
@@ -116,8 +122,8 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
             <feGaussianBlur stdDeviation="2" />
           </filter>
 
-          <mask id="bandMask" maskUnits="userSpaceOnUse">
-            <path d={STATIC_PATH} fill="#fff" filter="url(#bandFeather)">
+          <mask id={`${uid}-bandMask`} maskUnits="userSpaceOnUse">
+            <path d={STATIC_PATH} fill="#fff" filter={`url(#${uid}-bandFeather)`}>
               {animate && (
                 <animate
                   attributeName="d"
@@ -136,7 +142,7 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
             instead of reading as discrete blobs.
           */}
           {POOLS.map((p) => (
-            <radialGradient key={p.id} id={`pool-${p.id}`}>
+            <radialGradient key={p.id} id={`${uid}-pool-${p.id}`}>
               <stop offset="0" style={{ stopColor: p.color }} stopOpacity="1" />
               <stop offset="0.42" style={{ stopColor: p.color }} stopOpacity="0.8" />
               <stop offset="0.72" style={{ stopColor: p.color }} stopOpacity="0.32" />
@@ -148,7 +154,7 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
           {/* Enhanced multi-layer texture for realistic silk appearance */}
           
           {/* Fine grain - subtle high-frequency noise for fabric texture */}
-          <filter id="ribbonGrain" x="0" y="0" width="100%" height="100%">
+          <filter id={`${uid}-ribbonGrain`} x="0" y="0" width="100%" height="100%">
             <feTurbulence
               type="fractalNoise"
               baseFrequency="1.2"
@@ -163,7 +169,7 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
           </filter>
 
           {/* Coarse texture - larger fabric weave pattern */}
-          <filter id="ribbonWeave" x="0" y="0" width="100%" height="100%">
+          <filter id={`${uid}-ribbonWeave`} x="0" y="0" width="100%" height="100%">
             <feTurbulence
               type="turbulence"
               baseFrequency="0.45"
@@ -178,7 +184,7 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
           </filter>
 
           {/* Directional fiber texture - simulates silk threads */}
-          <filter id="ribbonFibers" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id={`${uid}-ribbonFibers`} x="-20%" y="-20%" width="140%" height="140%">
             <feTurbulence
               type="fractalNoise"
               baseFrequency="2.5 0.15"
@@ -192,31 +198,31 @@ export default function AnimatedRibbon({ accent = "teal" }: { accent?: "teal" | 
             </feComponentTransfer>
           </filter>
 
-          <clipPath id="grainClip">
+          <clipPath id={`${uid}-grainClip`}>
             <path d={STATIC_PATH} />
           </clipPath>
         </defs>
 
-        <g mask="url(#bandMask)">
+        <g mask={`url(#${uid}-bandMask)`}>
           {POOLS.map((pool) => (
-            <RibbonLayer key={pool.id} pool={pool} pointer={pointer} animate={animate} />
+            <RibbonLayer key={pool.id} pool={pool} gradientId={`${uid}-pool-${pool.id}`} pointer={pointer} animate={animate} />
           ))}
 
           {/* Multi-layer texture compositing for realistic silk appearance */}
-          
+
           {/* Fine grain layer - base fabric texture */}
-          <g clipPath="url(#grainClip)" style={{ mixBlendMode: "overlay" }}>
-            <rect width={VB_WIDTH} height={VB_HEIGHT} filter="url(#ribbonGrain)" opacity="0.28" />
+          <g clipPath={`url(#${uid}-grainClip)`} style={{ mixBlendMode: "overlay" }}>
+            <rect width={VB_WIDTH} height={VB_HEIGHT} filter={`url(#${uid}-ribbonGrain)`} opacity="0.28" />
           </g>
 
           {/* Coarse weave layer - fabric structure */}
-          <g clipPath="url(#grainClip)" style={{ mixBlendMode: "soft-light" }}>
-            <rect width={VB_WIDTH} height={VB_HEIGHT} filter="url(#ribbonWeave)" opacity="0.18" />
+          <g clipPath={`url(#${uid}-grainClip)`} style={{ mixBlendMode: "soft-light" }}>
+            <rect width={VB_WIDTH} height={VB_HEIGHT} filter={`url(#${uid}-ribbonWeave)`} opacity="0.18" />
           </g>
 
           {/* Directional fiber layer - silk thread highlights */}
-          <g clipPath="url(#grainClip)" style={{ mixBlendMode: "overlay" }}>
-            <rect width={VB_WIDTH} height={VB_HEIGHT} filter="url(#ribbonFibers)" opacity="0.15" />
+          <g clipPath={`url(#${uid}-grainClip)`} style={{ mixBlendMode: "overlay" }}>
+            <rect width={VB_WIDTH} height={VB_HEIGHT} filter={`url(#${uid}-ribbonFibers)`} opacity="0.15" />
           </g>
         </g>
       </svg>

@@ -2,10 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import AnimatedRibbon from "./AnimatedRibbon";
 import Dropdown from "./Dropdown";
 import Modal from "./Modal";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
-import { BriefcaseIcon, CalendarIcon, CheckIcon, PencilIcon, SearchIcon, UserIcon, UsersIcon, XIcon } from "./icons";
+import {
+  BriefcaseIcon,
+  CalendarIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  PencilIcon,
+  SearchIcon,
+  UserIcon,
+  UsersIcon,
+  XIcon,
+} from "./icons";
 import type { EmployerTeamActivityEntry, EmployerTeamMember } from "@/lib/employer-profile";
 import { POSITIONS } from "@/lib/positions";
 import {
@@ -220,6 +231,7 @@ export default function EmployerTeamView({
 
   const ownerCount = members.filter((m) => m.role === "owner").length;
   const [search, setSearch] = useState("");
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   // Removing someone, demoting the company's registrant, or moving a Hiring
   // manager off their jobs waits for an explicit yes in the dialog below.
   const [confirming, setConfirming] = useState<
@@ -400,6 +412,76 @@ export default function EmployerTeamView({
 
   return (
     <div className="flex flex-col gap-[20px]">
+      {/* Same collapsible explainer as the Interviews page's "How scheduling interviews works". */}
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
+        <div className="relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+          {!howItWorksOpen && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-[70px] overflow-hidden rounded-b-[19px] sm:h-[95px] lg:h-[130px]"
+            >
+              {/* Shifted up so the visible slice lands on the ribbon's colour pools — see EmployerInterviewsView. */}
+              <div className="-mt-[67px] sm:-mt-[92px] lg:-mt-[125px]">
+                <AnimatedRibbon />
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setHowItWorksOpen((o) => !o)}
+            aria-expanded={howItWorksOpen}
+            className="relative flex w-full items-center gap-[8px] text-left"
+          >
+            <p className="text-sm text-[#141B2E]">How your team works</p>
+            <ChevronDownIcon
+              className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${howItWorksOpen ? "" : "-rotate-90"}`}
+            />
+          </button>
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+              howItWorksOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  {
+                    step: 1,
+                    title: "Invite a teammate",
+                    detail: "Enter their email and pick a role. For a Hiring manager, also pick the jobs they'll handle.",
+                  },
+                  {
+                    step: 2,
+                    title: "They accept by email",
+                    // 7 days = INVITE_TTL_DAYS (src/lib/team-invite.ts, server-only).
+                    detail: "The invite link works for 7 days. They sign in with that email to join; \"Resend\" sends a fresh link.",
+                  },
+                  {
+                    step: 3,
+                    title: "Each role sees its part",
+                    detail:
+                      "Owners and Admins see everything. Hiring managers see their assigned jobs. Panel members see only interviews they're on.",
+                  },
+                  {
+                    step: 4,
+                    title: "Adjust anytime",
+                    detail: "Change roles, reassign jobs, or remove people below. A company always keeps at least one Owner.",
+                  },
+                ].map((s) => (
+                  <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
+                    <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
+                      {s.step}
+                    </span>
+                    <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
+                    <p className="text-xs text-[#4B5468]">{s.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Each card is its own stacking layer, so a dropdown opening downward needs its card above the ones below it: invite (z-20) over members (z-10) over activity. */}
       <div className={`relative z-20 animate-fade-in-up ${gradientFrameClass("teal")}`}>
         <div className="flex flex-col gap-[14px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">

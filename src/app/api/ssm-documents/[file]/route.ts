@@ -37,7 +37,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
     .limit(1);
   if (!owner) return notFound;
 
-  if (!isSuperadminEmail(authUser.email)) {
+  if (!(await isSuperadminEmail(authUser.email))) {
     const memberships = await getEmployerMemberships(session.userId);
     if (!memberships.some((m) => m.profile.id === owner.id && hasFullAccess(m.role))) return notFound;
   }

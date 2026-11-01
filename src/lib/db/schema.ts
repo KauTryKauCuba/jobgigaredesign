@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, timestamp, uuid, integer, boolean, pgEnum, jsonb, unique, uniqueIndex, doublePrecision, index, date } from "drizzle-orm/pg-core";
-import type { AssistantAction } from "../assistant-types";
+import type { AssistantAction, AssistantMessageStats } from "../assistant-types";
 import type { ThemeBanner, ThemeColors, ThemeEffect, ThemeEffectScope } from "../site-themes-shared";
 import type { AiInterviewAnswerEvaluation, AiInterviewReport } from "../ai-interview-shared";
 import type { CustomAnswer, CustomQuestion } from "../screening-questions";
+import type { ResumeReviewResult } from "../resume-review-shared";
 import type { WorkPlace } from "../work-locations";
 
 export const roleEnum = pgEnum("role", ["employer", "jobseeker"]);
@@ -585,6 +586,7 @@ export const aiUsageFeatureEnum = pgEnum("ai_usage_feature", [
   "ai_interview_questions",
   "ai_interview_transcription",
   "ai_interview_scoring",
+  "resume_review",
 ]);
 
 // job_postings — finalized 7-state pipeline (see the design memory this was
@@ -1243,12 +1245,16 @@ export const aiUsageLogs = pgTable("ai_usage_logs", {
   // no-op lookup) — null where a route doesn't currently know/propagate it.
   provider: text("provider"),
   // The specific model string sent in the request (e.g. "deepseek-chat",
-  // "mimo-v2.5", "mimo-v2.5-asr") — a provider can serve more than one
+  // "mimo-v2.6-flash", "mimo-v2.5-asr") — a provider can serve more than one
   // model/price point, so this is tracked separately from `provider`.
   model: text("model"),
   promptTokens: integer("prompt_tokens"),
   completionTokens: integer("completion_tokens"),
   totalTokens: integer("total_tokens"),
+  // How many of promptTokens hit the provider's automatic prompt cache
+  // (billed far cheaper than a miss) — null where a provider/route doesn't
+  // report it. Currently only the assistant chat route captures this.
+  cachedTokens: integer("cached_tokens"),
   // Perplexity's Search API isn't a chat completion — it has no token usage
   // to report, only a number of search calls made. Null for every other
   // provider, which reports tokens instead.
@@ -1313,6 +1319,9 @@ export const assistantMessages = pgTable(
     role: assistantMessageRoleEnum("role").notNull(),
     content: text("content").notNull(),
     action: jsonb("action").$type<AssistantAction | null>(),
+    // How long this reply took and what it cost — only ever set on an
+    // assistant reply, from the real request that produced it.
+    stats: jsonb("stats").$type<AssistantMessageStats | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("assistant_messages_conversation_created_idx").on(table.conversationId, table.createdAt)],
@@ -1638,3 +1647,33 @@ export const campaignClaims = pgTable(
     index("campaign_claims_user_idx").on(table.userId, table.audience),
   ],
 );
+
+// Resume Review: the AI's feedback on a jobseeker's uploaded resume (see
+// src/lib/resume-review.ts). One row per review run; the page shows the
+// newest, and `resumeUrl` says which upload it was for, so a newer upload
+// shows as "not reviewed yet" instead of reusing stale feedback.
+export const resumeReviews = pgTable(
+  "resume_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobseekerProfileId: uuid("jobseeker_profile_id")
+      .notNull()
+      .references(() => jobseekerProfiles.id, { onDelete: "cascade" }),
+    resumeUrl: text("resume_url").notNull(),
+    result: jsonb("result").$type<ResumeReviewResult>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("resume_reviews_profile_created_idx").on(table.jobseekerProfileId, table.createdAt)],
+);
+
+// Superadmins added from the panel's Admins page — on top of the owners in
+// the SUPERADMIN_EMAILS env var (src/lib/superadmin.ts), who can't be removed
+// here and are the only ones who can add or remove these. Keyed by email,
+// not user, so someone can be added before they've signed up.
+export const superadminMembers = pgTable("superadmin_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Always stored lowercase.
+  email: text("email").notNull().unique(),
+  addedByUserId: uuid("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

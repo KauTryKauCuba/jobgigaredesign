@@ -103,6 +103,25 @@ export function UploadIcon({ className = "" }: { className?: string }) {
   );
 }
 
+export function DownloadIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M8 2.4v8M4.8 7.2 8 10.4l3.2-3.2" />
+      <path d="M2.4 10.4v2a1.2 1.2 0 0 0 1.2 1.2h8.8a1.2 1.2 0 0 0 1.2-1.2v-2" />
+    </svg>
+  );
+}
+
 export function UserIcon({
   className = "",
   strokeWidth = 1.4,
@@ -290,6 +309,29 @@ export function GiftIcon({ className = "" }: { className?: string }) {
       <rect x="2" y="5.5" width="12" height="3" rx="0.8" />
       <path d="M3 8.5V13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8.5M8 5.5V14" />
       <path d="M8 5.5C6.8 5.5 5 5 5 3.6 5 2.8 5.6 2.3 6.3 2.3 7.5 2.3 8 4 8 5.5zM8 5.5c1.2 0 3-.5 3-1.9 0-.8-.6-1.3-1.3-1.3C8.5 2.3 8 4 8 5.5z" />
+    </svg>
+  );
+}
+
+/** Two nodes on the left linked to two on the right — the superadmin's Matching page. */
+export function ConnectionsIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <circle cx="3" cy="4" r="1.6" />
+      <circle cx="3" cy="12" r="1.6" />
+      <circle cx="13" cy="4" r="1.6" />
+      <circle cx="13" cy="12" r="1.6" />
+      <path d="M4.6 4h6.8M4.5 4.8l7 6.4M4.6 12h6.8" />
     </svg>
   );
 }

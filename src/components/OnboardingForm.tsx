@@ -7,6 +7,7 @@ import MonthYearPicker, { parseMonthYearValue } from "./MonthYearPicker";
 import { useDraftName } from "./DraftNameContext";
 import Field from "./Field";
 import { gradientFrameClass, inputClass as formInputClass } from "./formStyles";
+import ChecklistDoneBadge from "./ChecklistDoneBadge";
 import { CheckIcon, FileIcon, PlusIcon, UploadIcon, UserIcon, XIcon } from "./icons";
 import Modal from "./Modal";
 import PhoneInput from "./PhoneInput";
@@ -3555,8 +3556,9 @@ export default function OnboardingForm({
           }
         >
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
-            <p className="text-left text-lg font-semibold text-[#141B2E]">
-              {formValid ? "Required ✓" : "Required"}
+            <p className="flex items-center gap-[8px] text-left text-lg font-semibold text-[#141B2E]">
+              Required
+              {formValid && <ChecklistDoneBadge />}
             </p>
             <ul className="mt-[16px] flex flex-col gap-[4px]">
               {requiredFieldChecklist.map(({ label, done, fieldId }) => (
@@ -3586,10 +3588,9 @@ export default function OnboardingForm({
 
           <div className={gradientFrameClass("gold")}>
           <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
-            <p className="text-left text-lg font-semibold text-[#141B2E]">
-              {boostChecklistRemaining > 0
-                ? "Optional"
-                : "Optional ✓"}
+            <p className="flex items-center gap-[8px] text-left text-lg font-semibold text-[#141B2E]">
+              Optional
+              {boostChecklistRemaining === 0 && <ChecklistDoneBadge />}
             </p>
             <ul className="mt-[16px] flex flex-col gap-[4px]">
               {boostChecklist.map(({ label, done, fieldId }) => (

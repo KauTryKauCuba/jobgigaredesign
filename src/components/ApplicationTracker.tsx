@@ -25,6 +25,75 @@ const DECISION_LABEL: Record<string, { label: string; tone: string }> = {
 };
 
 /**
+ * The four milestones as a row of dots — full size on My Applications (with
+ * the date under each), or `compact` (smaller, no dates) for the dashboard's
+ * application list.
+ */
+export function ApplicationSteps({
+  status,
+  appliedAt,
+  events,
+  compact = false,
+}: {
+  status: string;
+  appliedAt: string;
+  events: ApplicationEvent[];
+  compact?: boolean;
+}) {
+  const currentIndex = trackerStepIndex(status);
+  const dates = trackerStepDates(events, appliedAt);
+  const decision = DECISION_LABEL[status];
+  const isClosed = status === "hired" || status === "rejected" || status === "withdrawn";
+  const dot = compact ? "h-[14px] w-[14px]" : "h-[18px] w-[18px]";
+
+  return (
+    <ol className={`grid grid-cols-4 gap-[4px] ${compact ? "" : "py-[10px]"}`}>
+      {TRACKER_STEPS.map((step, i) => {
+        // Earlier steps count as done — except, once closed, ones that were
+        // skipped entirely (e.g. rejected straight after screening never
+        // reached "Interview").
+        const done =
+          i === currentIndex ? i === 0 || isClosed : i < currentIndex && (!isClosed || dates[i] !== null);
+        const current = i === currentIndex && !done;
+        const isDecisionStep = i === TRACKER_STEPS.length - 1;
+        const dotTone =
+          isDecisionStep && decision && i === currentIndex
+            ? decision.tone
+            : done
+              ? "bg-brand-gold-dark"
+              : current
+                ? "bg-white ring-2 ring-brand-gold-dark"
+                : "bg-[#E4E7EC]";
+        return (
+          <li key={step.key} className="relative flex flex-col items-center text-center">
+            {/* Connector to the next step */}
+            {i < TRACKER_STEPS.length - 1 && (
+              <span
+                aria-hidden
+                className={`absolute left-1/2 h-[2px] w-full ${compact ? "top-[6px]" : "top-[8px]"} ${
+                  i < currentIndex ? "bg-brand-gold-dark" : "bg-[#E4E7EC]"
+                }`}
+              />
+            )}
+            <span className={`relative z-10 flex items-center justify-center rounded-full ${dot} ${dotTone}`}>
+              {done && <CheckIcon className={compact ? "h-[7px] w-[7px] text-white" : "h-[9px] w-[9px] text-white"} />}
+            </span>
+            <span
+              className={`${compact ? "mt-[4px] text-[11px]" : "mt-[5px] text-xs"} ${
+                i <= currentIndex ? "text-[#141B2E]" : "text-[#9AA3B2]"
+              }`}
+            >
+              {isDecisionStep && decision && i === currentIndex ? decision.label : step.label}
+            </span>
+            {!compact && <span className="text-xs text-[#9AA3B2]">{dates[i] ? shortDate(dates[i]!) : " "}</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
  * The jobseeker's "where does this stand" view of one application: four
  * plain-language milestones with the date each was reached, then a line
  * that answers the real anxiety — how long they've been waiting, and
@@ -46,9 +115,6 @@ export default function ApplicationTracker({
   // Passed in (captured once by the page) so render stays pure.
   now: number;
 }) {
-  const currentIndex = trackerStepIndex(status);
-  const dates = trackerStepDates(events, appliedAt);
-  const decision = DECISION_LABEL[status];
   const isClosed = status === "hired" || status === "rejected" || status === "withdrawn";
   const lastUpdate = events.length > 0 ? events[events.length - 1].createdAt : appliedAt;
 
@@ -61,49 +127,7 @@ export default function ApplicationTracker({
 
   return (
     <div className="flex flex-col gap-[10px]">
-      <ol className="grid grid-cols-4 gap-[4px]">
-        {TRACKER_STEPS.map((step, i) => {
-          // Earlier steps count as done — except, once closed, ones that were
-          // skipped entirely (e.g. rejected straight after screening never
-          // reached "Interview").
-          const done =
-            i === currentIndex ? i === 0 || isClosed : i < currentIndex && (!isClosed || dates[i] !== null);
-          const current = i === currentIndex && !done;
-          const isDecisionStep = i === TRACKER_STEPS.length - 1;
-          const dotTone =
-            isDecisionStep && decision && i === currentIndex
-              ? decision.tone
-              : done
-                ? "bg-brand-gold-dark"
-                : current
-                  ? "bg-white ring-2 ring-brand-gold-dark"
-                  : "bg-[#E4E7EC]";
-          return (
-            <li key={step.key} className="relative flex flex-col items-center text-center">
-              {/* Connector to the next step */}
-              {i < TRACKER_STEPS.length - 1 && (
-                <span
-                  aria-hidden
-                  className={`absolute top-[8px] left-1/2 h-[2px] w-full ${
-                    i < currentIndex ? "bg-brand-gold-dark" : "bg-[#E4E7EC]"
-                  }`}
-                />
-              )}
-              <span
-                className={`relative z-10 flex h-[18px] w-[18px] items-center justify-center rounded-full ${dotTone}`}
-              >
-                {done && <CheckIcon className="h-[9px] w-[9px] text-white" />}
-              </span>
-              <span
-                className={`mt-[5px] text-xs ${i <= currentIndex ? "text-[#141B2E]" : "text-[#9AA3B2]"}`}
-              >
-                {isDecisionStep && decision && i === currentIndex ? decision.label : step.label}
-              </span>
-              <span className="text-xs text-[#9AA3B2]">{dates[i] ? shortDate(dates[i]!) : " "}</span>
-            </li>
-          );
-        })}
-      </ol>
+      <ApplicationSteps status={status} appliedAt={appliedAt} events={events} />
 
       {!isClosed && (
         <p className={`rounded-[10px] px-[10px] py-[7px] text-xs ${overdue ? "bg-brand-gold-soft text-brand-gold-dark" : "bg-white text-[#4B5468]"}`}>

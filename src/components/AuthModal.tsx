@@ -35,6 +35,10 @@ export type AuthUser = {
   // Reward campaigns (see src/lib/campaigns.ts): the verify bar's reward
   // line, whether "My Rewards" shows, and a newly earned reward to pop up.
   rewards?: RewardHints | null;
+  // Owner or added admin — shows "Superadmin panel" in the navbar account menu.
+  isSuperadmin?: boolean;
+  // Employer-only: last picked Chat mode (the dashboard's Dashboard / Chat switch).
+  chatMode?: boolean;
 };
 
 const OTP_LENGTH = 6;

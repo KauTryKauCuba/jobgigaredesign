@@ -7,6 +7,7 @@ import ApplicantDetailModal from "./ApplicantDetailModal";
 import VideoPitchBadge, { type ApplicantVideoPitch } from "./VideoPitchBadge";
 import type { EmployerAddress, EmployerTeamMember } from "@/lib/employer-profile";
 import EmployerDashboardShell from "./EmployerDashboardShell";
+import ExportApplicantsButton from "./ExportApplicantsButton";
 import { gradientFrameClass } from "./formStyles";
 import {
   APPLICATION_STATUS_COLOR,
@@ -968,11 +969,16 @@ export default function EmployerJobPostingView({
 
           <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
             <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
-              <div className="flex items-center gap-[8px]">
+              <div className="flex flex-wrap items-center gap-[8px]">
                 <p className="text-sm text-[#141B2E]">Applicants</p>
                 <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[3px] text-xs text-[#4B5468]">
                   {rows.length}
                 </span>
+                {rows.length > 0 && (
+                  <span className="ml-auto">
+                    <ExportApplicantsButton applicationIds={rows.map((a) => a.application.id)} title={posting.title} />
+                  </span>
+                )}
               </div>
               {statusError && <p className="mt-[6px] text-xs text-red-500">{statusError}</p>}
 

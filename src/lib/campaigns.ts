@@ -906,7 +906,7 @@ const runningRewardFor = cache(async (audience: CampaignAudience): Promise<Runni
  */
 async function qualifyingPerson(userId: string, audience: CampaignAudience): Promise<{ email: string; name: string | null; phone: string } | null> {
   const [user] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || isSuperadminEmail(user.email) || isDummyEmail(user.email)) return null;
+  if (!user || (await isSuperadminEmail(user.email)) || isDummyEmail(user.email)) return null;
   let phoneAsTyped: string | null = null;
   let name = user.name;
   if (audience === "employer") {
@@ -1081,7 +1081,7 @@ export async function getRewardHints(
   if (phoneVerified) await ensureCampaignClaim(userId, audience);
   const claims = await userClaims(userId, audience);
   let verifyBarText: string | null = null;
-  if (!phoneVerified && mayVerify && !isSuperadminEmail(email) && !isDummyEmail(email)) {
+  if (!phoneVerified && mayVerify && !(await isSuperadminEmail(email)) && !isDummyEmail(email)) {
     const running = await runningRewardFor(audience);
     if (running && running.reward.title && !claims.some((c) => c.campaign.id === running.campaign.id)) {
       if (running.reward.type === "draw" || (await hasCodeInStock(running.reward.id))) {

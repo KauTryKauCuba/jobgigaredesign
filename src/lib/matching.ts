@@ -130,6 +130,15 @@ const LANGUAGE_LEVEL_RANK: Record<string, number> = {
   native: 3,
 };
 
+/** One screening requirement's outcome, for showing every question — passed ones too — not just the failures. */
+export type ScreeningItemResult = { label: string; preferred: boolean; met: boolean };
+
+/** "permanent_resident" → "Permanent resident", for enum values in screening labels. */
+const plainValue = (value: string) => {
+  const text = value.replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
 // Apply-time screening: unlike hardFilterCheck (derived from whatever the
 // jobseeker's profile already says), this checks the answers a jobseeker
 // gave when applying against exactly the requirements the employer set on
@@ -155,16 +164,19 @@ export function screeningEligibilityCheck(
     workAuthorization: string | null;
     customAnswers: CustomAnswer[];
   },
-): { eligible: boolean; reasons: string[]; preferredMet: number; preferredTotal: number } {
+): { eligible: boolean; reasons: string[]; preferredMet: number; preferredTotal: number; items: ScreeningItemResult[] } {
   // A Preferred requirement that's missed doesn't count against eligibility;
   // it only lowers how many preferred ones the applicant met. `preferredTotal`
   // counts only requirements that can actually be checked.
   const reasons: string[] = [];
+  const items: ScreeningItemResult[] = [];
   let preferredMet = 0;
   let preferredTotal = 0;
   const preferredKeys = new Set(requirements.preferred ?? []);
-  const record = (key: string | null, preferred: boolean, failures: string[]) => {
-    if (preferred || (key !== null && preferredKeys.has(key))) {
+  const record = (key: string | null, label: string, preferred: boolean, failures: string[]) => {
+    const isPreferred = preferred || (key !== null && preferredKeys.has(key));
+    items.push({ label, preferred: isPreferred, met: failures.length === 0 });
+    if (isPreferred) {
       preferredTotal += 1;
       if (failures.length === 0) preferredMet += 1;
       return;
@@ -177,7 +189,7 @@ export function screeningEligibilityCheck(
       answers.yearsExperience === null || answers.yearsExperience < requirements.minYearsExperience
         ? [`Doesn't meet the minimum ${requirements.minYearsExperience} years of experience`]
         : [];
-    record("yearsExperience", false, failures);
+    record("yearsExperience", `${requirements.minYearsExperience}+ years of experience`, false, failures);
   }
 
   if (requirements.minQualificationTier) {
@@ -185,6 +197,7 @@ export function screeningEligibilityCheck(
     const answerRank = answers.qualificationTier ? (QUALIFICATION_TIER_RANK[answers.qualificationTier] ?? -1) : -1;
     record(
       "qualificationTier",
+      `Education: ${requirements.minQualificationTier} or higher`,
       false,
       answerRank < requiredRank ? [`Doesn't meet the minimum education level (${requirements.minQualificationTier})`] : [],
     );
@@ -197,6 +210,7 @@ export function screeningEligibilityCheck(
   if (requirements.workAuthorizations.length > 0) {
     record(
       "workAuthorization",
+      `Work authorization: ${requirements.workAuthorizations.map(plainValue).join(", ")}`,
       false,
       hardFilterCheck({
         requiredWorkAuthorizations: requirements.workAuthorizations,
@@ -209,6 +223,7 @@ export function screeningEligibilityCheck(
   if (requirements.drivingLicense) {
     record(
       "drivingLicense",
+      `Driving licence: ${plainValue(requirements.drivingLicense)}`,
       false,
       hardFilterCheck({
         requiredWorkAuthorizations: [],
@@ -238,7 +253,12 @@ export function screeningEligibilityCheck(
       );
     }
   }
-  if (requirements.languages.length > 0) record("languages", false, languageFailures);
+  if (requirements.languages.length > 0) {
+    const label = `Languages: ${requirements.languages
+      .map((l) => `${formatLanguageRequirement(l.language, l.dialect)}: ${l.level}`)
+      .join(", ")}`;
+    record("languages", label, false, languageFailures);
+  }
 
   for (const question of requirements.customQuestions) {
     // Short answers (and choice/number questions with nothing to check
@@ -256,10 +276,15 @@ export function screeningEligibilityCheck(
       default:
         met = !!answer && answer.answer === question.requiredAnswer;
     }
-    record(null, question.preferred === true, met ? [] : [`"${question.question}" doesn't match what this posting requires`]);
+    record(
+      null,
+      question.question,
+      question.preferred === true,
+      met ? [] : [`"${question.question}" doesn't match what this posting requires`],
+    );
   }
 
-  return { eligible: reasons.length === 0, reasons, preferredMet, preferredTotal };
+  return { eligible: reasons.length === 0, reasons, preferredMet, preferredTotal, items };
 }
 
 // A small boost for the preferred requirements an applicant met: up to

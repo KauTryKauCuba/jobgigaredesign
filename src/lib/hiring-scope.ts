@@ -67,6 +67,15 @@ export function canViewJobPosting(scope: HiringScope, jobPostingId: string): boo
   return scope.kind === "all" || scope.jobPostingIds.includes(jobPostingId);
 }
 
+/**
+ * Can create, edit, close or delete a job posting. Unlike applications, this
+ * isn't scoped by assignment — only Owners/Admins manage postings at all,
+ * same as the real `/api/employer/job-postings` routes (`hasFullAccess`).
+ */
+export function canManagePostings(role: EmployerMembership["role"]): boolean {
+  return hasFullAccess(role);
+}
+
 /** SQL filter matching canViewApplication — undefined for full access. Needs jobApplications + jobPostings joined. */
 export function applicationScopeCondition(scope: HiringScope | undefined): SQL | undefined {
   if (!scope || scope.kind === "all") return undefined;

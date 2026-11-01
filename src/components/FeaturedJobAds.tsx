@@ -32,12 +32,12 @@ export default function FeaturedJobAds({
     // width, like the employer page's Company spotlight.
     <div className="relative z-0 mt-[56px] ml-[calc(50%-50vw)] w-screen">
       <ScrollWidthBackground
-        color="#F8EED6"
+        color="var(--band-jobseeker)"
         fadeEdges
         startWidth={45}
         durationMs={1400}
-        // The jobseeker gradient (gold into teal), softened.
-        gradient="linear-gradient(120deg, #FBEFCF 0%, #F8EED6 45%, #DCEFEB 100%)"
+        // The jobseeker gradient (gold into teal), softened — follows the site theme.
+        gradient="var(--band-gradient-jobseeker)"
         // Stock placeholder (Pexels) — trying out a video background here.
         video={{ src: "/videos/featured-jobs-bg.mp4", poster: "/videos/featured-jobs-bg-poster.jpg" }}
       >

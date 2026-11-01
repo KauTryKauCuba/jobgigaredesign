@@ -15,6 +15,42 @@ const CONTENT: Record<Role, { headline: string; intro: string; releases: Release
     intro: "A plain-language log of what's changed in JobGiga — newest first.",
     releases: [
       {
+        date: "November 2026",
+        title: "Schedule interviews, run evaluations and draft job postings from chat",
+        items: [
+          "Ask the assistant to schedule, reschedule or cancel an interview — it shows you exactly what it's about to send before anything happens, and nothing changes until you confirm.",
+          "Interviewers can submit their evaluation and recommendation straight from the chat, too.",
+          "Describe a role and the assistant drafts a complete job posting for you — it's saved as a draft only, so you still review and publish it yourself.",
+          "Close a job posting by just asking.",
+          "Open several applicants' profiles at once in the chat, including their phone, email and resume when you need them, and see who's phone-verified.",
+          "Every assistant reply now shows a copy button and the real time/tokens it took to answer.",
+        ],
+      },
+      {
+        date: "November 2026",
+        title: "A smarter assistant and Excel export",
+        items: [
+          "Ask the assistant about your applicants and it looks up the real answer — who's shortlisted, how many applied from Kuala Lumpur, your top matches and where each one stands, one person's skills and experience, who hasn't replied to an interview invite, or when a posting expires. In English or Malay.",
+          "Hiring managers and panel members only ever get answers about the postings and candidates they can already see.",
+          "Export applicants to Excel from the Applicants page or any posting's page — exactly the list you've filtered to. Or just ask the assistant to \"export it to Excel\".",
+          "Exports leave out email addresses and phone numbers, to keep applicants' contact details safe.",
+          "AI suggestions are more dependable, with a backup ready if one AI service is slow.",
+          "The chat bar now lives in your dashboard after you sign in, rather than on the public home page.",
+        ],
+      },
+      {
+        date: "October 2026",
+        title: "Clearer guides and a smoother dashboard",
+        items: [
+          "New \"How it works\" guides on the Team and Advertisement pages, explaining team roles and invites, and how company and job ads are booked, reviewed and run.",
+          "Collapse the dashboard sidebar to icons for more room — it remembers your choice on this device.",
+          "Dashboard tiles like \"New applicants\" or \"Needs evaluation\" now open Applicants or Interviews already filtered to those people.",
+          "When you click a sidebar item, it shows a small spinner while the page loads, so you know it's on its way.",
+          "Pages load faster when lots of people visit at the same time.",
+          "Seasonal themes now carry through to the colour of the employer page's feature sections.",
+        ],
+      },
+      {
         date: "October 2026",
         title: "About, release notes, and legal pages",
         items: [
@@ -63,6 +99,33 @@ const CONTENT: Record<Role, { headline: string; intro: string; releases: Release
     headline: "What's new for jobseekers",
     intro: "A plain-language log of what's changed in JobGiga — newest first.",
     releases: [
+      {
+        date: "November 2026",
+        title: "A copy button on every chat reply",
+        items: ["Every assistant reply now shows a copy button and the real time/tokens it took to answer."],
+      },
+      {
+        date: "November 2026",
+        title: "Resume Review and a clearer dashboard",
+        items: [
+          "New Resume Review: your resume on one side and friendly, practical feedback on the other, with each suggestion highlighted on your resume in its own colour. Up to 3 reviews a day.",
+          "A \"Get feedback\" link on your resume card takes you straight there.",
+          "My applications on your dashboard now shows each application's progress at a glance.",
+          "Resume Designer splits your resume into proper pages — no job or course gets cut in half between pages — and the PDF matches exactly what you see.",
+          "AI features are more dependable, with a backup ready if one AI service is slow.",
+          "The chat bar now lives in your dashboard after you sign in, rather than on the public home page.",
+        ],
+      },
+      {
+        date: "October 2026",
+        title: "Smoother navigation",
+        items: [
+          "When you click a sidebar item, it shows a small spinner while the page loads, so you know it's on its way.",
+          "Pages load faster when lots of people visit at the same time.",
+          "Seasonal themes now carry through to the colour of the Featured jobs section.",
+          "A cleaner tick on your profile checklist once all the required details are done.",
+        ],
+      },
       {
         date: "October 2026",
         title: "About, release notes, and legal pages",

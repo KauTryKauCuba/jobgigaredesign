@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { recordStatusChange } from "@/lib/application-events";
 import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
-import { jobApplications, jobPostings } from "@/lib/db/schema";
-import { getEmployerTeamMembers } from "@/lib/employer-profile";
+import { jobApplicationEvents, jobApplications, jobPostings, jobseekerProfiles, notifications } from "@/lib/db/schema";
+import { getEmployerAddresses, getEmployerTeamMembers } from "@/lib/employer-profile";
 import { canManageApplication, canViewApplication, getScopedEmployerAccess } from "@/lib/hiring-scope";
+import { getApplicationsForEmployer } from "@/lib/job-applications";
+import { computeMatchResults } from "@/lib/match-results";
 import { getApplicationNotificationContext, notify, notifyJobseekerOfStatus } from "@/lib/notifications";
 import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
@@ -172,6 +174,96 @@ async function sendStatusNotifications(change: {
   }
 }
 
+// How long after a move it can still be undone (the chat offers it for 10s;
+// this leaves room for a slow connection).
+const UNDO_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * Takes back the move just made, as if it never happened: the stage goes
+ * back, its history entry and the applicant's notification about it are
+ * removed, and nobody is notified again. Only for the latest move, from
+ * exactly that stage, within UNDO_WINDOW_MS — anything else is a new move.
+ */
+async function undoLastMove(applicationId: string, currentStatus: string, backTo: string) {
+  const [last] = await db
+    .select()
+    .from(jobApplicationEvents)
+    .where(eq(jobApplicationEvents.jobApplicationId, applicationId))
+    .orderBy(desc(jobApplicationEvents.createdAt))
+    .limit(1);
+  const undoable =
+    last &&
+    last.toStatus === currentStatus &&
+    last.fromStatus === backTo &&
+    Date.now() - last.createdAt.getTime() < UNDO_WINDOW_MS;
+  if (!undoable) {
+    return NextResponse.json(
+      { error: "This move can't be undone any more — move them back from their profile instead." },
+      { status: 409 },
+    );
+  }
+
+  const [updated] = await db
+    .update(jobApplications)
+    .set({
+      status: backTo as (typeof SETTABLE_STATUSES)[number],
+      updatedAt: new Date(),
+      ...(currentStatus === "hired" ? { hiredAt: null } : {}),
+    })
+    .where(eq(jobApplications.id, applicationId))
+    .returning();
+  await db.delete(jobApplicationEvents).where(eq(jobApplicationEvents.id, last.id));
+
+  // The applicant's notification about that move, if it was sent.
+  const [applicant] = await db
+    .select({ userId: jobseekerProfiles.userId })
+    .from(jobApplications)
+    .innerJoin(jobseekerProfiles, eq(jobseekerProfiles.id, jobApplications.jobseekerProfileId))
+    .where(eq(jobApplications.id, applicationId))
+    .limit(1);
+  if (applicant) {
+    await db
+      .delete(notifications)
+      .where(
+        and(
+          eq(notifications.userId, applicant.userId),
+          eq(notifications.audience, "jobseeker"),
+          eq(notifications.link, "/jobseeker/applications"),
+          gte(notifications.createdAt, new Date(last.createdAt.getTime() - 2000)),
+        ),
+      );
+  }
+  revalidatePublicData();
+  return NextResponse.json({ application: updated, undone: true });
+}
+
+// One applicant, in the same shape (and with the same hiring scope) as the
+// Applicants page's rows, plus what its profile window needs alongside —
+// for opening that window from the JobGiga Assistant's chat.
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session || session.role !== "employer") {
+    return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
+  }
+  const access = await getScopedEmployerAccess(session.userId);
+  if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
+  const [applications, addresses, teamMembers, matches] = await Promise.all([
+    getApplicationsForEmployer(access.profile.id, access.scope),
+    getEmployerAddresses(access.profile.id),
+    getEmployerTeamMembers(access.profile.id, access.profile.userId),
+    computeMatchResults(access.profile, access.scope),
+  ]);
+  const applicant = applications.find((a) => a.application.id === id);
+  if (!applicant) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  // The same fit score Top Matches shows (none once hired/rejected/withdrawn).
+  const match = matches.find((m) => m.applicationId === id);
+  const fit = match ? { score: match.score, eligible: match.eligible } : null;
+  return NextResponse.json({ applicant, addresses, teamMembers, fit });
+}
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "employer") {
@@ -188,8 +280,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  const { status, interviewDetails, interviewResponseStatus } = (body ?? {}) as Record<string, unknown>;
-  if (typeof status !== "string" || !(SETTABLE_STATUSES as readonly string[]).includes(status)) {
+  const { status, interviewDetails, interviewResponseStatus, undo } = (body ?? {}) as Record<string, unknown>;
+  // Undo may put someone back into any stage they were just moved out of
+  // (Evaluated included, which is otherwise never set directly).
+  const settable = undo === true ? [...SETTABLE_STATUSES, "evaluated"] : SETTABLE_STATUSES;
+  if (typeof status !== "string" || !(settable as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "Invalid status." }, { status: 400 });
   }
 
@@ -241,6 +336,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       { status: 403 },
     );
   }
+
+  if (undo === true) return undoLastMove(id, existing.status, status);
 
   // A transition INTO "interview" from any other stage must bring real
   // scheduling details — otherwise the application would read as "interview

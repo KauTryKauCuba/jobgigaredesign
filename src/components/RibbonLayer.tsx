@@ -29,10 +29,13 @@ export type Pool = {
  */
 export default function RibbonLayer({
   pool,
+  gradientId,
   pointer,
   animate,
 }: {
   pool: Pool;
+  /** The id of this pool's radialGradient in the parent ribbon's <defs> (unique per ribbon). */
+  gradientId: string;
   pointer: Pointer;
   animate: boolean;
 }) {
@@ -71,7 +74,7 @@ export default function RibbonLayer({
           rx={pool.rx}
           ry={pool.ry}
           transform={`rotate(${pool.rotate} ${pool.cx} ${pool.cy})`}
-          fill={`url(#pool-${pool.id})`}
+          fill={`url(#${gradientId})`}
           opacity={pool.opacity}
         />
       </g>

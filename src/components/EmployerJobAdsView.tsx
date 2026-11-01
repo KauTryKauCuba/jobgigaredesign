@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdSlotCalendar from "./AdSlotCalendar";
+import AnimatedRibbon from "./AnimatedRibbon";
 import Dropdown from "./Dropdown";
 import JobAdCard, { type JobAdCardData } from "./JobAdCard";
 import { EMPLOYMENT_TYPE_LABEL } from "./JobPostingDetails";
 import Modal from "./Modal";
 import { gradientFrameClass } from "./formStyles";
-import { BriefcaseIcon, CalendarIcon, ImageIcon } from "./icons";
+import { BriefcaseIcon, CalendarIcon, ChevronDownIcon, ImageIcon } from "./icons";
 import {
   AD_BOOK_AHEAD_MONTHS,
   AD_MAX_ACTIVE_PER_COMPANY,
@@ -131,6 +132,7 @@ export default function EmployerJobAdsView({
   const [confirmRemove, setConfirmRemove] = useState<JobAdBooking | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [cardPreview, setCardPreview] = useState<JobAdCardData | null>(null);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -276,402 +278,447 @@ export default function EmployerJobAdsView({
   );
 
   return (
-    <div className="flex flex-col gap-[20px] xl:flex-row xl:items-start">
-      <div className="flex min-w-0 flex-col gap-[20px] xl:flex-[3]">
-        {/* Slots at a glance */}
-        <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
-          <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
-            <div className="flex flex-wrap items-end justify-between gap-[12px]">
-              <div>
-                <p className="text-xs text-[#9AA3B2]">Featured job slots on the jobs page today</p>
-                <p className="mt-[2px] text-xl font-semibold text-[#141B2E]">
-                  {usedToday} of {AD_SLOTS} in use
-                </p>
+    <div className="flex flex-col gap-[20px]">
+      {/* Same collapsible explainer as the Interviews page's "How scheduling interviews works". */}
+      <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
+        <div className="relative overflow-hidden rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+          {!howItWorksOpen && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-[70px] overflow-hidden rounded-b-[19px] sm:h-[95px] lg:h-[130px]"
+            >
+              {/* Shifted up so the visible slice lands on the ribbon's colour pools — see EmployerInterviewsView. */}
+              <div className="-mt-[67px] sm:-mt-[92px] lg:-mt-[125px]">
+                <AnimatedRibbon />
               </div>
-              <p className="text-sm text-[#4B5468]">
-                {usedToday < AD_SLOTS ? (
-                  <>A slot is free now.</>
-                ) : nextFreeToday ? (
-                  <>
-                    Next free start: <span className="font-medium text-brand-teal-dark">{formatAdDate(nextFreeToday)}</span>
-                  </>
-                ) : (
-                  <>No free slot in the next {AD_BOOK_AHEAD_MONTHS} months.</>
-                )}
-              </p>
             </div>
-            <div className="mt-[12px] grid grid-cols-10 gap-[4px]" aria-hidden>
-              {Array.from({ length: AD_SLOTS }, (_, i) => (
-                <span key={i} className={`h-[8px] rounded-full ${i < usedToday ? "bg-brand-teal-dark" : "bg-brand-teal-soft"}`} />
-              ))}
-            </div>
-            <div className="mt-[14px] flex flex-wrap gap-[6px] text-xs text-[#4B5468]">
-              <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Each ad runs {AD_RUN_DAYS} days</span>
-              <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Book up to {AD_BOOK_AHEAD_MONTHS} months ahead</span>
-              <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Reviewed before it goes live</span>
-              <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Free · first come, first served</span>
-            </div>
-          </div>
-        </div>
-
-        {savedMessage && (
-          <p className="animate-fade-in-up rounded-[14px] border border-[#BFEDEF] bg-brand-teal-soft p-[14px] text-sm leading-[20px] text-[#0B5F63]">
-            {savedMessage}
-          </p>
-        )}
-
-        {/* Your bookings */}
-        {bookings.length > 0 && (
-          <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-            <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
-              <div className="flex flex-wrap items-center justify-between gap-[8px]">
-                <h2 className="text-xl font-semibold text-[#141B2E]">Your job ad bookings</h2>
-                <span className="text-xs text-[#9AA3B2]">
-                  {ownBookings.length} of {AD_MAX_ACTIVE_PER_COMPANY} active
-                </span>
-              </div>
-              <div className="mt-[14px] flex flex-col gap-[10px]">
-                {bookings.map((b) => (
-                  <div key={b.id} className="flex flex-col gap-[12px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px] sm:flex-row sm:items-center">
-                    <div className="relative aspect-square w-[96px] shrink-0 overflow-hidden rounded-[10px] bg-[#E9EEF2]">
-                      {b.mediaType === "video" ? (
-                        <video src={b.mediaUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={b.mediaUrl} alt="" className="h-full w-full object-cover" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-[8px]">
-                        <span className={`rounded-full px-[9px] py-[3px] text-xs ${PHASE[b.phase].className}`}>{PHASE[b.phase].label}</span>
-                        <span className="flex items-center gap-[5px] text-xs text-[#4B5468]">
-                          <CalendarIcon className="h-[11px] w-[11px] text-[#9AA3B2]" />
-                          {formatAdRun(b.startDate, b.endDate)}
-                        </span>
-                      </div>
-                      <p className="mt-[6px] flex items-center gap-[6px] text-sm font-medium text-[#141B2E]">
-                        <BriefcaseIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
-                        <span className="truncate">{b.jobTitle}</span>
-                      </p>
-                      <p className={`mt-[2px] text-xs leading-[17px] ${b.phase === "rejected" ? "text-[#C0362C]" : "text-[#4B5468]"}`}>
-                        {bookingNote(b, today)}
-                      </p>
-                      {!b.jobOpen && (b.phase === "pending" || b.phase === "scheduled" || b.phase === "live") && (
-                        <p className="mt-[4px] text-xs leading-[17px] text-brand-gold-dark">
-                          This job isn&rsquo;t open right now, so the ad is hidden. It shows again once the job is live.
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-[6px] sm:flex-col sm:items-stretch">
-                      {(b.phase === "pending" || b.phase === "scheduled" || b.phase === "rejected") && (
-                        <button
-                          type="button"
-                          onClick={() => openForm({ kind: "edit", booking: b })}
-                          className="rounded-full bg-brand-teal-dark px-[14px] py-[6px] text-xs text-white hover:opacity-90"
-                        >
-                          {b.phase === "rejected" ? "Edit & resubmit" : "Edit"}
-                        </button>
-                      )}
-                      {b.phase === "ended" && canBookNew && jobs.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => openForm({ kind: "again", booking: b })}
-                          className="rounded-full bg-brand-teal-dark px-[14px] py-[6px] text-xs text-white hover:opacity-90"
-                        >
-                          Book again
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCardPreview(
-                            cardFor(b, { title: b.jobTitle, location: b.jobLocation, employmentType: b.jobEmploymentType }),
-                          )
-                        }
-                        className="rounded-full border border-brand-teal-dark/40 bg-white px-[14px] py-[6px] text-xs text-brand-teal-dark hover:bg-brand-teal-soft"
-                      >
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmRemove(b)}
-                        className="rounded-full border border-black/[0.1] bg-white px-[14px] py-[6px] text-xs text-[#4B5468] hover:text-[#141B2E]"
-                      >
-                        {removeCopy(b).action}
-                      </button>
-                    </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setHowItWorksOpen((o) => !o)}
+            aria-expanded={howItWorksOpen}
+            className="relative flex w-full items-center gap-[8px] text-left"
+          >
+            <p className="text-sm text-[#141B2E]">How job ads work</p>
+            <ChevronDownIcon
+              className={`ml-auto h-[10px] w-[10px] text-[#9AA3B2] transition-transform ${howItWorksOpen ? "" : "-rotate-90"}`}
+            />
+          </button>
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+              howItWorksOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="mt-[12px] grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  {
+                    step: 1,
+                    title: "Pick a job and add artwork",
+                    detail: `One of your live jobs, plus a square (1:1) image or a video up to ${AD_VIDEO_MAX_SECONDS} seconds.`,
+                  },
+                  {
+                    step: 2,
+                    title: "Book a start date",
+                    detail: `The earliest free date, or any day up to ${AD_BOOK_AHEAD_MONTHS} months ahead. ${AD_SLOTS} slots, free, first come first served.`,
+                  },
+                  {
+                    step: 3,
+                    title: "We review it",
+                    detail:
+                      "Your slot is held meanwhile. If it needs changes, you'll see why — edit and resubmit. If it isn't reviewed in time, it moves to the next free date.",
+                  },
+                  {
+                    step: 4,
+                    title: `Featured for ${AD_RUN_DAYS} days`,
+                    detail: `Shown to jobseekers above the job search while the job stays open. Up to ${AD_MAX_ACTIVE_PER_COMPANY} bookings per company, never overlapping.`,
+                  },
+                ].map((s) => (
+                  <div key={s.step} className="flex flex-col gap-[4px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[14px]">
+                    <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-brand-teal-dark text-xs text-white">
+                      {s.step}
+                    </span>
+                    <p className="mt-[4px] text-xs text-[#141B2E]">{s.title}</p>
+                    <p className="text-xs text-[#4B5468]">{s.detail}</p>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-        )}
-
-        {/* Book / edit */}
-        <div ref={formRef} className={`animate-fade-in-up scroll-mt-[100px] ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
-          <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
-            {!mode ? (
-              <div className="flex flex-col items-start gap-[10px]">
-                <h2 className="text-xl font-semibold text-[#141B2E]">Feature a job</h2>
-                {jobs.length === 0 ? (
-                  <>
-                    <p className="text-sm leading-[20px] text-[#4B5468]">
-                      You need a live job posting to feature. Once one is approved and open, you can book it here.
-                    </p>
-                    <Link
-                      href="/employer/jobs/postajob"
-                      className="flex h-[40px] items-center justify-center rounded-full bg-brand-teal-dark px-[20px] text-sm text-white hover:opacity-90"
-                    >
-                      Post a job
-                    </Link>
-                  </>
-                ) : canBookNew ? (
-                  <>
-                    <p className="text-sm leading-[20px] text-[#4B5468]">
-                      Put one of your jobs in front of every jobseeker, above the job search, for a month.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => openForm({ kind: "new" })}
-                      className="flex h-[40px] items-center justify-center rounded-full bg-brand-teal-dark px-[20px] text-sm text-white hover:opacity-90"
-                    >
-                      Book a job ad
-                    </button>
-                  </>
-                ) : (
-                  <p className="text-sm leading-[20px] text-[#4B5468]">
-                    You have {AD_MAX_ACTIVE_PER_COMPANY} job ad bookings — the most at once (one running, one booked next). You
-                    can book again once one of them ends.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-[8px]">
-                  <h2 className="text-xl font-semibold text-[#141B2E]">
-                    {mode.kind === "edit" ? "Edit booking" : mode.kind === "again" ? "Book again" : "Feature a job"}
-                  </h2>
-                  {(mode.kind !== "new" || bookings.length > 0) && !uploading && (
-                    <button type="button" onClick={() => setMode(null)} className="text-sm text-[#9AA3B2] hover:text-[#141B2E]">
-                      Cancel
-                    </button>
-                  )}
-                </div>
-                <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
-                  {mode.kind === "edit"
-                    ? "Changes go back to review before they show."
-                    : "Three quick steps — we'll review your ad before it's featured."}
-                </p>
-
-                {/* 1. Job */}
-                <div className="mt-[18px] flex gap-[12px]">
-                  {step(1)}
-                  <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
-                    <p className="text-sm text-[#141B2E]">
-                      Job to feature <span className="text-[#E5484D]">*</span>
-                    </p>
-                    {jobs.length === 0 ? (
-                      <p className="rounded-[12px] bg-brand-gold-soft px-[12px] py-[10px] text-xs leading-[17px] text-brand-gold-dark">
-                        None of your jobs are live right now — a job ad needs an open job posting.
-                      </p>
-                    ) : (
-                      <Dropdown
-                        label="Job to feature"
-                        value={jobId}
-                        disabled={uploading}
-                        options={[
-                          { value: "", label: "Choose a live job posting" },
-                          ...jobs.map((j) => ({ value: j.id, label: j.title })),
-                        ]}
-                        onChange={setJobId}
-                      />
-                    )}
-                    {mode.kind !== "new" && !jobs.some((j) => j.id === mode.booking.jobPostingId) && jobs.length > 0 && (
-                      <p className="text-xs text-brand-gold-dark">
-                        {mode.booking.jobTitle} isn&rsquo;t open anymore — choose another live job.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Artwork */}
-                <div className="mt-[16px] flex gap-[12px]">
-                  {step(2)}
-                  <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
-                    <p className="text-sm text-[#141B2E]">
-                      Artwork <span className="text-[#E5484D]">*</span>
-                    </p>
-                    <input
-                      ref={inputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,video/*"
-                      className="hidden"
-                      onChange={(e) => pickFile(e.target.files)}
-                    />
-                    <button
-                      type="button"
-                      disabled={uploading}
-                      onClick={() => inputRef.current?.click()}
-                      className="flex min-h-[84px] w-full flex-col items-center justify-center gap-[6px] rounded-[14px] border border-dashed border-black/[0.15] px-[16px] py-[12px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark disabled:opacity-60"
-                    >
-                      <ImageIcon className="h-[20px] w-[20px]" />
-                      {file ? `Selected: ${file.name}` : existingMedia ? "Using your current artwork — click to replace" : "Upload image or video"}
-                    </button>
-                    <p className="text-xs text-[#9AA3B2]">
-                      A square (1:1) design works best — e.g. 1080 × 1080. JPG, PNG or WebP up to 10 MB, or a video up to{" "}
-                      {AD_VIDEO_MAX_SECONDS} seconds (100 MB).
-                    </p>
-                  </div>
-                </div>
-
-                {/* 3. Start date */}
-                <div className="mt-[16px] flex gap-[12px]">
-                  {step(3)}
-                  <div className="flex min-w-0 flex-1 flex-col gap-[8px]">
-                    <p className="text-sm text-[#141B2E]">When should it start?</p>
-                    <div className="grid gap-[8px] sm:grid-cols-2" role="radiogroup">
-                      {(
-                        [
-                          {
-                            key: "asap" as const,
-                            title: "As soon as possible",
-                            detail: asapDate ? `Starts ${formatAdDate(asapDate)}` : "No free slot in the next 3 months",
-                          },
-                          {
-                            key: "date" as const,
-                            title: "Pick a date",
-                            detail: pickedDate ? `Starts ${formatAdDate(pickedDate)}` : `Up to ${AD_BOOK_AHEAD_MONTHS} months ahead`,
-                          },
-                        ]
-                      ).map((opt) => (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          role="radio"
-                          aria-checked={startChoice === opt.key}
-                          disabled={uploading}
-                          onClick={() => setStartChoice(opt.key)}
-                          className={`flex items-start gap-[10px] rounded-[14px] border p-[12px] text-left transition-colors ${
-                            startChoice === opt.key
-                              ? "border-brand-teal-dark bg-[#F2FBFB]"
-                              : "border-[#EAEDF2] bg-white hover:border-black/[0.15]"
-                          }`}
-                        >
-                          <span
-                            className={`mt-[2px] flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full border ${
-                              startChoice === opt.key ? "border-brand-teal-dark" : "border-black/[0.2]"
-                            }`}
-                          >
-                            {startChoice === opt.key && <span className="h-[8px] w-[8px] rounded-full bg-brand-teal-dark" />}
-                          </span>
-                          <span>
-                            <span className="block text-sm text-[#141B2E]">{opt.title}</span>
-                            <span className="block text-xs text-[#4B5468]">{opt.detail}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {startChoice === "date" && (
-                      <AdSlotCalendar
-                        today={today}
-                        value={pickedDate}
-                        onChange={setPickedDate}
-                        counts={counts}
-                        ownBookings={ownBookings}
-                        excludeId={editingId}
-                      />
-                    )}
-
-                    {startDate && (
-                      <div className="flex items-start gap-[10px] rounded-[14px] bg-[#F8FAFB] p-[12px]">
-                        <CalendarIcon className="mt-[2px] h-[14px] w-[14px] shrink-0 text-brand-teal-dark" />
-                        <p className="text-sm leading-[20px] text-[#4B5468]">
-                          Runs <span className="font-medium text-[#141B2E]">{formatAdRun(startDate, runEndDate(startDate))}</span> ·{" "}
-                          {AD_RUN_DAYS} days. Your slot is held while we review your ad.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {error && <p className="mt-[12px] text-sm text-red-500">{error}</p>}
-
-                {uploading && (
-                  <div className="mt-[12px]">
-                    <div className="h-[6px] w-full overflow-hidden rounded-full bg-[#EAEDF2]">
-                      <div className="h-full bg-brand-teal-dark transition-[width]" style={{ width: `${progress}%` }} />
-                    </div>
-                    <p className="mt-[6px] text-xs text-[#4B5468]">
-                      {progress! < 100 ? `Uploading… ${progress}%` : file?.type.startsWith("video/") ? "Processing video…" : "Saving…"}
-                    </p>
-                  </div>
-                )}
-
-                <div className="mt-[16px] flex flex-wrap items-center gap-[8px]">
-                  <button
-                    type="button"
-                    onClick={submit}
-                    disabled={!canSubmit}
-                    className="flex h-[40px] items-center justify-center rounded-full bg-brand-teal-dark px-[20px] text-sm text-white hover:opacity-90 disabled:opacity-50"
-                  >
-                    {mode.kind === "edit" ? "Save & resubmit for review" : "Book & submit for review"}
-                  </button>
-                  {!canSubmit && !uploading && (
-                    <p className="text-xs text-[#9AA3B2]">
-                      {!selectedJob ? "Choose a job" : !hasMedia ? "Add your artwork" : !startDate ? "Choose a start date" : ""}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Preview + how it works */}
-      <div className="flex min-w-0 flex-col gap-[20px] xl:sticky xl:top-[22px] xl:flex-[2]">
-        <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
-          <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
-            <p className="text-sm text-[#141B2E]">Preview</p>
-            <p className="mt-[2px] text-xs text-[#9AA3B2]">How your job appears in Featured jobs, above the job search.</p>
-            <div className="mt-[14px] rounded-[16px] bg-brand-gold-page p-[16px]">
-              <div className="mx-auto w-full max-w-[260px]">
-                {previewMedia ? (
-                  <JobAdCard ad={cardFor(previewMedia, selectedJob)} />
-                ) : (
-                  <div className="flex aspect-square items-center justify-center rounded-[20px] border border-dashed border-black/[0.12] bg-white px-[20px] text-center text-xs text-[#9AA3B2]">
-                    Upload your artwork to see your job ad here.
-                  </div>
-                )}
+      <div className="flex flex-col gap-[20px] xl:flex-row xl:items-start">
+        <div className="flex min-w-0 flex-col gap-[20px] xl:flex-[3]">
+          {/* Slots at a glance */}
+          <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`}>
+            <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
+              <div className="flex flex-wrap items-end justify-between gap-[12px]">
+                <div>
+                  <p className="text-xs text-[#9AA3B2]">Featured job slots on the jobs page today</p>
+                  <p className="mt-[2px] text-xl font-semibold text-[#141B2E]">
+                    {usedToday} of {AD_SLOTS} in use
+                  </p>
+                </div>
+                <p className="text-sm text-[#4B5468]">
+                  {usedToday < AD_SLOTS ? (
+                    <>A slot is free now.</>
+                  ) : nextFreeToday ? (
+                    <>
+                      Next free start: <span className="font-medium text-brand-teal-dark">{formatAdDate(nextFreeToday)}</span>
+                    </>
+                  ) : (
+                    <>No free slot in the next {AD_BOOK_AHEAD_MONTHS} months.</>
+                  )}
+                </p>
               </div>
+              <div className="mt-[12px] grid grid-cols-10 gap-[4px]" aria-hidden>
+                {Array.from({ length: AD_SLOTS }, (_, i) => (
+                  <span key={i} className={`h-[8px] rounded-full ${i < usedToday ? "bg-brand-teal-dark" : "bg-brand-teal-soft"}`} />
+                ))}
+              </div>
+              <div className="mt-[14px] flex flex-wrap gap-[6px] text-xs text-[#4B5468]">
+                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Each ad runs {AD_RUN_DAYS} days</span>
+                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Book up to {AD_BOOK_AHEAD_MONTHS} months ahead</span>
+                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Reviewed before it goes live</span>
+                <span className="rounded-full bg-[#F1F4F8] px-[10px] py-[4px]">Free · first come, first served</span>
+              </div>
+            </div>
+          </div>
+
+          {savedMessage && (
+            <p className="animate-fade-in-up rounded-[14px] border border-[#BFEDEF] bg-brand-teal-soft p-[14px] text-sm leading-[20px] text-[#0B5F63]">
+              {savedMessage}
+            </p>
+          )}
+
+          {/* Your bookings */}
+          {bookings.length > 0 && (
+            <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
+              <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
+                <div className="flex flex-wrap items-center justify-between gap-[8px]">
+                  <h2 className="text-xl font-semibold text-[#141B2E]">Your job ad bookings</h2>
+                  <span className="text-xs text-[#9AA3B2]">
+                    {ownBookings.length} of {AD_MAX_ACTIVE_PER_COMPANY} active
+                  </span>
+                </div>
+                <div className="mt-[14px] flex flex-col gap-[10px]">
+                  {bookings.map((b) => (
+                    <div key={b.id} className="flex flex-col gap-[12px] rounded-[14px] border border-[#EAEDF2] bg-[#F8FAFB] p-[12px] sm:flex-row sm:items-center">
+                      <div className="relative aspect-square w-[96px] shrink-0 overflow-hidden rounded-[10px] bg-[#E9EEF2]">
+                        {b.mediaType === "video" ? (
+                          <video src={b.mediaUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={b.mediaUrl} alt="" className="h-full w-full object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-[8px]">
+                          <span className={`rounded-full px-[9px] py-[3px] text-xs ${PHASE[b.phase].className}`}>{PHASE[b.phase].label}</span>
+                          <span className="flex items-center gap-[5px] text-xs text-[#4B5468]">
+                            <CalendarIcon className="h-[11px] w-[11px] text-[#9AA3B2]" />
+                            {formatAdRun(b.startDate, b.endDate)}
+                          </span>
+                        </div>
+                        <p className="mt-[6px] flex items-center gap-[6px] text-sm font-medium text-[#141B2E]">
+                          <BriefcaseIcon className="h-[13px] w-[13px] shrink-0 text-[#9AA3B2]" />
+                          <span className="truncate">{b.jobTitle}</span>
+                        </p>
+                        <p className={`mt-[2px] text-xs leading-[17px] ${b.phase === "rejected" ? "text-[#C0362C]" : "text-[#4B5468]"}`}>
+                          {bookingNote(b, today)}
+                        </p>
+                        {!b.jobOpen && (b.phase === "pending" || b.phase === "scheduled" || b.phase === "live") && (
+                          <p className="mt-[4px] text-xs leading-[17px] text-brand-gold-dark">
+                            This job isn&rsquo;t open right now, so the ad is hidden. It shows again once the job is live.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-[6px] sm:flex-col sm:items-stretch">
+                        {(b.phase === "pending" || b.phase === "scheduled" || b.phase === "rejected") && (
+                          <button
+                            type="button"
+                            onClick={() => openForm({ kind: "edit", booking: b })}
+                            className="rounded-full bg-brand-teal-dark px-[14px] py-[6px] text-xs text-white hover:opacity-90"
+                          >
+                            {b.phase === "rejected" ? "Edit & resubmit" : "Edit"}
+                          </button>
+                        )}
+                        {b.phase === "ended" && canBookNew && jobs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => openForm({ kind: "again", booking: b })}
+                            className="rounded-full bg-brand-teal-dark px-[14px] py-[6px] text-xs text-white hover:opacity-90"
+                          >
+                            Book again
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCardPreview(
+                              cardFor(b, { title: b.jobTitle, location: b.jobLocation, employmentType: b.jobEmploymentType }),
+                            )
+                          }
+                          className="rounded-full border border-brand-teal-dark/40 bg-white px-[14px] py-[6px] text-xs text-brand-teal-dark hover:bg-brand-teal-soft"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemove(b)}
+                          className="rounded-full border border-black/[0.1] bg-white px-[14px] py-[6px] text-xs text-[#4B5468] hover:text-[#141B2E]"
+                        >
+                          {removeCopy(b).action}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Book / edit */}
+          <div ref={formRef} className={`animate-fade-in-up scroll-mt-[100px] ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
+            <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
+              {!mode ? (
+                <div className="flex flex-col items-start gap-[10px]">
+                  <h2 className="text-xl font-semibold text-[#141B2E]">Feature a job</h2>
+                  {jobs.length === 0 ? (
+                    <>
+                      <p className="text-sm leading-[20px] text-[#4B5468]">
+                        You need a live job posting to feature. Once one is approved and open, you can book it here.
+                      </p>
+                      <Link
+                        href="/employer/jobs/postajob"
+                        className="flex h-[40px] items-center justify-center rounded-full bg-brand-teal-dark px-[20px] text-sm text-white hover:opacity-90"
+                      >
+                        Post a job
+                      </Link>
+                    </>
+                  ) : canBookNew ? (
+                    <>
+                      <p className="text-sm leading-[20px] text-[#4B5468]">
+                        Put one of your jobs in front of every jobseeker, above the job search, for a month.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => openForm({ kind: "new" })}
+                        className="flex h-[40px] items-center justify-center rounded-full bg-brand-teal-dark px-[20px] text-sm text-white hover:opacity-90"
+                      >
+                        Book a job ad
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-sm leading-[20px] text-[#4B5468]">
+                      You have {AD_MAX_ACTIVE_PER_COMPANY} job ad bookings — the most at once (one running, one booked next). You
+                      can book again once one of them ends.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-[8px]">
+                    <h2 className="text-xl font-semibold text-[#141B2E]">
+                      {mode.kind === "edit" ? "Edit booking" : mode.kind === "again" ? "Book again" : "Feature a job"}
+                    </h2>
+                    {(mode.kind !== "new" || bookings.length > 0) && !uploading && (
+                      <button type="button" onClick={() => setMode(null)} className="text-sm text-[#9AA3B2] hover:text-[#141B2E]">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-[6px] text-sm leading-[20px] text-[#4B5468]">
+                    {mode.kind === "edit"
+                      ? "Changes go back to review before they show."
+                      : "Three quick steps — we'll review your ad before it's featured."}
+                  </p>
+
+                  {/* 1. Job */}
+                  <div className="mt-[18px] flex gap-[12px]">
+                    {step(1)}
+                    <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
+                      <p className="text-sm text-[#141B2E]">
+                        Job to feature <span className="text-[#E5484D]">*</span>
+                      </p>
+                      {jobs.length === 0 ? (
+                        <p className="rounded-[12px] bg-brand-gold-soft px-[12px] py-[10px] text-xs leading-[17px] text-brand-gold-dark">
+                          None of your jobs are live right now — a job ad needs an open job posting.
+                        </p>
+                      ) : (
+                        <Dropdown
+                          label="Job to feature"
+                          value={jobId}
+                          disabled={uploading}
+                          options={[
+                            { value: "", label: "Choose a live job posting" },
+                            ...jobs.map((j) => ({ value: j.id, label: j.title })),
+                          ]}
+                          onChange={setJobId}
+                        />
+                      )}
+                      {mode.kind !== "new" && !jobs.some((j) => j.id === mode.booking.jobPostingId) && jobs.length > 0 && (
+                        <p className="text-xs text-brand-gold-dark">
+                          {mode.booking.jobTitle} isn&rsquo;t open anymore — choose another live job.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Artwork */}
+                  <div className="mt-[16px] flex gap-[12px]">
+                    {step(2)}
+                    <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
+                      <p className="text-sm text-[#141B2E]">
+                        Artwork <span className="text-[#E5484D]">*</span>
+                      </p>
+                      <input
+                        ref={inputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,video/*"
+                        className="hidden"
+                        onChange={(e) => pickFile(e.target.files)}
+                      />
+                      <button
+                        type="button"
+                        disabled={uploading}
+                        onClick={() => inputRef.current?.click()}
+                        className="flex min-h-[84px] w-full flex-col items-center justify-center gap-[6px] rounded-[14px] border border-dashed border-black/[0.15] px-[16px] py-[12px] text-sm text-[#4B5468] hover:border-brand-teal-dark hover:text-brand-teal-dark disabled:opacity-60"
+                      >
+                        <ImageIcon className="h-[20px] w-[20px]" />
+                        {file ? `Selected: ${file.name}` : existingMedia ? "Using your current artwork — click to replace" : "Upload image or video"}
+                      </button>
+                      <p className="text-xs text-[#9AA3B2]">
+                        A square (1:1) design works best — e.g. 1080 × 1080. JPG, PNG or WebP up to 10 MB, or a video up to{" "}
+                        {AD_VIDEO_MAX_SECONDS} seconds (100 MB).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 3. Start date */}
+                  <div className="mt-[16px] flex gap-[12px]">
+                    {step(3)}
+                    <div className="flex min-w-0 flex-1 flex-col gap-[8px]">
+                      <p className="text-sm text-[#141B2E]">When should it start?</p>
+                      <div className="grid gap-[8px] sm:grid-cols-2" role="radiogroup">
+                        {(
+                          [
+                            {
+                              key: "asap" as const,
+                              title: "As soon as possible",
+                              detail: asapDate ? `Starts ${formatAdDate(asapDate)}` : "No free slot in the next 3 months",
+                            },
+                            {
+                              key: "date" as const,
+                              title: "Pick a date",
+                              detail: pickedDate ? `Starts ${formatAdDate(pickedDate)}` : `Up to ${AD_BOOK_AHEAD_MONTHS} months ahead`,
+                            },
+                          ]
+                        ).map((opt) => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            role="radio"
+                            aria-checked={startChoice === opt.key}
+                            disabled={uploading}
+                            onClick={() => setStartChoice(opt.key)}
+                            className={`flex items-start gap-[10px] rounded-[14px] border p-[12px] text-left transition-colors ${
+                              startChoice === opt.key
+                                ? "border-brand-teal-dark bg-[#F2FBFB]"
+                                : "border-[#EAEDF2] bg-white hover:border-black/[0.15]"
+                            }`}
+                          >
+                            <span
+                              className={`mt-[2px] flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full border ${
+                                startChoice === opt.key ? "border-brand-teal-dark" : "border-black/[0.2]"
+                              }`}
+                            >
+                              {startChoice === opt.key && <span className="h-[8px] w-[8px] rounded-full bg-brand-teal-dark" />}
+                            </span>
+                            <span>
+                              <span className="block text-sm text-[#141B2E]">{opt.title}</span>
+                              <span className="block text-xs text-[#4B5468]">{opt.detail}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {startChoice === "date" && (
+                        <AdSlotCalendar
+                          today={today}
+                          value={pickedDate}
+                          onChange={setPickedDate}
+                          counts={counts}
+                          ownBookings={ownBookings}
+                          excludeId={editingId}
+                        />
+                      )}
+
+                      {startDate && (
+                        <div className="flex items-start gap-[10px] rounded-[14px] bg-[#F8FAFB] p-[12px]">
+                          <CalendarIcon className="mt-[2px] h-[14px] w-[14px] shrink-0 text-brand-teal-dark" />
+                          <p className="text-sm leading-[20px] text-[#4B5468]">
+                            Runs <span className="font-medium text-[#141B2E]">{formatAdRun(startDate, runEndDate(startDate))}</span> ·{" "}
+                            {AD_RUN_DAYS} days. Your slot is held while we review your ad.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {error && <p className="mt-[12px] text-sm text-red-500">{error}</p>}
+
+                  {uploading && (
+                    <div className="mt-[12px]">
+                      <div className="h-[6px] w-full overflow-hidden rounded-full bg-[#EAEDF2]">
+                        <div className="h-full bg-brand-teal-dark transition-[width]" style={{ width: `${progress}%` }} />
+                      </div>
+                      <p className="mt-[6px] text-xs text-[#4B5468]">
+                        {progress! < 100 ? `Uploading… ${progress}%` : file?.type.startsWith("video/") ? "Processing video…" : "Saving…"}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-[16px] flex flex-wrap items-center gap-[8px]">
+                    <button
+                      type="button"
+                      onClick={submit}
+                      disabled={!canSubmit}
+                      className="flex h-[40px] items-center justify-center rounded-full bg-brand-teal-dark px-[20px] text-sm text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      {mode.kind === "edit" ? "Save & resubmit for review" : "Book & submit for review"}
+                    </button>
+                    {!canSubmit && !uploading && (
+                      <p className="text-xs text-[#9AA3B2]">
+                        {!selectedJob ? "Choose a job" : !hasMedia ? "Add your artwork" : !startDate ? "Choose a start date" : ""}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "120ms" }}>
-          <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
-            <p className="text-sm text-[#141B2E]">How it works</p>
-            <ol className="mt-[10px] flex flex-col gap-[10px]">
-              {[
-                ["Pick a job and add artwork", "Choose one of your live jobs and upload a square image or short video."],
-                ["We review your ad", "Your slot is held meanwhile. If it isn't reviewed in time, it moves to the next free date."],
-                ["It's featured for a month", `Shown above the job search for ${AD_RUN_DAYS} days, while the job stays open.`],
-              ].map(([title, body], i) => (
-                <li key={title} className="flex gap-[10px]">
-                  <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-brand-teal-soft text-xs font-semibold text-brand-teal-dark">
-                    {i + 1}
-                  </span>
-                  <span>
-                    <span className="block text-sm text-[#141B2E]">{title}</span>
-                    <span className="block text-xs leading-[17px] text-[#4B5468]">{body}</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-[12px] border-t border-black/[0.06] pt-[10px] text-xs leading-[17px] text-[#9AA3B2]">
-              {AD_SLOTS} featured job slots in total · up to {AD_MAX_ACTIVE_PER_COMPANY} bookings per company, never overlapping.
-            </p>
+        {/* Preview */}
+        <div className="flex min-w-0 flex-col gap-[20px] xl:sticky xl:top-[22px] xl:flex-[2]">
+          <div className={`animate-fade-in-up ${gradientFrameClass("teal")}`} style={{ animationDelay: "60ms" }}>
+            <div className="rounded-[19px] bg-white p-[16px] text-left sm:p-[22px]">
+              <p className="text-sm text-[#141B2E]">Preview</p>
+              <p className="mt-[2px] text-xs text-[#9AA3B2]">How your job appears in Featured jobs, above the job search.</p>
+              <div className="mt-[14px] rounded-[16px] bg-brand-gold-page p-[16px]">
+                <div className="mx-auto w-full max-w-[260px]">
+                  {previewMedia ? (
+                    <JobAdCard ad={cardFor(previewMedia, selectedJob)} />
+                  ) : (
+                    <div className="flex aspect-square items-center justify-center rounded-[20px] border border-dashed border-black/[0.12] bg-white px-[20px] text-center text-xs text-[#9AA3B2]">
+                      Upload your artwork to see your job ad here.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

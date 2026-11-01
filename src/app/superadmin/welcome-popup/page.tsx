@@ -6,7 +6,7 @@ import { getWelcomeImages } from "@/lib/welcome-images";
 
 export default async function SuperadminWelcomePopupPage() {
   const authUser = await getAuthUser();
-  if (!authUser || !isSuperadminEmail(authUser.email)) redirect("/");
+  if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   return <SuperadminWelcomeView authUser={authUser} initialImages={await getWelcomeImages()} />;
 }

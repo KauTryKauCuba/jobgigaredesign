@@ -5,12 +5,14 @@ import { gradientFrameClass } from "./formStyles";
 import Modal from "./Modal";
 import SuperadminDashboardShell from "./SuperadminDashboardShell";
 import type { AuthUser } from "./AuthModal";
-import { DEFAULT_THEME_COLORS, themeCssVars } from "@/lib/site-themes-shared";
 import type { WelcomeImage, WelcomeRole } from "@/lib/welcome-images";
 
-const ROLES: { role: WelcomeRole; title: string; page: string; accent: "teal" | "gold" }[] = [
-  { role: "employer", title: "Employer page", page: "/employer", accent: "teal" },
-  { role: "jobseeker", title: "Jobseeker page", page: "/jobseeker", accent: "gold" },
+// Both cards use the superadmin colour ("teal" here, which
+// src/app/superadmin/layout.tsx turns blue) — only the images themselves
+// show each side's own colours.
+const ROLES: { role: WelcomeRole; title: string; page: string }[] = [
+  { role: "employer", title: "Employer page", page: "/employer" },
+  { role: "jobseeker", title: "Jobseeker page", page: "/jobseeker" },
 ];
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -75,18 +77,11 @@ export default function SuperadminWelcomeView({
       subheading="The square image that welcomes signed-out visitors to the employer and jobseeker landing pages (shown once per browser)."
     >
       <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">
-        {ROLES.map(({ role, title, page, accent }) => {
+        {ROLES.map(({ role, title, page }) => {
           const image = images[role];
           const isBusy = busy === role;
           return (
-            <div
-              key={role}
-              className={gradientFrameClass(accent)}
-              // Superadmin is blue (see superadmin/layout.tsx), but this card is
-              // about the employer side, so it keeps the employer teal — just
-              // as the jobseeker card keeps its gold.
-              style={role === "employer" ? (themeCssVars("employer", DEFAULT_THEME_COLORS.employer) as React.CSSProperties) : undefined}
-            >
+            <div key={role} className={gradientFrameClass("teal")}>
               <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px]">
                 <div className="flex items-start justify-between gap-[10px]">
                   <div>
@@ -99,7 +94,7 @@ export default function SuperadminWelcomeView({
                     href={page}
                     target="_blank"
                     rel="noreferrer"
-                    className={`shrink-0 text-sm hover:underline ${accent === "gold" ? "text-brand-gold-dark" : "text-brand-teal-dark"}`}
+                    className="shrink-0 text-sm text-brand-teal-dark hover:underline"
                   >
                     View page
                   </a>
@@ -129,9 +124,7 @@ export default function SuperadminWelcomeView({
                     type="button"
                     disabled={isBusy}
                     onClick={() => inputs.current[role]?.click()}
-                    className={`h-[38px] rounded-full px-[18px] text-sm hover:opacity-90 disabled:opacity-50 ${
-                      accent === "gold" ? "bg-[#FFE9A6] text-[#141B2E]" : "bg-brand-teal-dark text-white"
-                    }`}
+                    className="h-[38px] rounded-full bg-brand-teal-dark px-[18px] text-sm text-white hover:opacity-90 disabled:opacity-50"
                   >
                     Upload new image
                   </button>

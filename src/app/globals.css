@@ -24,6 +24,13 @@
 :root {
   --brand-gradient-employer: linear-gradient(90deg, #00757b 0%, #008990 35%, #07a4af 60%, #c99a1e 100%);
   --brand-gradient-jobseeker: linear-gradient(90deg, #8a6600 0%, #a67c00 35%, #c99a1e 60%, #0a8f98 100%);
+  /* The pale full-width bands behind the landing pages' feature sections
+     (Company spotlight, Write jobs with AI, Featured jobs...) — soft takes on
+     each side's heading gradient. */
+  --band-employer: #e3f2eb;
+  --band-gradient-employer: linear-gradient(120deg, #ddf0e8 0%, #e3f2eb 45%, #fbf3dc 100%);
+  --band-jobseeker: #f8eed6;
+  --band-gradient-jobseeker: linear-gradient(120deg, #fbefcf 0%, #f8eed6 45%, #dcefeb 100%);
   /* AnimatedRibbon's in-between shades. */
   --ribbon-teal-light: #5cd8e0;
   --ribbon-teal-pale: #cff4f6;
@@ -86,6 +93,34 @@ body {
 @media (max-width: 1024px) {
   .app-shell {
     padding-inline: 24px;
+  }
+}
+
+/* Employer Dashboard / Chat mode (EmployerDashboardShell): the outgoing view
+   fades and settles back, the incoming one fades up into place. */
+@keyframes mode-out {
+  to {
+    opacity: 0;
+    transform: scale(0.985) translateY(6px);
+  }
+}
+@keyframes mode-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985) translateY(10px);
+  }
+}
+.animate-mode-out {
+  animation: mode-out 0.22s ease-in forwards;
+  pointer-events: none;
+}
+.animate-mode-in {
+  animation: mode-in 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-mode-out,
+  .animate-mode-in {
+    animation: none;
   }
 }
 
