@@ -3,12 +3,14 @@ import SuperadminCampaignView from "@/components/SuperadminCampaignView";
 import { getAuthUser } from "@/lib/auth-user";
 import { getCampaign, listClaims } from "@/lib/campaigns";
 import { isSuperadminEmail } from "@/lib/superadmin";
+import { isUuid } from "@/lib/uuid";
 
 export default async function SuperadminCampaignPage({ params }: PageProps<"/superadmin/campaigns/[id]">) {
   const authUser = await getAuthUser();
   if (!authUser || !(await isSuperadminEmail(authUser.email))) redirect("/");
 
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const campaign = await getCampaign(id);
   if (!campaign) notFound();
 

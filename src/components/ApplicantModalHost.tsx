@@ -31,14 +31,32 @@ type Loaded = {
   fit: ApplicantFit;
 };
 
-/** One applicant's profile data, as the chat's profile card shows it. */
-export async function fetchApplicant(applicationId: string): Promise<Loaded> {
+async function fetchApplicant(applicationId: string): Promise<Loaded> {
   const res = await fetch(`/api/employer/applications/${applicationId}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error === "Not found." ? "That applicant isn't available any more." : (data.error ?? "Couldn't open this profile."));
   }
   return data as Loaded;
+}
+
+// The batch route's limit per request.
+const BATCH_SIZE = 50;
+
+/** Several applicants for the chat's profile cards, by id. Ones no longer visible are missing from the result. */
+export async function fetchApplicantCards(applicationIds: string[]): Promise<Record<string, { applicant: ApplicantDetail; fit: ApplicantFit }>> {
+  const found: Record<string, { applicant: ApplicantDetail; fit: ApplicantFit }> = {};
+  for (let i = 0; i < applicationIds.length; i += BATCH_SIZE) {
+    const res = await fetch("/api/employer/applications/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: applicationIds.slice(i, i + BATCH_SIZE) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? "Couldn't load this profile.");
+    Object.assign(found, data.items);
+  }
+  return found;
 }
 
 /**

@@ -41,11 +41,16 @@ function platformDailyLimit() {
 }
 
 /**
- * Where a request came from. Behind the reverse proxy the real address is in
- * x-real-ip / x-forwarded-for; with neither, it's unknown (null) and the IP
- * limit simply doesn't apply to that request.
+ * Where a request came from. Live, every request arrives through the
+ * Cloudflare Tunnel (the app only listens on 127.0.0.1), and Cloudflare sets
+ * cf-connecting-ip itself, so a visitor can't fake it. x-forwarded-for's first
+ * entry they can: Cloudflare keeps whatever they sent in front of the real
+ * address, which would let them dodge any IP limit. With no header at all
+ * (local dev), it's unknown (null) and the IP limit doesn't apply.
  */
 export function clientIp(request: Request): string | null {
+  const cloudflare = request.headers.get("cf-connecting-ip")?.trim();
+  if (cloudflare) return cloudflare.slice(0, 64);
   const real = request.headers.get("x-real-ip")?.trim();
   if (real) return real.slice(0, 64);
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();

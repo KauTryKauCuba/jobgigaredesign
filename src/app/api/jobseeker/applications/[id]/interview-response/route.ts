@@ -5,6 +5,7 @@ import { jobApplications, jobseekerProfiles } from "@/lib/db/schema";
 import { getApplicationNotificationContext, getJobNotificationRecipients, notify } from "@/lib/notifications";
 import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 const RESPONSES = ["accepted", "declined", "reschedule_requested"] as const;
 
@@ -33,6 +34,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   // Application must belong to this jobseeker, currently be in the
   // interview stage, and still be awaiting their response — an already

@@ -209,6 +209,23 @@ export function UserCheckIcon({
   );
 }
 
+export function PaperclipIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+      <path d="M13.5 7.5 8 13a3.4 3.4 0 0 1-4.8-4.8l5.6-5.6a2.2 2.2 0 0 1 3.2 3.2L6.4 11.4a1 1 0 0 1-1.5-1.5L10 4.8" />
+    </svg>
+  );
+}
+
+export function RefreshIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+      <path d="M13.4 8A5.4 5.4 0 1 1 11.8 4.2L13.4 5.8" />
+      <path d="M13.4 2.6v3.2h-3.2" />
+    </svg>
+  );
+}
+
 export function FileIcon({ className = "" }: { className?: string }) {
   return (
     <svg

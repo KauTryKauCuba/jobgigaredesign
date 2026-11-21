@@ -8,6 +8,7 @@ import { POSTER_GENERATION_STALE_MS, getPosterImageTaskResult } from "@/lib/icre
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { getSession } from "@/lib/session";
 import { saveBufferUpload } from "@/lib/uploads";
+import { isUuid } from "@/lib/uuid";
 
 // Polled by the client (PosterGeneratorView) every few seconds while a
 // posting has posterGeneratingSince/posterTaskId set. Downloads the finished
@@ -24,6 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const profileId = access.profile.id;
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const posting = await getJobPostingForEmployer(profileId, id);
   if (!posting) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

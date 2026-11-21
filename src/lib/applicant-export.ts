@@ -125,8 +125,9 @@ export async function buildApplicantExport(
     rows = request.applicationIds.map((id) => byId.get(id)).filter((a): a is EmployerApplication => !!a);
   } else {
     // A "limit" is only there when they asked for a number ("top 10").
-    const limit = typeof request.filters.limit === "number" ? Math.floor(request.filters.limit) : null;
-    rows = limit && limit > 0 ? search.list.slice(0, limit) : search.list;
+    // The model sometimes sends it as a string; the tool counts it either way.
+    const limit = Math.floor(Number(request.filters.limit));
+    rows = limit > 0 ? search.list.slice(0, limit) : search.list;
   }
   if (rows.length === 0) return { ok: false, error: "There are no applicants to export." };
 

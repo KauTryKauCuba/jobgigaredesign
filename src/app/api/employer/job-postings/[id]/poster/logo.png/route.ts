@@ -5,6 +5,7 @@ import path from "path";
 import sharp from "sharp";
 import { db } from "@/lib/db";
 import { employerProfiles, jobPostings } from "@/lib/db/schema";
+import { isUuid } from "@/lib/uuid";
 
 // Public (no auth) — deliberately so. The poster image model
 // (google/gemini-3-1-flash-image via icreat, see src/lib/icreat.ts) only
@@ -19,6 +20,7 @@ import { employerProfiles, jobPostings } from "@/lib/db/schema";
 // page itself.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!isUuid(id)) return new NextResponse("Not found.", { status: 404 });
 
   const [row] = await db
     .select({ logoUrl: employerProfiles.logoUrl })

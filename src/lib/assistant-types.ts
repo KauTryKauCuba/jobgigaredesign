@@ -18,6 +18,8 @@ export type AssistantAction =
       toLabel: string;
       items: StageChangeItem[];
       skipped: { name: string; reason: string }[];
+      // Worth knowing before confirming: over-filling a job, an offer being taken back.
+      notes?: string[];
       resolution?: StageChangeResolution;
       // Per application id: "ok", or why that one move failed.
       results?: Record<string, string>;
@@ -28,7 +30,18 @@ export type AssistantAction =
   // A proposed interview cancellation.
   | ({ type: "cancel_interview" } & CancelInterviewRequest)
   // The caller's own interview scorecard, staged for Confirm.
-  | ({ type: "record_evaluation" } & RecordEvaluationRequest);
+  | ({ type: "record_evaluation" } & RecordEvaluationRequest)
+  // A change to the team (invite, role, removal, resent invite, a Hiring
+  // manager's jobs), staged for Confirm.
+  | ({ type: "team_change" } & TeamChangeRequest)
+  // Edits to the company's details, staged for Confirm.
+  | ({ type: "company_edit" } & CompanyEditRequest)
+  // Edits to a job posting, staged for Confirm.
+  | ({ type: "posting_edit" } & PostingEditRequest)
+  // Attendance, or starting the evaluation, staged for Confirm.
+  | ({ type: "interview_progress" } & InterviewProgressRequest)
+  // Any other action: a summary, then one real API request on Confirm.
+  | ({ type: "confirm_action" } & ConfirmActionRequest);
 
 // fromStatus is what Undo moves them back to (cards saved before it existed have none).
 export type StageChangeItem = { applicationId: string; name: string; posting: string; fromLabel: string; fromStatus?: string };
@@ -100,9 +113,108 @@ export type DraftJobPostingRequest = {
   postingId?: string;
 };
 
+export type TeamChangeRequest = {
+  kind: "invite" | "role" | "remove" | "resend" | "jobs";
+  // Null for an invite: they aren't on the team yet.
+  memberId: string | null;
+  // Their name, or email if they haven't joined.
+  memberLabel: string;
+  email: string;
+  role: string | null;
+  roleLabel: string | null;
+  fromRoleLabel: string | null;
+  position: string | null;
+  // The jobs a Hiring manager ends up with.
+  jobPostingIds: string[];
+  jobTitles: string[];
+  // A side effect worth reading before confirming.
+  warning: string | null;
+  resolution?: SimpleActionResolution;
+};
+
+export type CompanyEditRequest = {
+  // What's sent on Confirm, as PATCH /api/employer/profile takes it.
+  values: Record<string, unknown>;
+  // What the card shows.
+  changes: { label: string; from: string; to: string }[];
+  warning?: string | null;
+  resolution?: SimpleActionResolution;
+};
+
+export type ConfirmActionRequest = {
+  title: string;
+  lines: { label: string; value: string }[];
+  warning: string | null;
+  // Red Confirm button, for what can't be undone.
+  destructive?: boolean;
+  request: { method: "POST" | "PATCH" | "PUT" | "DELETE"; url: string; body: Record<string, unknown> | null };
+  // A file picked on the card, sent with the request.
+  file?: {
+    label: string;
+    accept: string;
+    required: boolean;
+    field: string;
+    // multipart: a form with the file. dataUrl: inlined into the JSON body.
+    // upload: sent to `uploadUrl` first, then its returned url goes in the body.
+    send: "multipart" | "dataUrl" | "upload";
+    uploadUrl?: string;
+    uploadFields?: Record<string, string>;
+  };
+  doneText: string;
+  // Polled after Confirm until it reports `posterUrl`, shown on the card.
+  pollPosterUrl?: string;
+  // A page to carry on from once it's done.
+  link?: { path: string; label: string };
+  // The whole page belongs to the old state (switching company).
+  reloadAfter?: boolean;
+  resolution?: SimpleActionResolution;
+};
+
+export type PostingEditRequest = {
+  postingId: string;
+  title: string;
+  // What's sent on Confirm, as PATCH /api/employer/job-postings/[id] takes it.
+  values: Record<string, unknown>;
+  changes: { label: string; from: string; to: string }[];
+  resolution?: SimpleActionResolution;
+};
+
+export type InterviewProgressRequest = {
+  applicationId: string;
+  name: string;
+  posting: string;
+  kind: "attended" | "no_show" | "start_evaluation";
+  resolution?: SimpleActionResolution;
+};
+
 // How long the reply took and what it cost — real numbers from the request
-// that produced it, shown as a small footnote under the reply.
-export type AssistantMessageStats = { durationMs: number; promptTokens: number; completionTokens: number };
+// that produced it, shown as a small footnote under the reply. firstTokenMs:
+// until its first word appeared (replies saved before streaming have none).
+export type AssistantMessageStats = { durationMs: number; promptTokens: number; completionTokens: number; firstTokenMs?: number };
+
+// The single-card actions answered once, with Confirm or Cancel. (A stage
+// change is the other confirmation card: it also keeps each person's result.)
+export const SIMPLE_ACTION_TYPES = [
+  "schedule_interview",
+  "cancel_interview",
+  "record_evaluation",
+  "close_posting",
+  "create_job_posting",
+  "team_change",
+  "company_edit",
+  "posting_edit",
+  "interview_progress",
+  "confirm_action",
+] as const satisfies readonly AssistantAction["type"][];
+export type SimpleActionType = (typeof SIMPLE_ACTION_TYPES)[number];
+
+// A file sent with a message travels in its text, wrapped like this.
+const ATTACHMENT = /<attachment name="([^"]*)">[\s\S]*?<\/attachment>\s*/g;
+
+/** A user message split into what they typed and the names of any files with it. */
+export function splitAttachments(text: string): { typed: string; files: string[] } {
+  return { typed: text.replace(ATTACHMENT, "").trim(), files: [...text.matchAll(ATTACHMENT)].map((m) => m[1]) };
+}
 
 export type AssistantMessage = {
   id: string;

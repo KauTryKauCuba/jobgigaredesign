@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { otpCodes, users } from "@/lib/db/schema";
 import { activatePendingTeamInvites } from "@/lib/employer-profile";
@@ -51,7 +51,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (record.attempts >= OTP_MAX_ATTEMPTS) {
+  // Each guess claims an attempt before it's compared, in one atomic step, so
+  // a burst of parallel guesses can't all slip past the limit.
+  const [claimed] = await db
+    .update(otpCodes)
+    .set({ attempts: sql`${otpCodes.attempts} + 1` })
+    .where(and(eq(otpCodes.id, record.id), lt(otpCodes.attempts, OTP_MAX_ATTEMPTS)))
+    .returning({ id: otpCodes.id });
+  if (!claimed) {
     return NextResponse.json(
       { error: "Too many attempts. Request a new code." },
       { status: 429 },
@@ -59,12 +66,6 @@ export async function POST(request: Request) {
   }
 
   if (hashOtp(code, normalizedEmail) !== record.codeHash) {
-    // Atomic increment (not attempts: record.attempts + 1) so concurrent
-    // verify requests for the same code can't race and under-count attempts.
-    await db
-      .update(otpCodes)
-      .set({ attempts: sql`${otpCodes.attempts} + 1` })
-      .where(eq(otpCodes.id, record.id));
     return NextResponse.json({ error: "That code isn't right." }, { status: 400 });
   }
 

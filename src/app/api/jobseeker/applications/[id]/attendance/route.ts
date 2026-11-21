@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { jobApplications, jobseekerProfiles } from "@/lib/db/schema";
 import { revalidatePublicData } from "@/lib/public-data";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -19,6 +20,7 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
   if (!profile) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   // Application must belong to this jobseeker and still be at (or past) the
   // interview stage. Note interviewResponseStatus gets overwritten to

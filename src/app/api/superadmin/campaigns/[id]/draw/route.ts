@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { announceResults, deliverRewardMessages, listClaims, pickWinners, swapWinner } from "@/lib/campaigns";
+import { isUuid } from "@/lib/uuid";
 import { handle, notAuthorized, readJson, requireSuperadmin } from "../../auth";
 
 // { audience, action: "pick" | "announce" } or { action: "swap", claimId }
@@ -7,6 +8,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const admin = await requireSuperadmin();
   if (!admin) return notAuthorized();
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "That campaign no longer exists." }, { status: 404 });
   return handle(async () => {
     const { audience, action, claimId } = await readJson(request);
     if (action === "pick") {

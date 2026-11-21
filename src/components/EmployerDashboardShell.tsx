@@ -204,6 +204,9 @@ const MODE_FADE_MS = 220;
  * full-screen assistant.
  */
 function ModeSwitch({ mode, onChange, disabled }: { mode: ViewMode; onChange: (mode: ViewMode) => void; disabled: boolean }) {
+  // Chat mode unmounts the page, so a half-filled form there gets the same
+  // warning as leaving by the sidebar. (Rendered inside the shell's boundary.)
+  const guardNavigation = useUnsavedChangesGuard();
   return (
     <div role="radiogroup" aria-label="View" className="flex rounded-full bg-white/80 p-[2px] backdrop-blur-sm">
       {(["dashboard", "chat"] as const).map((option) => {
@@ -217,7 +220,9 @@ function ModeSwitch({ mode, onChange, disabled }: { mode: ViewMode; onChange: (m
             aria-checked={selected}
             aria-label={label}
             disabled={disabled}
-            onClick={() => onChange(option)}
+            onClick={() => {
+              if (!selected) guardNavigation(() => onChange(option));
+            }}
             className={`flex h-[17px] items-center gap-[4px] rounded-full px-[8px] text-[11px] transition-colors ${
               selected ? "bg-brand-teal-soft text-brand-teal-dark" : "text-[#9AA3B2] hover:text-[#4B5468]"
             }`}

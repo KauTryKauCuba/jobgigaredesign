@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { splitAttachments } from "@/lib/assistant-types";
 import type {
   AssistantAction,
   AssistantConversationSummary,
   AssistantMessage,
   AssistantMessageStats,
+  SimpleActionType,
   StageChangeResolution,
 } from "@/lib/assistant-types";
 import { APPLICATION_STATUS_COLOR, INTERVIEW_MODE_LABEL } from "@/lib/applicationStatus";
 import { EVALUATION_CRITERION_LABEL, RECOMMENDATION_COLOR, RECOMMENDATION_LABEL } from "@/lib/interviewEvaluation";
-import ApplicantModalHost, { fetchApplicant, type ApplicantViewer } from "./ApplicantModalHost";
+import { plainTextToHtml } from "@/lib/richText";
+import ApplicantModalHost, { fetchApplicantCards, type ApplicantViewer } from "./ApplicantModalHost";
 import ChatApplicantCard, { summarize, type ApplicantSummary } from "./ChatApplicantCard";
 import { downloadApplicantsExport } from "./ExportApplicantsButton";
 import {
@@ -22,9 +27,12 @@ import {
   ClockIcon,
   CopyIcon,
   DownloadIcon,
+  FileIcon,
   MicIcon,
+  PaperclipIcon,
   PencilIcon,
   PlusIcon,
+  RefreshIcon,
   StarIcon,
   TrashIcon,
   XIcon,
@@ -175,35 +183,46 @@ function encodeWav(buffer: AudioBuffer): Blob {
 // Replies are plain text by instruction, but may contain "- " bullet lines
 // and paragraph breaks — render those as real structure instead of a wall
 // of text with literal dashes.
+// react-markdown never renders raw HTML. Images are dropped so that a reply
+// can't make the browser call an outside address by itself.
+const MARKDOWN_COMPONENTS: Components = {
+  h1: ({ children }) => <p className="font-medium text-[1.1em]">{children}</p>,
+  h2: ({ children }) => <p className="font-medium text-[1.05em]">{children}</p>,
+  h3: ({ children }) => <p className="font-medium">{children}</p>,
+  strong: ({ children }) => <strong className="font-medium">{children}</strong>,
+  ul: ({ children }) => <ul className="flex flex-col gap-[3px] pl-[16px]">{children}</ul>,
+  ol: ({ children }) => <ol className="flex list-decimal flex-col gap-[3px] pl-[18px] marker:text-[#9AA3B2]">{children}</ol>,
+  li: ({ children }) => <li className="list-disc marker:text-[#9AA3B2] [ol>&]:list-decimal">{children}</li>,
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-teal-dark underline">
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => <blockquote className="border-l-2 border-black/[0.15] pl-[10px] text-[#4B5468]">{children}</blockquote>,
+  code: ({ children }) => <code className="rounded bg-black/[0.06] px-[4px] py-[1px] font-mono text-[0.92em]">{children}</code>,
+  pre: ({ children }) => (
+    <pre className="overflow-x-auto rounded-[10px] bg-[#F1F4F8] p-[10px] font-mono text-[0.92em] [&_code]:bg-transparent [&_code]:p-0">{children}</pre>
+  ),
+  table: ({ children }) => (
+    <div className="max-w-full overflow-x-auto">
+      <table className="w-full border-collapse text-left">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="border-b border-black/[0.12] px-[8px] py-[4px] font-medium whitespace-nowrap">{children}</th>,
+  td: ({ children }) => <td className="border-b border-black/[0.06] px-[8px] py-[4px] align-top">{children}</td>,
+  hr: () => <hr className="border-black/[0.08]" />,
+  img: () => null,
+};
+
+// A Markdown table: these get the chat's full width, where text keeps to reading width.
+const TABLE_ROW = /^\s*\|.*\|\s*$/m;
+
 function FormattedReply({ text }: { text: string }) {
-  const blocks: ({ type: "p"; text: string } | { type: "ul"; items: string[] })[] = [];
-  for (const raw of text.replace(/\*\*/g, "").split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    const bullet = line.match(/^[-•*]\s+(.*)/);
-    const last = blocks[blocks.length - 1];
-    if (bullet) {
-      if (last?.type === "ul") last.items.push(bullet[1]);
-      else blocks.push({ type: "ul", items: [bullet[1]] });
-    } else {
-      blocks.push({ type: "p", text: line });
-    }
-  }
   return (
-    <div className="flex flex-col gap-[6px]">
-      {blocks.map((b, i) =>
-        b.type === "p" ? (
-          <p key={i}>{b.text}</p>
-        ) : (
-          <ul key={i} className="flex flex-col gap-[3px] pl-[14px]">
-            {b.items.map((item, j) => (
-              <li key={j} className="list-disc marker:text-[#9AA3B2]">
-                {item}
-              </li>
-            ))}
-          </ul>
-        ),
-      )}
+    <div className="flex min-w-0 flex-col gap-[8px]">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -302,6 +321,12 @@ function StageChangeCard({
         </div>
       )}
 
+      {!action.resolution && action.notes?.map((note) => (
+        <p key={note} className="rounded-[10px] bg-[#FFF8E6] px-[10px] py-[8px] text-[11px] text-[#8A6A00]">
+          {note}
+        </p>
+      ))}
+
       {action.resolution === "done" ? (
         <div className="flex flex-wrap items-center justify-between gap-[8px]">
           <p className={`text-[11px] ${moved === count ? "text-[#2F7D4F]" : "text-[#4B5468]"}`}>
@@ -364,9 +389,11 @@ function InterviewActionCard({
   error,
   canAnswer,
   busy,
+  destructive = false,
   onConfirm,
   onCancel,
 }: {
+  destructive?: boolean;
   heading: React.ReactNode;
   body: React.ReactNode;
   // Set once the user has answered — shows doneContent instead of the buttons.
@@ -392,7 +419,7 @@ function InterviewActionCard({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className="rounded-full bg-brand-teal-dark px-[14px] py-[6px] text-[11px] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            className={`rounded-full px-[14px] py-[6px] text-[11px] text-white transition-opacity hover:opacity-90 disabled:opacity-50 ${destructive ? "bg-red-500" : "bg-brand-teal-dark"}`}
           >
             {busy ? "Working…" : error ? "Try again" : "Confirm"}
           </button>
@@ -655,6 +682,345 @@ function ClosePostingCard({
   );
 }
 
+function TeamChangeCard({
+  action,
+  canAnswer,
+  busy,
+  error,
+  onAnswer,
+}: {
+  action: Extract<AssistantAction, { type: "team_change" }>;
+  canAnswer: boolean;
+  busy: boolean;
+  error: string | null;
+  onAnswer: (confirm: boolean) => void;
+}) {
+  const who = <span className="font-medium">{action.memberLabel}</span>;
+  const heading = {
+    invite: <>Invite {who} as {action.roleLabel}?</>,
+    role: <>Change {who} to {action.roleLabel}?</>,
+    remove: <>Remove {who} from the team?</>,
+    resend: <>Re-send {who}&rsquo;s invite?</>,
+    jobs: <>Update {who}&rsquo;s jobs?</>,
+  }[action.kind];
+  const done = {
+    invite: "✓ Invited. If the email doesn't arrive, ask me to re-send it.",
+    role: `✓ Done. They're now ${action.roleLabel}.`,
+    remove: "✓ Removed from the team.",
+    resend: "✓ Invite re-sent, with a fresh 7-day link.",
+    jobs: "✓ Jobs updated.",
+  }[action.kind];
+  return (
+    <InterviewActionCard
+      canAnswer={canAnswer}
+      busy={busy}
+      error={error}
+      resolved={!!action.resolution}
+      heading={<p className="flex flex-wrap items-center gap-[4px]">{heading}</p>}
+      body={
+        <ul className="flex flex-col gap-[3px] text-[11px] text-[#4B5468]">
+          {action.memberLabel !== action.email && <li>{action.email}</li>}
+          {action.fromRoleLabel && action.kind === "role" && <li>{action.fromRoleLabel} → {action.roleLabel}</li>}
+          {action.fromRoleLabel && action.kind === "remove" && <li>{action.fromRoleLabel}</li>}
+          {action.position && <li>{action.position}</li>}
+          {(action.kind === "jobs" || action.jobTitles.length > 0) && (
+            <li>Jobs: {action.jobTitles.length ? action.jobTitles.join(", ") : "none"}</li>
+          )}
+          {!action.resolution && action.warning && <li className="mt-[4px] rounded-[10px] bg-[#FFF8E6] px-[10px] py-[8px] text-[#8A6A00]">{action.warning}</li>}
+        </ul>
+      }
+      doneContent={
+        action.resolution === "done" ? (
+          <p className="text-[11px] text-[#2F7D4F]">{done}</p>
+        ) : (
+          <p className="text-[11px] text-[#9AA3B2]">Cancelled — nothing changed.</p>
+        )
+      }
+      onConfirm={() => onAnswer(true)}
+      onCancel={() => onAnswer(false)}
+    />
+  );
+}
+
+function ChangeList({ changes }: { changes: { label: string; from: string; to: string }[] }) {
+  return (
+    <ul className="flex flex-col gap-[6px] text-[11px] text-[#4B5468]">
+      {changes.map((change) => (
+        <li key={change.label} className="min-w-0 break-words">
+          <span className="text-[#141B2E]">{change.label}</span>
+          <br />
+          <span className="text-[#9AA3B2]">{change.from}</span> → {change.to}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PostingEditCard({
+  action,
+  canAnswer,
+  busy,
+  error,
+  onAnswer,
+}: {
+  action: Extract<AssistantAction, { type: "posting_edit" }>;
+  canAnswer: boolean;
+  busy: boolean;
+  error: string | null;
+  onAnswer: (confirm: boolean) => void;
+}) {
+  return (
+    <InterviewActionCard
+      canAnswer={canAnswer}
+      busy={busy}
+      error={error}
+      resolved={!!action.resolution}
+      heading={
+        <p>
+          Update <span className="font-medium">{action.title}</span>?
+        </p>
+      }
+      body={<ChangeList changes={action.changes} />}
+      doneContent={
+        action.resolution === "done" ? (
+          <p className="text-[11px] text-[#2F7D4F]">✓ Posting updated.</p>
+        ) : (
+          <p className="text-[11px] text-[#9AA3B2]">Cancelled — nothing changed.</p>
+        )
+      }
+      onConfirm={() => onAnswer(true)}
+      onCancel={() => onAnswer(false)}
+    />
+  );
+}
+
+function InterviewProgressCard({
+  action,
+  canAnswer,
+  busy,
+  error,
+  onAnswer,
+  onOpenProfile,
+}: {
+  action: Extract<AssistantAction, { type: "interview_progress" }>;
+  canAnswer: boolean;
+  busy: boolean;
+  error: string | null;
+  onAnswer: (confirm: boolean) => void;
+  onOpenProfile?: (applicationId: string) => void;
+}) {
+  const verb = { attended: "Mark as attended:", no_show: "Mark as a no-show:", start_evaluation: "Start the evaluation for" }[action.kind];
+  const done = { attended: "✓ Marked as attended.", no_show: "✓ Marked as a no-show.", start_evaluation: "✓ Evaluation started. The panel has been asked for scorecards." }[action.kind];
+  return (
+    <InterviewActionCard
+      canAnswer={canAnswer}
+      busy={busy}
+      error={error}
+      resolved={!!action.resolution}
+      heading={
+        <p className="flex flex-wrap items-center gap-[4px]">
+          {verb}
+          {onOpenProfile ? (
+            <button type="button" onClick={() => onOpenProfile(action.applicationId)} className="font-medium text-brand-teal-dark hover:underline">
+              {action.name}
+            </button>
+          ) : (
+            <span className="font-medium">{action.name}</span>
+          )}
+        </p>
+      }
+      body={<p className="text-[11px] text-[#4B5468]">{action.posting}</p>}
+      doneContent={
+        action.resolution === "done" ? (
+          <p className="text-[11px] text-[#2F7D4F]">{done}</p>
+        ) : (
+          <p className="text-[11px] text-[#9AA3B2]">Cancelled — nothing changed.</p>
+        )
+      }
+      onConfirm={() => onAnswer(true)}
+      onCancel={() => onAnswer(false)}
+    />
+  );
+}
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Couldn't read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Sends a card's request the way its file needs. Only ever to this app's own API.
+async function sendConfirmAction(action: Extract<AssistantAction, { type: "confirm_action" }>, file: File | null) {
+  const { method, url } = action.request;
+  if (!url.startsWith("/api/")) throw new Error("That action isn't allowed.");
+  const body: Record<string, unknown> = { ...(action.request.body ?? {}) };
+  const spec = action.file;
+  let init: RequestInit = { method };
+  if (spec?.send === "multipart") {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(body)) form.append(key, String(value));
+    if (file) form.append(spec.field, file);
+    init = { method, body: form };
+  } else {
+    if (spec && file) {
+      if (spec.send === "dataUrl") {
+        body[spec.field] = await readAsDataUrl(file);
+      } else if (spec.uploadUrl) {
+        const form = new FormData();
+        for (const [key, value] of Object.entries(spec.uploadFields ?? {})) form.append(key, value);
+        form.append("image", file);
+        const uploaded = await fetch(spec.uploadUrl, { method: "POST", body: form });
+        const result = await uploaded.json().catch(() => ({}));
+        if (!uploaded.ok) throw new Error(result.error ?? "Couldn't upload that file.");
+        body[spec.field] = result.url;
+      }
+    }
+    if (action.request.body !== null) {
+      init = { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+    }
+  }
+  const res = await fetch(url, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? "That didn't go through. Try again.");
+}
+
+function ConfirmActionCard({
+  action,
+  canAnswer,
+  busy,
+  error,
+  posterUrl,
+  posterWaiting,
+  onAnswer,
+  onGo,
+}: {
+  action: Extract<AssistantAction, { type: "confirm_action" }>;
+  canAnswer: boolean;
+  busy: boolean;
+  error: string | null;
+  posterUrl?: string;
+  posterWaiting: boolean;
+  onAnswer: (confirm: boolean, file: File | null) => void;
+  onGo: (path: string) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [missing, setMissing] = useState(false);
+  const pickFile = action.file && canAnswer && !action.resolution;
+  return (
+    <InterviewActionCard
+      canAnswer={canAnswer}
+      busy={busy}
+      error={error ?? (missing ? `Choose the ${action.file?.label.toLowerCase()} first.` : null)}
+      resolved={!!action.resolution}
+      destructive={action.destructive}
+      heading={<p className="font-medium">{action.title}</p>}
+      body={
+        <div className="flex flex-col gap-[8px] text-[11px] text-[#4B5468]">
+          {action.lines.length > 0 && (
+            <ul className="flex flex-col gap-[4px]">
+              {action.lines.map((line) => (
+                <li key={line.label} className="min-w-0 break-words">
+                  <span className="text-[#9AA3B2]">{line.label}:</span> {line.value}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!action.resolution && action.warning && (
+            <p className={`rounded-[10px] px-[10px] py-[8px] ${action.destructive ? "bg-red-50 text-red-700" : "bg-[#FFF8E6] text-[#8A6A00]"}`}>{action.warning}</p>
+          )}
+          {pickFile && (
+            <label className="flex cursor-pointer items-center gap-[8px] rounded-[10px] border border-dashed border-black/[0.15] px-[10px] py-[8px] hover:bg-black/[0.02]">
+              <PaperclipIcon className="h-[12px] w-[12px] shrink-0 text-brand-teal-dark" />
+              <span className="min-w-0 flex-1 truncate">{file ? file.name : `Choose ${action.file!.label.toLowerCase()}${action.file!.required ? "" : " (optional)"}`}</span>
+              <input
+                type="file"
+                accept={action.file!.accept}
+                aria-label={action.file!.label}
+                className="hidden"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setMissing(false);
+                }}
+              />
+            </label>
+          )}
+          {posterWaiting && <p className="text-[#9AA3B2]">Generating your poster. This takes a minute or two…</p>}
+          {posterUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- generated poster, shown as stored
+            <a href={posterUrl} target="_blank" rel="noopener noreferrer"><img src={posterUrl} alt="Generated poster" className="max-h-[320px] rounded-[10px]" /></a>
+          )}
+        </div>
+      }
+      doneContent={
+        action.resolution === "done" ? (
+          <div className="flex flex-wrap items-center gap-[8px] text-[11px]">
+            <p className="text-[#2F7D4F]">{action.doneText}</p>
+            {action.link && (
+              <button type="button" onClick={() => onGo(action.link!.path)} className="text-brand-teal-dark hover:underline">
+                {action.link.label} →
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-[#9AA3B2]">Cancelled — nothing changed.</p>
+        )
+      }
+      onConfirm={() => {
+        if (action.file?.required && !file) {
+          setMissing(true);
+          return;
+        }
+        onAnswer(true, file);
+      }}
+      onCancel={() => onAnswer(false, null)}
+    />
+  );
+}
+
+function CompanyEditCard({
+  action,
+  canAnswer,
+  busy,
+  error,
+  onAnswer,
+}: {
+  action: Extract<AssistantAction, { type: "company_edit" }>;
+  canAnswer: boolean;
+  busy: boolean;
+  error: string | null;
+  onAnswer: (confirm: boolean) => void;
+}) {
+  return (
+    <InterviewActionCard
+      canAnswer={canAnswer}
+      busy={busy}
+      error={error}
+      resolved={!!action.resolution}
+      heading={<p>Update your company details?</p>}
+      body={
+        <div className="flex flex-col gap-[8px]">
+          <ChangeList changes={action.changes} />
+          {!action.resolution && action.warning && (
+            <p className="rounded-[10px] bg-[#FFF8E6] px-[10px] py-[8px] text-[11px] text-[#8A6A00]">{action.warning}</p>
+          )}
+        </div>
+      }
+      doneContent={
+        action.resolution === "done" ? (
+          <p className="text-[11px] text-[#2F7D4F]">✓ Saved to your company profile.</p>
+        ) : (
+          <p className="text-[11px] text-[#9AA3B2]">Cancelled — nothing changed.</p>
+        )
+      }
+      onConfirm={() => onAnswer(true)}
+      onCancel={() => onAnswer(false)}
+    />
+  );
+}
+
 function CreateJobPostingCard({
   action,
   canAnswer,
@@ -671,6 +1037,7 @@ function CreateJobPostingCard({
   onGo: (path: string) => void;
 }) {
   const salary = action.salaryMin || action.salaryMax ? `RM ${action.salaryMin ?? "?"}–${action.salaryMax ?? "?"} a month` : null;
+  const [showFull, setShowFull] = useState(false);
   return (
     <InterviewActionCard
       canAnswer={canAnswer}
@@ -688,7 +1055,15 @@ function CreateJobPostingCard({
           {action.location && <li>{action.location}</li>}
           {salary && <li>{salary}</li>}
           {action.skills.length > 0 && <li>{action.skills.slice(0, 6).join(", ")}</li>}
-          {action.description && <li className="line-clamp-2">{action.description}</li>}
+          {action.description && <li className={showFull ? "whitespace-pre-line" : "line-clamp-2"}>{action.description}</li>}
+          {showFull && action.responsibilities && <li className="mt-[6px] whitespace-pre-line">{action.responsibilities}</li>}
+          {(action.description || action.responsibilities) && (
+            <li>
+              <button type="button" onClick={() => setShowFull((v) => !v)} className="text-brand-teal-dark hover:underline">
+                {showFull ? "Show less" : "See full posting"}
+              </button>
+            </li>
+          )}
         </ul>
       }
       doneContent={
@@ -873,7 +1248,20 @@ export default function FloatingAssistant({
   const [focused, setFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // The reply as it's being written, and what the assistant is doing meanwhile.
+  const [streamText, setStreamText] = useState("");
+  const [statusText, setStatusText] = useState("");
+  const stopRequestedRef = useRef(false);
+  // A file read and waiting to go with the next message.
+  const [attachment, setAttachment] = useState<{ name: string; text: string; truncated: boolean } | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  // Set while the box holds an edit of the last message: any file it was sent with.
+  const [editing, setEditing] = useState<{ prefix: string } | null>(null);
+  // Posters being generated from a card, by message.
+  const [posters, setPosters] = useState<Record<string, { waiting: boolean; url?: string }>>({});
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const requestRef = useRef<AbortController | null>(null);
@@ -911,6 +1299,20 @@ export default function FloatingAssistant({
     if (view === "chat" || full) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking, open, view, full]);
 
+  // Follows a reply as it's written, unless they've scrolled up to read.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
+  }, [streamText, statusText]);
+
+  // The message box grows with what's typed, then scrolls.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
+
   // A profile opening in the conversation is tall — bring its top into view
   // (after the scroll-to-latest above has run), not its end.
   useEffect(() => {
@@ -936,15 +1338,21 @@ export default function FloatingAssistant({
     [],
   );
 
-  async function requestReply(text: string, previous: Message[]) {
+  // `replacing`: the id of the answer this one replaces (Regenerate / Edit).
+  async function requestReply(text: string, previous: Message[], replacing?: string) {
     setThinking(true);
+    setStreamText("");
+    setStatusText("");
+    stopRequestedRef.current = false;
     const controller = new AbortController();
     requestRef.current = controller;
+    let partial = "";
     try {
       const body = saved
-        ? { message: text, conversationId: conversationIdRef.current, pathname }
+        ? { message: text, conversationId: conversationIdRef.current, pathname, stream: true, regenerate: replacing }
         : {
             pathname,
+            stream: true,
             messages: [...previous, { role: "user", text }]
               .filter((m) => m.role !== "error")
               .map((m) => ({ role: m.role, content: m.text })),
@@ -955,19 +1363,52 @@ export default function FloatingAssistant({
         signal: controller.signal,
         body: JSON.stringify(body),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Something went wrong. Try again.");
+      if (!res.ok || !res.body) {
+        const failed = await res.json().catch(() => ({}));
+        throw new Error(failed.error ?? "Something went wrong. Try again.");
+      }
+
+      // One JSON event per line, ending with the finished reply.
+      let data: Record<string, unknown> | null = null;
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line) as { type: string; text?: string; error?: string } & Record<string, unknown>;
+          if (event.type === "delta") {
+            partial += event.text ?? "";
+            setStreamText(partial);
+            setStatusText("");
+          } else if (event.type === "status") {
+            setStatusText(event.text ?? "");
+          } else if (event.type === "reset") {
+            partial = "";
+            setStreamText("");
+          } else if (event.type === "error") {
+            throw new Error(event.error ?? "Something went wrong. Try again.");
+          } else if (event.type === "done") {
+            data = event;
+          }
+        }
+      }
+      if (!data) throw new Error("The reply was cut off. Try again.");
 
       const action = (data.action ?? null) as AssistantAction | null;
       const stats = (data.stats ?? null) as AssistantMessageStats | null;
-      if (data.conversationId) {
-        if (data.conversationId !== conversationIdRef.current) setConversations(null);
-        setConversationId(data.conversationId);
+      const savedConversationId = data.conversationId as string | null;
+      if (savedConversationId) {
+        if (savedConversationId !== conversationIdRef.current) setConversations(null);
+        setConversationId(savedConversationId);
       }
-      setMessages((prev) => [
-        ...prev,
-        { id: data.messageId ?? newId(), role: "assistant", text: data.reply as string, action, stats },
-      ]);
+      const replyId = (data.messageId as string | null) ?? newId();
+      const replyText = data.reply as string;
+      setMessages((prev) => [...prev, { id: replyId, role: "assistant", text: replyText, action, stats }]);
 
       if (action?.type === "navigate" && action.openNow) {
         setTimeout(() => go(action.path), 600);
@@ -979,26 +1420,99 @@ export default function FloatingAssistant({
         openProfiles([action.people[0].applicationId]);
       }
     } catch (err) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        // Stopped by the user: keep what was written. (Leaving the chat aborts too, and shows nothing.)
+        if (stopRequestedRef.current) {
+          setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: partial.trim() ? `${partial.trim()}\n\n*Stopped.*` : "*Stopped.*" }]);
+        }
+        return;
+      }
       setMessages((prev) => [
         ...prev,
         { id: newId(), role: "error", text: err instanceof Error ? err.message : "Something went wrong. Try again." },
       ]);
     } finally {
-      if (requestRef.current === controller) requestRef.current = null;
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setStreamText("");
+        setStatusText("");
+      }
       setThinking(false);
     }
   }
 
+  function stopReply() {
+    stopRequestedRef.current = true;
+    requestRef.current?.abort();
+  }
+
   function sendMessage(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || thinkingRef.current) return;
+    const typed = text.trim();
+    if ((!typed && !attachment && !editing) || thinkingRef.current) return;
+    if (editing) {
+      if (!typed && !editing.prefix) return;
+      setEditing(null);
+      setInput("");
+      redo(`${editing.prefix}${typed}`);
+      return;
+    }
+    const message = attachment
+      ? `<attachment name="${attachment.name}">${attachment.text.replace(/<\/attachment>/g, "")}</attachment>\n\n${typed}`
+      : typed;
     const previous = messagesRef.current.filter((m) => m.role !== "error");
-    setMessages([...previous, { id: newId(), role: "user", text: trimmed }]);
+    setMessages([...previous, { id: newId(), role: "user", text: message }]);
     setInput("");
+    setAttachment(null);
+    setAttachError(null);
     setOpen(true);
     setView("chat");
-    requestReply(trimmed, previous);
+    requestReply(message, previous);
+  }
+
+  // Asks the last question again (changed, for Edit), replacing its answer.
+  function redo(text: string) {
+    const current = messagesRef.current.filter((m) => m.role !== "error");
+    const lastUser = current.map((m) => m.role).lastIndexOf("user");
+    if (lastUser < 0) return;
+    const previous = current.slice(0, lastUser);
+    const answer = current[lastUser + 1];
+    setMessages([...previous, { id: newId(), role: "user", text }]);
+    // The server only replaces it if it's the chat's saved latest answer (a
+    // stopped reply never was), so this holds across a reload too.
+    requestReply(text, previous, answer?.id);
+  }
+
+  // The latest answer can be redone unless its card was already answered:
+  // that's a record of something that happened.
+  const lastMessage = messages[messages.length - 1];
+  const canRedo =
+    !thinking &&
+    lastMessage?.role === "assistant" &&
+    !(lastMessage.action && "resolution" in lastMessage.action && lastMessage.action.resolution);
+
+  function startEditing(text: string) {
+    const { typed } = splitAttachments(text);
+    setEditing({ prefix: text.slice(0, text.length - typed.length) });
+    setInput(typed);
+    inputRef.current?.focus();
+  }
+
+  async function attachFile(file: File) {
+    setAttachError(null);
+    setAttaching(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/assistant/attachment", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't read that file.");
+      setAttachment({ name: data.name, text: data.text, truncated: data.truncated === true });
+      inputRef.current?.focus();
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : "Couldn't read that file.");
+    } finally {
+      setAttaching(false);
+    }
   }
 
   // A failed message was never saved (the server only stores a question
@@ -1056,8 +1570,9 @@ export default function FloatingAssistant({
         body: JSON.stringify({
           status: "draft",
           title: action.title,
-          description: action.description,
-          responsibilities: action.responsibilities,
+          // The AI writes plain text; these are rich-text fields, as with the form's "AI fill".
+          description: action.description && plainTextToHtml(action.description),
+          responsibilities: action.responsibilities && plainTextToHtml(action.responsibilities),
           industry: action.industry,
           employmentType: action.employmentType,
           workArrangement: action.workArrangement,
@@ -1079,14 +1594,29 @@ export default function FloatingAssistant({
     }
   }
 
+  // Every card in a row asks as it mounts; waiting a tick lets one request cover them all.
+  const summaryQueue = useRef<string[]>([]);
   const needSummary = useCallback((applicationId: string) => {
     if (requestedSummaries.current.has(applicationId)) return;
     requestedSummaries.current.add(applicationId);
-    fetchApplicant(applicationId)
-      .then((data) => setSummaries((prev) => ({ ...prev, [applicationId]: summarize(data.applicant, data.fit) })))
-      .catch((err) =>
-        setSummaryErrors((prev) => ({ ...prev, [applicationId]: err instanceof Error ? err.message : "Couldn't load this profile." })),
-      );
+    summaryQueue.current.push(applicationId);
+    if (summaryQueue.current.length > 1) return;
+    setTimeout(() => {
+      const ids = summaryQueue.current;
+      summaryQueue.current = [];
+      const failAll = (ids: string[], message: string) =>
+        setSummaryErrors((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, message])) }));
+      fetchApplicantCards(ids)
+        .then((found) => {
+          setSummaries((prev) => ({
+            ...prev,
+            ...Object.fromEntries(Object.entries(found).map(([id, data]) => [id, summarize(data.applicant, data.fit)])),
+          }));
+          const missing = ids.filter((id) => !found[id]);
+          if (missing.length) failAll(missing, "That applicant isn't available any more.");
+        })
+        .catch((err) => failAll(ids, err instanceof Error ? err.message : "Couldn't load this profile."));
+    }, 0);
   }, []);
 
   // Coming back to the chat (another tab, another app) refreshes the profile
@@ -1101,11 +1631,16 @@ export default function FloatingAssistant({
     const refresh = () => {
       if (document.visibilityState !== "visible" || Date.now() - last < 5000) return;
       last = Date.now();
-      for (const id of Object.keys(summariesRef.current)) {
-        fetchApplicant(id)
-          .then((data) => setSummaries((prev) => ({ ...prev, [id]: summarize(data.applicant, data.fit) })))
-          .catch(() => {});
-      }
+      const ids = Object.keys(summariesRef.current);
+      if (!ids.length) return;
+      fetchApplicantCards(ids)
+        .then((found) =>
+          setSummaries((prev) => ({
+            ...prev,
+            ...Object.fromEntries(Object.entries(found).map(([id, data]) => [id, summarize(data.applicant, data.fit)])),
+          })),
+        )
+        .catch(() => {});
     };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
@@ -1257,7 +1792,7 @@ export default function FloatingAssistant({
   // reopening the chat).
   function saveSimpleActionResolution(
     messageId: string,
-    actionType: "schedule_interview" | "cancel_interview" | "record_evaluation" | "close_posting" | "create_job_posting",
+    actionType: SimpleActionType,
     resolution: "done" | "cancelled",
     extra?: Record<string, unknown>,
   ) {
@@ -1373,6 +1908,168 @@ export default function FloatingAssistant({
     }
   }
 
+  async function resolveTeamChange(messageId: string, action: Extract<AssistantAction, { type: "team_change" }>, confirm: boolean) {
+    if (!confirm) {
+      saveSimpleActionResolution(messageId, "team_change", "cancelled");
+      return;
+    }
+    const member = `/api/employer/team/${action.memberId}`;
+    const request = {
+      invite: {
+        url: "/api/employer/team",
+        method: "POST",
+        body: { email: action.email, role: action.role, position: action.position, jobPostingIds: action.jobPostingIds },
+      },
+      role: { url: member, method: "PATCH", body: { role: action.role } },
+      remove: { url: member, method: "DELETE", body: null },
+      resend: { url: `${member}/resend`, method: "POST", body: null },
+      jobs: { url: `${member}/jobs`, method: "PUT", body: { jobPostingIds: action.jobPostingIds } },
+    }[action.kind];
+    setInterviewActionBusyId(messageId);
+    try {
+      const res = await fetch(request.url, {
+        method: request.method,
+        ...(request.body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(request.body) } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't update the team.");
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: "" }));
+      saveSimpleActionResolution(messageId, "team_change", "done");
+      router.refresh();
+    } catch (err) {
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: err instanceof Error ? err.message : "Couldn't reach the server." }));
+    } finally {
+      setInterviewActionBusyId(null);
+    }
+  }
+
+  async function resolveCompanyEdit(messageId: string, action: Extract<AssistantAction, { type: "company_edit" }>, confirm: boolean) {
+    if (!confirm) {
+      saveSimpleActionResolution(messageId, "company_edit", "cancelled");
+      return;
+    }
+    setInterviewActionBusyId(messageId);
+    try {
+      const res = await fetch("/api/employer/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action.values),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't save those details.");
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: "" }));
+      saveSimpleActionResolution(messageId, "company_edit", "done");
+      router.refresh();
+    } catch (err) {
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: err instanceof Error ? err.message : "Couldn't reach the server." }));
+    } finally {
+      setInterviewActionBusyId(null);
+    }
+  }
+
+  async function resolveConfirmAction(
+    messageId: string,
+    action: Extract<AssistantAction, { type: "confirm_action" }>,
+    confirm: boolean,
+    file: File | null,
+  ) {
+    if (!confirm) {
+      saveSimpleActionResolution(messageId, "confirm_action", "cancelled");
+      return;
+    }
+    setInterviewActionBusyId(messageId);
+    try {
+      await sendConfirmAction(action, file);
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: "" }));
+      saveSimpleActionResolution(messageId, "confirm_action", "done");
+      if (action.reloadAfter) {
+        window.location.assign("/employer/dashboard");
+        return;
+      }
+      router.refresh();
+      if (action.pollPosterUrl) watchPoster(messageId, action.pollPosterUrl);
+    } catch (err) {
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: err instanceof Error ? err.message : "Couldn't reach the server." }));
+    } finally {
+      setInterviewActionBusyId(null);
+    }
+  }
+
+  // A poster takes a minute or two: the card shows it once it's ready.
+  function watchPoster(messageId: string, url: string) {
+    setPosters((prev) => ({ ...prev, [messageId]: { waiting: true } }));
+    const deadline = Date.now() + 5 * 60 * 1000;
+    const check = async () => {
+      try {
+        const res = await fetch(url);
+        const data = await res.json().catch(() => ({}));
+        if (data.posterUrl) {
+          setPosters((prev) => ({ ...prev, [messageId]: { waiting: false, url: data.posterUrl } }));
+          return;
+        }
+        if (!res.ok || (!data.generating && !data.posterUrl)) {
+          setPosters((prev) => ({ ...prev, [messageId]: { waiting: false } }));
+          setInterviewActionErrors((prev) => ({ ...prev, [messageId]: data.error ?? "The poster didn't finish. Try again from the poster page." }));
+          return;
+        }
+      } catch {
+        // A blip while polling: the next check tries again.
+      }
+      if (Date.now() < deadline) setTimeout(check, 4000);
+      else setPosters((prev) => ({ ...prev, [messageId]: { waiting: false } }));
+    };
+    setTimeout(check, 4000);
+  }
+
+  async function resolvePostingEdit(messageId: string, action: Extract<AssistantAction, { type: "posting_edit" }>, confirm: boolean) {
+    if (!confirm) {
+      saveSimpleActionResolution(messageId, "posting_edit", "cancelled");
+      return;
+    }
+    setInterviewActionBusyId(messageId);
+    try {
+      const res = await fetch(`/api/employer/job-postings/${action.postingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action.values),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't update that posting.");
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: "" }));
+      saveSimpleActionResolution(messageId, "posting_edit", "done");
+      router.refresh();
+    } catch (err) {
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: err instanceof Error ? err.message : "Couldn't reach the server." }));
+    } finally {
+      setInterviewActionBusyId(null);
+    }
+  }
+
+  async function resolveInterviewProgress(messageId: string, action: Extract<AssistantAction, { type: "interview_progress" }>, confirm: boolean) {
+    if (!confirm) {
+      saveSimpleActionResolution(messageId, "interview_progress", "cancelled");
+      return;
+    }
+    setInterviewActionBusyId(messageId);
+    try {
+      const body = action.kind === "start_evaluation" ? { status: "evaluation" } : { status: "interview", interviewResponseStatus: action.kind };
+      const res = await fetch(`/api/employer/applications/${action.applicationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't update this applicant.");
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: "" }));
+      showStages({ [action.applicationId]: action.kind === "start_evaluation" ? "evaluation" : "interviewed" });
+      saveSimpleActionResolution(messageId, "interview_progress", "done");
+    } catch (err) {
+      setInterviewActionErrors((prev) => ({ ...prev, [messageId]: err instanceof Error ? err.message : "Couldn't reach the server." }));
+    } finally {
+      setInterviewActionBusyId(null);
+    }
+  }
+
   async function openHistory() {
     setView("history");
     setHistoryError(null);
@@ -1393,6 +2090,7 @@ export default function FloatingAssistant({
     }
     requestRef.current?.abort();
     setThinking(false);
+    cancelEditing();
     setLoadingChat(true);
     setView("chat");
     try {
@@ -1414,6 +2112,7 @@ export default function FloatingAssistant({
     if (id === conversationId) {
       setConversationId(null);
       setMessages([]);
+      cancelEditing();
     }
     await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" }).catch(() => {});
   }
@@ -1480,9 +2179,17 @@ export default function FloatingAssistant({
     }
   }
 
+  // An edit belongs to the chat it was started in.
+  function cancelEditing() {
+    if (!editing) return;
+    setEditing(null);
+    setInput("");
+  }
+
   function handleNewChat() {
     requestRef.current?.abort();
     setThinking(false);
+    cancelEditing();
     setMessages([]);
     setConversationId(null);
     setView("chat");
@@ -1625,11 +2332,27 @@ export default function FloatingAssistant({
   const messageList = messages.map((m) => {
     if (m.role === "user") {
       return (
-        <div
-          key={m.id}
-          className={`${readingWidth} self-end whitespace-pre-wrap break-words rounded-[14px] rounded-br-[4px] bg-brand-ink text-white ${bubble}`}
-        >
-          {m.text}
+        <div key={m.id} className={`${readingWidth} flex flex-col items-end gap-[4px] self-end`}>
+          <div className={`max-w-full whitespace-pre-wrap break-words rounded-[14px] rounded-br-[4px] bg-brand-ink text-white ${bubble}`}>
+            {splitAttachments(m.text).files.map((name) => (
+              <p key={name} className="mb-[4px] flex items-center gap-[6px] text-[11px] text-white/80 last:mb-0">
+                <FileIcon className="h-[12px] w-[12px] shrink-0" />
+                <span className="truncate">{name}</span>
+              </p>
+            ))}
+            {splitAttachments(m.text).typed}
+          </div>
+          {canRedo && m.id === messages.findLast((x) => x.role === "user")?.id && (
+            <button
+              type="button"
+              onClick={() => startEditing(m.text)}
+              aria-label="Edit this message"
+              className="flex items-center gap-[4px] rounded-full px-[6px] py-[2px] text-[10px] text-[#9AA3B2] hover:bg-black/[0.04] hover:text-[#141B2E]"
+            >
+              <PencilIcon className="h-[10px] w-[10px]" />
+              Edit
+            </button>
+          )}
         </div>
       );
     }
@@ -1659,10 +2382,11 @@ export default function FloatingAssistant({
     const people =
       action?.type === "open_applicant" ? [action] : action?.type === "open_applicants" ? action.people : [];
     // So does a row of several people's cards.
-    const wide = people.length > 1 || people.some((p) => openHere(p.applicationId, m.id));
+    const hasTable = TABLE_ROW.test(m.text);
+    const wide = people.length > 1 || people.some((p) => openHere(p.applicationId, m.id)) || (full && hasTable);
     return (
       <div key={m.id} className={`flex flex-col gap-[6px] self-start ${wide ? "w-full" : readingWidth}`}>
-        <div className={`w-fit max-w-full break-words rounded-[14px] rounded-bl-[4px] text-[#141B2E] ${replyBackground} ${bubble} ${full ? "md:max-w-[560px]" : ""}`}>
+        <div className={`w-fit max-w-full break-words rounded-[14px] rounded-bl-[4px] text-[#141B2E] ${replyBackground} ${bubble} ${full && !hasTable ? "md:max-w-[560px]" : ""}`}>
           <FormattedReply text={m.text} />
         </div>
 
@@ -1682,8 +2406,19 @@ export default function FloatingAssistant({
               <CopyIcon className="h-[10px] w-[10px]" />
             )}
           </button>
+          {canRedo && m.id === lastMessage?.id && (
+            <button
+              type="button"
+              onClick={() => redo(messages.findLast((x) => x.role === "user")?.text ?? "")}
+              aria-label="Regenerate this reply"
+              className="flex items-center gap-[4px] rounded-full px-[4px] py-[2px] hover:bg-black/[0.04] hover:text-[#141B2E]"
+            >
+              <RefreshIcon className="h-[10px] w-[10px]" />
+            </button>
+          )}
           {m.stats && (
             <span>
+              {m.stats.firstTokenMs !== undefined && <>TTFT: {formatDuration(m.stats.firstTokenMs)} · </>}
               Total time: {formatDuration(m.stats.durationMs)} · Input: {m.stats.promptTokens} tokens · Output: {m.stats.completionTokens} tokens
             </span>
           )}
@@ -1773,6 +2508,60 @@ export default function FloatingAssistant({
           />
         )}
 
+        {action?.type === "confirm_action" && (
+          <ConfirmActionCard
+            action={action}
+            canAnswer={m.id === lastAssistantId}
+            busy={interviewActionBusyId === m.id}
+            error={interviewActionErrors[m.id] || null}
+            posterUrl={posters[m.id]?.url}
+            posterWaiting={!!posters[m.id]?.waiting}
+            onAnswer={(confirm, file) => resolveConfirmAction(m.id, action, confirm, file)}
+            onGo={go}
+          />
+        )}
+
+        {action?.type === "posting_edit" && (
+          <PostingEditCard
+            action={action}
+            canAnswer={m.id === lastAssistantId}
+            busy={interviewActionBusyId === m.id}
+            error={interviewActionErrors[m.id] || null}
+            onAnswer={(confirm) => resolvePostingEdit(m.id, action, confirm)}
+          />
+        )}
+
+        {action?.type === "interview_progress" && (
+          <InterviewProgressCard
+            action={action}
+            canAnswer={m.id === lastAssistantId}
+            busy={interviewActionBusyId === m.id}
+            error={interviewActionErrors[m.id] || null}
+            onAnswer={(confirm) => resolveInterviewProgress(m.id, action, confirm)}
+            onOpenProfile={viewer ? openProfile : undefined}
+          />
+        )}
+
+        {action?.type === "team_change" && (
+          <TeamChangeCard
+            action={action}
+            canAnswer={m.id === lastAssistantId}
+            busy={interviewActionBusyId === m.id}
+            error={interviewActionErrors[m.id] || null}
+            onAnswer={(confirm) => resolveTeamChange(m.id, action, confirm)}
+          />
+        )}
+
+        {action?.type === "company_edit" && (
+          <CompanyEditCard
+            action={action}
+            canAnswer={m.id === lastAssistantId}
+            busy={interviewActionBusyId === m.id}
+            error={interviewActionErrors[m.id] || null}
+            onAnswer={(confirm) => resolveCompanyEdit(m.id, action, confirm)}
+          />
+        )}
+
         {action?.type === "create_job_posting" && (
           <CreateJobPostingCard
             action={action}
@@ -1787,31 +2576,74 @@ export default function FloatingAssistant({
     );
   });
 
-  const thinkingDots = thinking && (
-    <div
-      data-testid="thinking-indicator"
-      className={`flex w-fit items-center gap-[4px] self-start rounded-[14px] rounded-bl-[4px] px-[14px] py-[10px] ${replyBackground}`}
-    >
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-[6px] w-[6px] animate-bounce rounded-full bg-[#9AA3B2]"
-          style={{ animationDelay: `${i * 0.12}s` }}
-        />
-      ))}
-    </div>
-  );
+  const thinkingDots = thinking &&
+    (streamText ? (
+      <div
+        data-testid="thinking-indicator"
+        className={`flex flex-col self-start ${full && TABLE_ROW.test(streamText) ? "w-full" : readingWidth}`}
+        aria-live="off"
+      >
+        <div className={`w-fit max-w-full break-words rounded-[14px] rounded-bl-[4px] text-[#141B2E] ${replyBackground} ${bubble}`}>
+          <FormattedReply text={streamText} />
+        </div>
+      </div>
+    ) : (
+      <div
+        data-testid="thinking-indicator"
+        className={`flex w-fit items-center gap-[4px] self-start rounded-[14px] rounded-bl-[4px] px-[14px] py-[10px] ${replyBackground}`}
+      >
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="h-[6px] w-[6px] animate-bounce rounded-full bg-[#9AA3B2]"
+            style={{ animationDelay: `${i * 0.12}s` }}
+          />
+        ))}
+        {statusText && <span className="ml-[6px] text-[11px] text-[#9AA3B2]">{statusText}</span>}
+      </div>
+    ));
 
   // Same size in both layouts, so Chat mode feels like the bar it came from.
   const roundButton = "h-[30px] w-[30px]";
   const composer = (
+    <>
+    {(editing || attachment || attaching || attachError) && (
+      <div className="mb-[6px] flex flex-col gap-[4px] px-[4px] text-[11px]">
+        {editing && (
+          <p className="flex items-center justify-between gap-[8px] text-[#4B5468]">
+            Editing your last message
+            <button
+              type="button"
+              onClick={cancelEditing}
+              className="text-[#9AA3B2] hover:text-[#141B2E]"
+            >
+              Cancel
+            </button>
+          </p>
+        )}
+        {attaching && <p className="text-[#9AA3B2]">Reading the file…</p>}
+        {attachment && (
+          <p className="flex min-w-0 items-center gap-[6px] rounded-[10px] bg-[#F1F4F8] px-[8px] py-[5px] text-[#141B2E]">
+            <FileIcon className="h-[12px] w-[12px] shrink-0 text-brand-teal-dark" />
+            <span className="min-w-0 flex-1 truncate">
+              {attachment.name}
+              {attachment.truncated && <span className="text-[#9AA3B2]"> · only the first part will be read</span>}
+            </span>
+            <button type="button" onClick={() => setAttachment(null)} aria-label="Remove file" className="shrink-0 text-[#9AA3B2] hover:text-[#141B2E]">
+              <XIcon className="h-[10px] w-[10px]" />
+            </button>
+          </p>
+        )}
+        {attachError && <p className="text-red-500">{attachError}</p>}
+      </div>
+    )}
     <form
       onSubmit={(e) => {
         e.preventDefault();
         sendMessage(input);
       }}
-      className={`flex h-[38px] min-w-0 items-center gap-[10px] px-[4px] ${
-        !full && open ? "border-t border-black/[0.06] pt-[10px]" : ""
+      className={`flex min-h-[38px] min-w-0 items-end gap-[10px] px-[4px] ${
+        !full && open ? "border-t border-black/[0.06] pt-[8px]" : "py-[4px]"
       }`}
     >
       <SiriOrb className="h-[30px] w-[30px]" active={input.trim().length > 0 || thinking} />
@@ -1838,16 +2670,45 @@ export default function FloatingAssistant({
           <span className="ml-[4px] text-xs text-[#9AA3B2]">Transcribing…</span>
         </div>
       ) : (
-        <input
+        <textarea
           ref={inputRef}
           value={input}
+          rows={1}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends, Shift+Enter starts a new line (and Enter picks a word while typing in an IME).
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              sendMessage(input);
+            }
+          }}
           placeholder={messages.length > 0 ? "Reply…" : "Ask me anything..."}
           aria-label="Ask the AI assistant"
-          maxLength={1500}
-          className="min-w-0 flex-1 bg-transparent text-sm text-[#141B2E] placeholder:text-[#9AA3B2] outline-none"
+          maxLength={12000}
+          className="min-h-[30px] min-w-0 flex-1 resize-none bg-transparent py-[5px] text-sm leading-[20px] text-[#141B2E] placeholder:text-[#9AA3B2] outline-none"
         />
       )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,.txt,.md,.csv"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) attachFile(file);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={attaching || thinking || !!editing}
+        aria-label="Attach a file"
+        title="Attach a PDF, Word or text file"
+        className={`flex shrink-0 items-center justify-center rounded-full bg-[#F1F4F8] text-[#9AA3B2] transition-colors hover:bg-black/[0.08] hover:text-[#141B2E] disabled:opacity-40 ${roundButton}`}
+      >
+        <PaperclipIcon className="h-[14px] w-[14px]" />
+      </button>
       <button
         type="button"
         onClick={handleMicClick}
@@ -1860,15 +2721,27 @@ export default function FloatingAssistant({
       >
         <MicIcon className="h-[14px] w-[14px]" />
       </button>
-      <button
-        type="submit"
-        aria-label="Send"
-        disabled={!input.trim() || thinking}
-        className={`flex shrink-0 items-center justify-center rounded-full bg-brand-ink text-white hover:opacity-85 disabled:opacity-40 ${roundButton}`}
-      >
-        <ArrowUp className="h-[13px] w-[13px]" />
-      </button>
+      {thinking ? (
+        <button
+          type="button"
+          onClick={stopReply}
+          aria-label="Stop"
+          className={`flex shrink-0 items-center justify-center rounded-full bg-brand-ink text-white hover:opacity-85 ${roundButton}`}
+        >
+          <span className="h-[10px] w-[10px] rounded-[2px] bg-white" />
+        </button>
+      ) : (
+        <button
+          type="submit"
+          aria-label="Send"
+          disabled={!input.trim() && !attachment && !(editing && editing.prefix)}
+          className={`flex shrink-0 items-center justify-center rounded-full bg-brand-ink text-white hover:opacity-85 disabled:opacity-40 ${roundButton}`}
+        >
+          <ArrowUp className="h-[13px] w-[13px]" />
+        </button>
+      )}
     </form>
+    </>
   );
 
   // The same white, gold-sweep-edged card the floating bar uses.

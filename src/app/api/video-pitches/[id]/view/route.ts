@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 import { recordPitchView, resolvePitchAccess } from "@/lib/video-pitch";
 
 // An employer started watching a pitch — marks it "Watched" for their
@@ -10,6 +11,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
   }
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const access = await resolvePitchAccess(id, session);
   if (!access.ok || access.viewer !== "employer") {
     return NextResponse.json({ error: "Not found." }, { status: 404 });

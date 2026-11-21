@@ -92,11 +92,11 @@ export async function logAiUsage(params: {
 //
 // MiMo (api.xiaomimimo.com, model "mimo-v2.6-flash" — see ai-models.ts):
 // $0.14 / 1M input tokens (cache miss), $0.0028 / 1M cache-hit input,
-// $0.28 / 1M output, per Xiaomi's overseas rate card (platform.xiaomimimo.com
-// pricing page, confirmed Nov 2026). Older rows logged as "mimo-v2.5"
-// (~$1 / $3) are priced at this rate too, so they're slightly
-// under-estimated. Source confidence: medium — check against the MiMo
-// console.
+// $0.28 / 1M output. Xiaomi's own pricing page lists these for mimo-v2.5; the
+// v2.6-flash figures come from third-party listings, so they're unconfirmed.
+// Older rows logged as "mimo-v2.5" (~$1 / $3) are priced at this rate too, so
+// they're slightly under-estimated. Source confidence: medium — check against
+// the MiMo console.
 //
 // icreat (Seedream 5.0 image generation): every logged row already carries
 // the real per-call cost icreat's own API returns (`costUSD`, stored as

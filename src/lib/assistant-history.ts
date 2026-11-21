@@ -1,11 +1,12 @@
 import "server-only";
-import { and, asc, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type {
   AssistantAction,
   AssistantConversationSummary,
   AssistantMessage,
   AssistantMessageStats,
   SimpleActionResolution,
+  SimpleActionType,
   StageChangeResolution,
 } from "./assistant-types";
 import { db } from "./db";
@@ -95,6 +96,24 @@ export async function appendMessage(
   return row.id;
 }
 
+/**
+ * Removes the latest question and answer, for Regenerate and Edit. Refuses if
+ * that answer's card was already answered: it's the record of something done.
+ */
+export async function deleteLastExchange(scope: ChatScope, conversationId: string): Promise<boolean> {
+  if (!(await conversationExists(scope, conversationId))) return false;
+  const [answer, question] = await db
+    .select({ id: assistantMessages.id, role: assistantMessages.role, action: assistantMessages.action })
+    .from(assistantMessages)
+    .where(eq(assistantMessages.conversationId, conversationId))
+    .orderBy(desc(assistantMessages.createdAt))
+    .limit(2);
+  if (answer?.role !== "assistant" || question?.role !== "user") return false;
+  if (answer.action && "resolution" in answer.action && answer.action.resolution) return false;
+  await db.delete(assistantMessages).where(inArray(assistantMessages.id, [answer.id, question.id]));
+  return true;
+}
+
 export async function deleteConversation(scope: ChatScope, conversationId: string): Promise<boolean> {
   const deleted = await db
     .delete(assistantConversations)
@@ -143,7 +162,7 @@ export async function setStageChangeResolution(
 export async function setSimpleActionResolution(
   scope: ChatScope,
   messageId: string,
-  type: "schedule_interview" | "cancel_interview" | "record_evaluation" | "close_posting" | "create_job_posting",
+  type: SimpleActionType,
   resolution: SimpleActionResolution,
   extra?: Record<string, unknown>,
 ): Promise<boolean> {

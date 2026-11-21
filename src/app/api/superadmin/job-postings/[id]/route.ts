@@ -7,6 +7,7 @@ import { sendJobAlertsForPosting } from "@/lib/job-alerts";
 import { getJobPostingById } from "@/lib/job-postings";
 import { revalidatePublicData } from "@/lib/public-data";
 import { isSuperadminEmail } from "@/lib/superadmin";
+import { isUuid } from "@/lib/uuid";
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -19,6 +20,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const existing = await getJobPostingById(id);
   if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

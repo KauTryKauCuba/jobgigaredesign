@@ -16,6 +16,30 @@ const CONTENT: Record<Role, { headline: string; intro: string; releases: Release
     releases: [
       {
         date: "November 2026",
+        title: "A much more capable assistant",
+        items: [
+          "Replies now appear word by word, and you can see what it's doing, like \"Searching applicants…\". Press Stop at any time.",
+          "Full answers when you need them, with tables, headings and lists. Ask it to compare applicants and recommend who to interview, draft an email, or work through a problem.",
+          "It can search the web for things like market salaries or labour law, and links its sources.",
+          "Attach a PDF, Word or text file, such as a job description or resume, and ask about it. You can also paste longer text.",
+          "Regenerate a reply, or edit your last message and try again.",
+          "Almost everything on your dashboard now works from chat, too: AI interviews, booking ads, generating posters, submitting a posting for review, screening questions, your company details, logo and files, your profile, Top Matches settings and switching company.",
+          "Nothing changes until you press Confirm. Anything that needs a file lets you pick it right on the card.",
+        ],
+      },
+      {
+        date: "November 2026",
+        title: "Offers, hiring, your team and company details in chat",
+        items: [
+          "Ask who has an offer, which offers have been waiting a while, who you've hired, and how many openings are really left on each job.",
+          "Make an offer, confirm a hire or withdraw an offer by asking. The card warns you first if it would over-fill the job, or if the candidate needs to hear from you directly.",
+          "Owners and admins can see the team, invite someone, change a role, remove a teammate, re-send an invite and assign jobs to a hiring manager from chat.",
+          "Owners and admins can also update company details like your description, website, contact details, benefits and dress code.",
+          "Nothing changes until you press Confirm.",
+        ],
+      },
+      {
+        date: "November 2026",
         title: "Schedule interviews, run evaluations and draft job postings from chat",
         items: [
           "Ask the assistant to schedule, reschedule or cancel an interview — it shows you exactly what it's about to send before anything happens, and nothing changes until you confirm.",
@@ -101,8 +125,13 @@ const CONTENT: Record<Role, { headline: string; intro: string; releases: Release
     releases: [
       {
         date: "November 2026",
-        title: "A copy button on every chat reply",
-        items: ["Every assistant reply now shows a copy button and the real time/tokens it took to answer."],
+        title: "A much more capable assistant",
+        items: [
+          "Replies now appear word by word, with full, well-formatted answers. Press Stop at any time.",
+          "Attach your resume or a job description (PDF, Word or text) and ask for feedback.",
+          "Regenerate a reply, or edit your last message and try again.",
+          "Every reply has a copy button and shows the real time and tokens it took.",
+        ],
       },
       {
         date: "November 2026",

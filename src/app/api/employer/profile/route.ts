@@ -5,6 +5,7 @@ import { employerAddresses, employerOnboardingDrafts, employerProfiles, users } 
 import { getEmployerAccess } from "@/lib/employer-profile";
 import { hasFullAccess } from "@/lib/team-roles";
 import { awardBadge, isProfileBoosted } from "@/lib/badges";
+import { COMPANY_SIZES, COMPANY_TYPES, parseCompanyEdits } from "@/lib/company-edit";
 import { DEFAULT_COMPANY_LIMIT, getCompanyLimitInfo } from "@/lib/company-limit";
 import { INDUSTRIES } from "@/lib/industries";
 import { MALAYSIA_STATES } from "@/lib/malaysia";
@@ -34,8 +35,6 @@ class CompanyLimitReached extends Error {
   }
 }
 
-const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"] as const;
-const COMPANY_TYPES = ["Startup", "SME", "MNC", "GLC", "Government"] as const;
 const CURRENT_YEAR = new Date().getFullYear();
 
 function isNonEmptyString(value: unknown): value is string {
@@ -167,6 +166,217 @@ function parseWorkplace(input: Record<string, unknown>):
     values.leaders = cleaned;
   }
   return { ok: true, values };
+}
+
+// A few of the current company's details at once, for the assistant's edit
+// card. The Company Profile form saves through POST below.
+export async function PATCH(request: Request) {
+  const session = await getSession();
+  if (!session || session.role !== "employer") {
+    return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
+  }
+  const access = await getEmployerAccess(session.userId);
+  if (!access) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  if (!hasFullAccess(access.role)) {
+    return NextResponse.json({ error: "Only an owner or admin can edit the company profile." }, { status: 403 });
+  }
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const b = body as Record<string, unknown>;
+  const profile = access.profile;
+  const updates: Partial<typeof employerProfiles.$inferInsert> = {};
+
+  const plainKeys = ["companyDescription", "websiteUrl", "companyEmail", "companyPhone", "companyLinkedin", "companyFacebook", "companyInstagram", "foundedYear", "companyType", "companySize", "benefits", "dressCode"];
+  const plain = Object.fromEntries(plainKeys.filter((k) => b[k] !== undefined).map((k) => [k, b[k]]));
+  if (Object.keys(plain).length) {
+    const parsed = parseCompanyEdits(plain);
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    Object.assign(updates, parsed.values);
+  }
+  const workplace = parseWorkplace({ galleryPhotos: b.galleryPhotos, facilities: b.facilities, awards: b.awards, leaders: b.leaders });
+  if (!workplace.ok) return NextResponse.json({ error: workplace.error }, { status: 400 });
+  Object.assign(updates, workplace.values);
+
+  if (b.addGalleryPhoto !== undefined) {
+    if (typeof b.addGalleryPhoto !== "string" || !GALLERY_PHOTO_URL.test(b.addGalleryPhoto)) {
+      return NextResponse.json({ error: "Invalid photo." }, { status: 400 });
+    }
+    if (profile.galleryPhotos.length >= MAX_GALLERY_PHOTOS) {
+      return NextResponse.json({ error: `The gallery already has ${MAX_GALLERY_PHOTOS} photos. Remove one first.` }, { status: 400 });
+    }
+    updates.galleryPhotos = [...profile.galleryPhotos, b.addGalleryPhoto];
+  }
+  if (b.companyName !== undefined) {
+    if (!isNonEmptyString(b.companyName)) return NextResponse.json({ error: "Enter your company name." }, { status: 400 });
+    updates.companyName = b.companyName.trim();
+  }
+  if (b.industry !== undefined) {
+    if (!isNonEmptyString(b.industry)) return NextResponse.json({ error: "Enter your industry." }, { status: 400 });
+    updates.industry = b.industry.trim();
+  }
+  if (b.industryCategory !== undefined) {
+    if (typeof b.industryCategory !== "string" || !(INDUSTRIES as readonly string[]).includes(b.industryCategory)) {
+      return NextResponse.json({ error: "Choose your industry category." }, { status: 400 });
+    }
+    updates.industryCategory = b.industryCategory;
+  }
+  if (b.recentNews !== undefined) {
+    if (!isNewsItemArray(b.recentNews)) return NextResponse.json({ error: "Invalid recent news." }, { status: 400 });
+    updates.recentNews = b.recentNews.map((item) => ({ title: item.title.trim(), url: item.url.trim() }));
+  }
+
+  // Same review rule as the full form: a new SSM number or document restarts it.
+  let ssmChanged = false;
+  if (b.ssmNumber !== undefined) {
+    if (!isNonEmptyString(b.ssmNumber)) return NextResponse.json({ error: "Enter your SSM registration number." }, { status: 400 });
+    updates.ssmNumber = b.ssmNumber.trim();
+    ssmChanged = updates.ssmNumber !== profile.ssmNumber;
+  }
+  if (b.ssmDocumentUrl !== undefined) {
+    if (
+      !isBase64DataUrl(b.ssmDocumentUrl) ||
+      !/^data:(application\/pdf|image\/(jpeg|png|webp));base64,/.test(b.ssmDocumentUrl) ||
+      b.ssmDocumentUrl.length > 14_000_000
+    ) {
+      return NextResponse.json({ error: "Invalid SSM document — upload a PDF, JPG, PNG or WebP, up to 10 MB." }, { status: 400 });
+    }
+    updates.ssmDocumentUrl = await saveSsmDocument(b.ssmDocumentUrl);
+    ssmChanged = true;
+  }
+  if (ssmChanged) {
+    const documentUrl = updates.ssmDocumentUrl ?? profile.ssmDocumentUrl;
+    updates.ssmVerificationStatus = documentUrl ? "pending" : "unverified";
+    updates.ssmVerifiedAt = null;
+    updates.ssmRejectionReason = null;
+  }
+
+  // Images: a freshly picked data URL, or null to remove.
+  for (const [key, category] of [["logoUrl", "logos"], ["officePhotoUrl", "office-photos"]] as const) {
+    if (b[key] === undefined) continue;
+    if (b[key] === null) {
+      updates[key] = null;
+    } else if (isBase64DataUrl(b[key]) && b[key].startsWith("data:image/") && b[key].length > 6_000_000) {
+      // The same cap as the Company Profile form's POST.
+      return NextResponse.json({ error: "That image is too large — pick one under about 4 MB." }, { status: 400 });
+    } else if (isBase64DataUrl(b[key]) && b[key].startsWith("data:image/")) {
+      updates[key] = await saveBase64Upload(b[key], category);
+    } else {
+      return NextResponse.json({ error: "Upload a JPG, PNG or WebP image." }, { status: 400 });
+    }
+  }
+  if (b.bannerUrl !== undefined) {
+    if (b.bannerUrl === null) {
+      updates.bannerUrl = null;
+    } else if (isBase64DataUrl(b.bannerUrl) && b.bannerUrl.startsWith("data:image/") && b.bannerUrl.length <= 14_000_000) {
+      try {
+        updates.bannerUrl = await saveBannerUpload(b.bannerUrl);
+      } catch {
+        return NextResponse.json({ error: "Couldn't read that cover banner — try a JPG or PNG." }, { status: 400 });
+      }
+    } else {
+      return NextResponse.json({ error: "Invalid cover banner." }, { status: 400 });
+    }
+  }
+
+  // The registrant's own details, which only they can change.
+  const contactKeys = ["contactName", "contactRole", "contactPosition", "contactPhone", "contactEmail", "avatarUrl"] as const;
+  if (contactKeys.some((k) => b[k] !== undefined) && profile.userId !== session.userId) {
+    return NextResponse.json({ error: "Only the company's registered contact can change these details." }, { status: 403 });
+  }
+  for (const key of ["contactName", "contactRole", "contactPosition", "contactPhone"] as const) {
+    if (b[key] === undefined) continue;
+    if (!isNonEmptyString(b[key])) return NextResponse.json({ error: "These contact details can't be left blank." }, { status: 400 });
+    updates[key] = (b[key] as string).trim();
+  }
+  if (b.contactEmail !== undefined) {
+    if (!isValidEmail(b.contactEmail)) return NextResponse.json({ error: "Enter a valid contact email." }, { status: 400 });
+    updates.contactEmail = (b.contactEmail as string).trim().toLowerCase();
+  }
+  if (b.avatarUrl !== undefined) {
+    if (!isBase64DataUrl(b.avatarUrl) || !b.avatarUrl.startsWith("data:image/") || b.avatarUrl.length > 6_000_000) {
+      return NextResponse.json({ error: "Use a JPG or PNG photo." }, { status: 400 });
+    }
+    updates.avatarUrl = await saveBase64Upload(b.avatarUrl, "avatars");
+  }
+
+  const addresses = b.addresses;
+  if (addresses !== undefined && !isValidAddressArray(addresses)) {
+    return NextResponse.json({ error: "Enter at least one complete company address." }, { status: 400 });
+  }
+  if (Object.keys(updates).length === 0 && addresses === undefined) {
+    return NextResponse.json({ error: "Nothing to save." }, { status: 400 });
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(employerProfiles)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(employerProfiles.id, profile.id));
+    if (updates.contactName && updates.contactName !== profile.contactName) {
+      await renameOnInterviewPanels(tx, profile.id, profile.contactName.trim(), updates.contactName);
+    }
+    if (addresses) await replaceAddresses(tx, profile.id, addresses);
+  });
+  revalidatePublicData();
+  const after = { ...profile, ...updates };
+  if (after.logoUrl) await awardBadge(profile.id, "logo_added");
+  if (isProfileBoosted(after)) await awardBadge(profile.id, "profile_boosted");
+  return NextResponse.json({ ok: true });
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Interview panels store interviewer *names* as a snapshot
+// (job_applications.interview_details.interviewers), so a rename would
+// otherwise leave every already-scheduled interview showing the old name.
+// Swap old -> new in place, preserving each panel's order.
+async function renameOnInterviewPanels(tx: Tx, profileId: string, oldName: string, newName: string) {
+  if (!oldName) return;
+  await tx.execute(sql`
+    UPDATE job_applications AS ja
+    SET interview_details = jsonb_set(
+      ja.interview_details,
+      '{interviewers}',
+      (
+        SELECT jsonb_agg(CASE WHEN e.value = to_jsonb(${oldName}::text) THEN to_jsonb(${newName}::text) ELSE e.value END ORDER BY e.ord)
+        FROM jsonb_array_elements(ja.interview_details->'interviewers') WITH ORDINALITY AS e(value, ord)
+      )
+    )
+    FROM job_postings AS jp
+    WHERE ja.job_posting_id = jp.id
+      AND jp.employer_profile_id = ${profileId}
+      AND jsonb_typeof(ja.interview_details->'interviewers') = 'array'
+      AND ja.interview_details->'interviewers' ? ${oldName}
+  `);
+}
+
+// Addresses have no other table referencing their id (a job posting's
+// location is copied as plain text at pick time, not linked live), so a
+// full delete-and-recreate is simpler and just as safe as diffing rows.
+async function replaceAddresses(tx: Tx, profileId: string, addresses: AddressInput[]) {
+  await tx.delete(employerAddresses).where(eq(employerAddresses.employerProfileId, profileId));
+  // Exactly one default for job posts: the first one marked, else the first.
+  const defaultIndex = Math.max(0, addresses.findIndex((a) => a.isJobDefault === true));
+  // Rows are re-created in one statement, which would give them all the
+  // same created_at — and the app orders addresses by it. A millisecond
+  // apart keeps them in the order the employer entered them.
+  const baseTime = Date.now();
+  await tx.insert(employerAddresses).values(
+    addresses.map((a, i) => ({
+      employerProfileId: profileId,
+      label: a.label.trim(),
+      addressLine1: a.addressLine1.trim(),
+      addressLine2: isNonEmptyString(a.addressLine2) ? a.addressLine2.trim() : null,
+      area: isNonEmptyString(a.area) ? a.area.trim() : null,
+      city: a.city.trim(),
+      state: a.state,
+      postcode: a.postcode.trim(),
+      isJobDefault: i === defaultIndex,
+      createdAt: new Date(baseTime + i),
+    })),
+  );
 }
 
 export async function POST(request: Request) {
@@ -490,28 +700,9 @@ export async function POST(request: Request) {
         .returning({ id: employerProfiles.id });
       profileId = updated.id;
 
-      // Interview panels store interviewer *names* as a snapshot
-      // (job_applications.interview_details.interviewers), so a rename here
-      // would otherwise leave every already-scheduled interview showing the
-      // old name. Swap old -> new in place, preserving each panel's order.
       const oldName = access.profile.contactName.trim();
-      if (isRegistrant && oldName && oldName !== values.contactName) {
-        await tx.execute(sql`
-          UPDATE job_applications AS ja
-          SET interview_details = jsonb_set(
-            ja.interview_details,
-            '{interviewers}',
-            (
-              SELECT jsonb_agg(CASE WHEN e.value = to_jsonb(${oldName}::text) THEN to_jsonb(${values.contactName}::text) ELSE e.value END ORDER BY e.ord)
-              FROM jsonb_array_elements(ja.interview_details->'interviewers') WITH ORDINALITY AS e(value, ord)
-            )
-          )
-          FROM job_postings AS jp
-          WHERE ja.job_posting_id = jp.id
-            AND jp.employer_profile_id = ${profileId}
-            AND jsonb_typeof(ja.interview_details->'interviewers') = 'array'
-            AND ja.interview_details->'interviewers' ? ${oldName}
-        `);
+      if (isRegistrant && oldName !== values.contactName) {
+        await renameOnInterviewPanels(tx, profileId, oldName, values.contactName);
       }
     } else {
       // A new company (first-time onboarding, or "Add a company") — this
@@ -526,30 +717,7 @@ export async function POST(request: Request) {
       profileId = inserted.id;
     }
 
-    // Addresses have no other table referencing their id (a job posting's
-    // location is copied as plain text at pick time, not linked live), so a
-    // full delete-and-recreate is simpler and just as safe as diffing rows.
-    await tx.delete(employerAddresses).where(eq(employerAddresses.employerProfileId, profileId));
-    // Exactly one default for job posts: the first one marked, else the first.
-    const defaultIndex = Math.max(0, addresses.findIndex((a) => a.isJobDefault === true));
-    // Rows are re-created in one statement, which would give them all the
-    // same created_at — and the app orders addresses by it. A millisecond
-    // apart keeps them in the order the employer entered them.
-    const baseTime = Date.now();
-    await tx.insert(employerAddresses).values(
-      addresses.map((a, i) => ({
-        employerProfileId: profileId,
-        label: a.label.trim(),
-        addressLine1: a.addressLine1.trim(),
-        addressLine2: isNonEmptyString(a.addressLine2) ? a.addressLine2.trim() : null,
-        area: isNonEmptyString(a.area) ? a.area.trim() : null,
-        city: a.city.trim(),
-        state: a.state,
-        postcode: a.postcode.trim(),
-        isJobDefault: i === defaultIndex,
-        createdAt: new Date(baseTime + i),
-      })),
-    );
+    await replaceAddresses(tx, profileId, addresses);
 
     await tx.delete(employerOnboardingDrafts).where(eq(employerOnboardingDrafts.userId, session.userId));
     return profileId;

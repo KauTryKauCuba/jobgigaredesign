@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { resolveExistingRoles } from "@/lib/auth-user";
 import { otpCodes, users } from "@/lib/db/schema";
@@ -7,8 +7,20 @@ import { sendOtpEmail } from "@/lib/email";
 import { generateOtp, hashOtp, otpExpiry } from "@/lib/otp";
 import { ACCOUNT_NOT_FOUND_MESSAGE } from "@/lib/auth-messages";
 import { hasPendingTeamInvite } from "@/lib/employer-profile";
+import { clientIp } from "@/lib/phone-verification";
+import { rateLimited } from "@/lib/rate-limit";
 
 const RESEND_COOLDOWN_MS = 30 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+// A single cap per email let anyone use it up for someone else's address and
+// lock them out of signing in. So the everyday cap counts one email from one
+// IP, a stranger elsewhere can't touch it, and the overall per-email ceiling
+// (each code allows a few guesses, so this caps guessing) sits well above it.
+const MAX_CODES_PER_EMAIL_PER_IP = 10;
+const MAX_CODES_PER_EMAIL = 30;
+// One address asking for codes to many inboxes.
+const MAX_CODES_PER_IP = 60;
+const TOO_MANY = "Too many codes requested. Try again in an hour.";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -27,6 +39,11 @@ export async function POST(request: Request) {
   }
 
   const normalizedEmail = email.toLowerCase();
+  // Unknown behind no proxy (local dev): then only the per-email ceiling applies.
+  const ip = clientIp(request);
+  if (ip && rateLimited(`otp-ip:${ip}`, MAX_CODES_PER_IP, HOUR_MS)) {
+    return NextResponse.json({ error: TOO_MANY }, { status: 429 });
+  }
 
   // Sign-in omits `role` entirely — the account itself should say which
   // side to use rather than making a returning user pick every time.
@@ -70,6 +87,17 @@ export async function POST(request: Request) {
       { error: "Please wait a moment before requesting another code." },
       { status: 429 },
     );
+  }
+
+  const [{ sent }] = await db
+    .select({ sent: count() })
+    .from(otpCodes)
+    .where(and(eq(otpCodes.email, normalizedEmail), gte(otpCodes.createdAt, new Date(Date.now() - HOUR_MS))));
+  if (sent >= MAX_CODES_PER_EMAIL) {
+    return NextResponse.json({ error: TOO_MANY }, { status: 429 });
+  }
+  if (ip && rateLimited(`otp-email-ip:${normalizedEmail}:${ip}`, MAX_CODES_PER_EMAIL_PER_IP, HOUR_MS)) {
+    return NextResponse.json({ error: TOO_MANY }, { status: 429 });
   }
 
   const code = generateOtp();

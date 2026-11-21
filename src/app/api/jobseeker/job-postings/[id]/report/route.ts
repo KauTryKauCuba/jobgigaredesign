@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { jobPostingReports, jobPostingReportReasonEnum, jobPostings } from "@/lib/db/schema";
 import { getJobseekerProfileId } from "@/lib/job-applications";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 const REPORT_REASONS = jobPostingReportReasonEnum.enumValues;
 
@@ -28,6 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "This posting no longer exists." }, { status: 404 });
   const [posting] = await db.select({ id: jobPostings.id }).from(jobPostings).where(eq(jobPostings.id, id)).limit(1);
   if (!posting) return NextResponse.json({ error: "This posting no longer exists." }, { status: 404 });
 

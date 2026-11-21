@@ -95,7 +95,16 @@ export async function getLatestResumeReview(profileId: string) {
 // ---- Checks the AI isn't needed for ---------------------------------------
 
 const EMAIL_RE = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
-const PHONE_RE = /(\+?6?0[\s-]?1\d[\s-]?\d{3,4}[\s-]?\d{3,4})|(\+?\d[\d\s-]{8,}\d)/;
+const MY_MOBILE_RE = /\+?6?0[\s-]?1\d[\s-]?\d{3,4}[\s-]?\d{3,4}/;
+// Any other number: digits with spaces or hyphens, all on one line.
+const NUMBER_RUN_RE = /\+?\d[\d -]{7,}\d/g;
+// Counted by its digits, so a date range like "2018 - 2021" (8) isn't taken for a phone.
+const hasPhoneNumber = (text: string) =>
+  MY_MOBILE_RE.test(text) ||
+  (text.match(NUMBER_RUN_RE) ?? []).some((run) => {
+    const digits = run.replace(/\D/g, "").length;
+    return digits >= 9 && digits <= 15;
+  });
 // Malaysian IC number: YYMMDD-PB-####.
 const IC_RE = /\b\d{6}[\s-]?\d{2}[\s-]?\d{4}\b/;
 
@@ -115,7 +124,7 @@ function quickChecks(text: string, pages: number | null): ReviewCheck[] {
     EMAIL_RE.test(text)
       ? { key: "email", label: "Email address", ok: true, detail: "Easy for employers to reach you." }
       : { key: "email", label: "Email address", ok: false, detail: "We couldn't find one — add it near the top." },
-    PHONE_RE.test(text)
+    hasPhoneNumber(text)
       ? { key: "phone", label: "Phone number", ok: true, detail: "Included — good." }
       : { key: "phone", label: "Phone number", ok: false, detail: "We couldn't find one — add a number employers can call." },
     IC_RE.test(text)

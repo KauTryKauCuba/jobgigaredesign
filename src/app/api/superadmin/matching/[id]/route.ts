@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth-user";
 import { getPostingMatchDetail } from "@/lib/match-map";
 import { isSuperadminEmail } from "@/lib/superadmin";
+import { isUuid } from "@/lib/uuid";
 
 // The Matching page's explorer: one posting scored against every jobseeker,
 // with each part of the score and why.
@@ -12,6 +13,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const detail = await getPostingMatchDetail(id);
   if (!detail) return NextResponse.json({ error: "Not found." }, { status: 404 });
   return NextResponse.json(detail);

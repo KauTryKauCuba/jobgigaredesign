@@ -5,6 +5,7 @@ import { aiInterviewQuestions, aiInterviews } from "@/lib/db/schema";
 import { loadJobseekerInterview } from "@/lib/ai-interview-access";
 import { getJobseekerAiInterview, processInterview } from "@/lib/ai-interview";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 // Finishes the interview: every question must be answered. The answers are
 // then transcribed and scored in the background.
@@ -14,6 +15,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Sign in as a jobseeker." }, { status: 401 });
   }
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const ctx = await loadJobseekerInterview(session.userId, id);
   if (!ctx) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

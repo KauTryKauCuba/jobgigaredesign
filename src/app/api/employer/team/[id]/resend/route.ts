@@ -6,6 +6,7 @@ import { getActorLabel, getFullEmployerAccess, logTeamActivity } from "@/lib/emp
 import { sendTeamInviteEmail } from "@/lib/email";
 import { getSession } from "@/lib/session";
 import { newInviteToken } from "@/lib/team-invite";
+import { isUuid } from "@/lib/uuid";
 
 async function requireTeamAccess() {
   const session = await getSession();
@@ -23,6 +24,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!auth) return NextResponse.json({ error: "Not signed in as an employer." }, { status: 401 });
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const [member] = await db
     .select()
     .from(employerTeamMembers)

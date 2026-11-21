@@ -7,6 +7,7 @@ import { POSTER_GENERATION_STALE_MS, isPosterGenerationConfigured, submitPosterI
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { type CompanyInfo, type PosterStyle, derivePostingContent, isPosterStyle, type PostingContent } from "@/lib/poster-content";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 // Single-shot generation, full detail — google/gemini-3-1-flash-image
 // ("Nano Banana 2") reliably renders bullet lists, labels, and precise
@@ -124,6 +125,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const profileId = access.profile.id;
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const posting = await getJobPostingForEmployer(profileId, id);
   if (!posting) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

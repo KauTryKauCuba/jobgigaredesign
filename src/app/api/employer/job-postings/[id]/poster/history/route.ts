@@ -5,6 +5,7 @@ import { jobPostingPosters } from "@/lib/db/schema";
 import { getFullEmployerAccess } from "@/lib/employer-profile";
 import { getJobPostingForEmployer } from "@/lib/job-postings";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 // Most recent poster generated for a posting is capped, newest first — an
 // employer who's generated dozens for one posting shouldn't have every full
@@ -25,6 +26,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const profileId = access.profile.id;
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const posting = await getJobPostingForEmployer(profileId, id);
   if (!posting) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

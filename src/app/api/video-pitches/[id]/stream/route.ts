@@ -2,6 +2,7 @@ import { createReadStream } from "fs";
 import { stat } from "fs/promises";
 import { Readable } from "stream";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 import { resolvePitchAccess, videoPitchFilePath } from "@/lib/video-pitch";
 
 /**
@@ -14,6 +15,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!session) return new Response("Not signed in.", { status: 401 });
 
   const { id } = await params;
+  if (!isUuid(id)) return new Response("Not found.", { status: 404 });
   const access = await resolvePitchAccess(id, session);
   if (!access.ok) return new Response("Not found.", { status: 404 });
 

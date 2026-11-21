@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { recordStatusChange } from "@/lib/application-events";
 import { awardBadge } from "@/lib/badges";
 import { db } from "@/lib/db";
-import { jobApplicationEvents, jobApplications, jobPostings, jobseekerProfiles, notifications } from "@/lib/db/schema";
+import { jobApplicationEvents, jobApplications, jobPostings, notifications } from "@/lib/db/schema";
 import { getEmployerAddresses, getEmployerTeamMembers } from "@/lib/employer-profile";
 import { canManageApplication, canViewApplication, getScopedEmployerAccess } from "@/lib/hiring-scope";
 import { getApplicationsForEmployer } from "@/lib/job-applications";
@@ -214,22 +214,21 @@ async function undoLastMove(applicationId: string, currentStatus: string, backTo
     .returning();
   await db.delete(jobApplicationEvents).where(eq(jobApplicationEvents.id, last.id));
 
-  // The applicant's notification about that move, if it was sent.
-  const [applicant] = await db
-    .select({ userId: jobseekerProfiles.userId })
-    .from(jobApplications)
-    .innerJoin(jobseekerProfiles, eq(jobseekerProfiles.id, jobApplications.jobseekerProfileId))
-    .where(eq(jobApplications.id, applicationId))
-    .limit(1);
-  if (applicant) {
+  // The applicant's notification about that move, if it was sent — and only
+  // that one: every job's status notifications share this user and link, so
+  // the posting and company (named in each one) keep other employers' news.
+  const ctx = await getApplicationNotificationContext(applicationId);
+  if (ctx) {
     await db
       .delete(notifications)
       .where(
         and(
-          eq(notifications.userId, applicant.userId),
+          eq(notifications.userId, ctx.jobseekerUserId),
           eq(notifications.audience, "jobseeker"),
           eq(notifications.link, "/jobseeker/applications"),
           gte(notifications.createdAt, new Date(last.createdAt.getTime() - 2000)),
+          sql`position(${ctx.postingTitle} in ${notifications.title}) > 0`,
+          sql`position(${ctx.companyName} in ${notifications.body}) > 0`,
         ),
       );
   }

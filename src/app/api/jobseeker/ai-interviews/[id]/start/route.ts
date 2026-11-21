@@ -5,6 +5,7 @@ import { aiInterviews } from "@/lib/db/schema";
 import { loadJobseekerInterview } from "@/lib/ai-interview-access";
 import { getJobseekerAiInterview } from "@/lib/ai-interview";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 // The applicant ticks the consent box (recording + AI processing) and begins.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -13,6 +14,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Sign in as a jobseeker." }, { status: 401 });
   }
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const ctx = await loadJobseekerInterview(session.userId, id);
   if (!ctx) return NextResponse.json({ error: "Not found." }, { status: 404 });
 

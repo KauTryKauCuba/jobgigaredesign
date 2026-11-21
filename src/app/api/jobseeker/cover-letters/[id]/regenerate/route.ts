@@ -3,6 +3,7 @@ import { generateCoverLetterContent, parseCoverLetterOptions } from "@/lib/cover
 import { getCoverLetterForProfile, updateCoverLetter } from "@/lib/cover-letters";
 import { getJobseekerProfile } from "@/lib/jobseeker-profile";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 // Rewrite an existing letter from its saved job posting, in a (possibly
 // different) tone, length or language — replaces the letter's content.
@@ -25,6 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Cover letter not found." }, { status: 404 });
   const letter = await getCoverLetterForProfile(profile.id, id);
   if (!letter) return NextResponse.json({ error: "Cover letter not found." }, { status: 404 });
 

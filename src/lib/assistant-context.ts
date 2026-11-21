@@ -130,10 +130,10 @@ export async function buildEmployerContext(
   lines.push("", `JOB POSTINGS (${postings.length} total: ${countBy(postings, (p) => p.status)}):`);
   for (const p of postings.slice(0, 25)) {
     const apps = applications.filter((a) => a.jobPostingId === p.id);
-    const left = p.openingsTotal - p.hiresConfirmed - p.offersOutstanding;
+    const filled = apps.filter((a) => a.application.status === "hired" || a.application.status === "offer").length;
     const expiry = p.expiryDate ? `, expires ${fmtDate(p.expiryDate)}` : "";
     lines.push(
-      `- "${p.title}" [id ${p.id}, status ${p.status}, ${apps.length} applicants (${countBy(apps, (a) => a.application.status)}), openings left ${Math.max(left, 0)} of ${p.openingsTotal}${expiry}, page /employer/jobs/${p.slug}]`,
+      `- "${p.title}" [id ${p.id}, status ${p.status}, ${apps.length} applicants (${countBy(apps, (a) => a.application.status)}), openings left ${Math.max(p.openings - filled, 0)} of ${p.openings}${expiry}, page /employer/jobs/${p.slug}]`,
     );
   }
   if (postings.length > 25) lines.push(`- …and ${postings.length - 25} more.`);

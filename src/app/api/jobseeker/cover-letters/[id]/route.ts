@@ -4,6 +4,7 @@ import { deleteCoverLetter, updateCoverLetter } from "@/lib/cover-letters";
 import { getJobseekerProfile } from "@/lib/jobseeker-profile";
 import { sanitizeDescriptionHtml } from "@/lib/sanitizeHtml";
 import { getSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 
 // Save edits: any of `content`, `companyName`, `jobTitle`.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,6 +53,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Cover letter not found." }, { status: 404 });
   const row = await updateCoverLetter(profile.id, id, changes);
   if (!row) {
     return NextResponse.json({ error: "Cover letter not found." }, { status: 404 });
@@ -72,6 +74,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Cover letter not found." }, { status: 404 });
   const row = await deleteCoverLetter(profile.id, id);
   if (!row) {
     return NextResponse.json({ error: "Cover letter not found." }, { status: 404 });

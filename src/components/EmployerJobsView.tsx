@@ -356,6 +356,9 @@ const PostJobForm = forwardRef<
   const searchParams = useSearchParams();
   const editingId = searchParams.get("id");
   const [loadingExisting, setLoadingExisting] = useState(() => !!editingId);
+  // Set when ?id= can't be opened: showing the blank form instead would look
+  // like a new posting, and saving it would try to update one that isn't there.
+  const [loadFailed, setLoadFailed] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [postingName, setPostingName] = useState("");
@@ -843,6 +846,10 @@ const PostJobForm = forwardRef<
       try {
         const res = await fetch(`/api/employer/job-postings/${editingId}`);
         const data = await res.json();
+        if (res.status === 404) {
+          if (!cancelled) setLoadFailed("This job posting no longer exists. It may have been deleted.");
+          return;
+        }
         if (!res.ok) throw new Error(data.error ?? "Couldn't load this posting.");
         if (cancelled) return;
         const posting = data.posting as DbJobPosting;
@@ -897,7 +904,7 @@ const PostJobForm = forwardRef<
         setScreeningPreferred((posting.screeningPreferred ?? []) as PreferrableRequirement[]);
         setSkillSuggestions(posting.skillSuggestions);
       } catch (err) {
-        if (!cancelled) setSubmitError(err instanceof Error ? err.message : "Couldn't load this posting.");
+        if (!cancelled) setLoadFailed(err instanceof Error ? err.message : "Couldn't load this posting.");
       } finally {
         if (!cancelled) setLoadingExisting(false);
       }
@@ -1440,6 +1447,23 @@ const PostJobForm = forwardRef<
     return (
       <div className={gradientFrameClass("teal")}>
         <div className="rounded-[19px] bg-white p-[16px] sm:p-[22px] text-xs text-[#9AA3B2]">Loading posting…</div>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className={gradientFrameClass("teal")}>
+        <div className="flex flex-col items-start gap-[12px] rounded-[19px] bg-white p-[16px] sm:p-[22px]">
+          <p className="text-sm text-[#141B2E]">{loadFailed}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-[38px] items-center justify-center rounded-full bg-brand-teal-dark px-[22px] text-sm text-white transition-opacity hover:opacity-90"
+          >
+            Back to Manage Job
+          </button>
+        </div>
       </div>
     );
   }
@@ -4289,6 +4313,8 @@ export default function EmployerJobsView({
 }) {
   const router = useRouter();
   const composing = mode === "post";
+  const searchParams = useSearchParams();
+  const editing = composing && !!searchParams.get("id");
   const postJobFormRef = useRef<PostJobFormHandle>(null);
   const guardNavigation: NavigationGuard = (proceed) => {
     if (composing && postJobFormRef.current) {
@@ -4301,7 +4327,7 @@ export default function EmployerJobsView({
     <EmployerDashboardShell
       authUser={authUser}
       active="jobs"
-      heading={composing ? "Post a job" : canManage ? "Manage Job" : "My jobs"}
+      heading={editing ? "Edit job posting" : composing ? "Post a job" : canManage ? "Manage Job" : "My jobs"}
       headerAction={
         !canManage ? undefined : composing ? (
           <button
@@ -4324,7 +4350,9 @@ export default function EmployerJobsView({
         )
       }
       subheading={
-        composing
+        editing
+          ? "Check the details below and make any changes."
+          : composing
           ? "Fill in the details below."
           : canManage
             ? "Post roles and track applicants once you're ready to hire."
